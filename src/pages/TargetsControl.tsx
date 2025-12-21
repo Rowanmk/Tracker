@@ -4,11 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
 import { getFinancialYearMonths } from '../utils/financialYear';
-import {
-  calculateAllSAMonths,
-  isCurrentOrFutureMonth,
-} from '../utils/saRedistribution';
-import { getSAPeriodBoundedActuals } from '../utils/saActuals';
 import { unparse } from 'papaparse';
 import type { Database } from '../supabase/types';
 
@@ -44,25 +39,11 @@ export const TargetsControl: React.FC = () => {
   const [targetData, setTargetData] = useState<TargetData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   const [distributionRules, setDistributionRules] = useState<
     SADistributionRule[]
   >([]);
-
-  const [annualSATargetDrafts, setAnnualSATargetDrafts] = useState<
-    Record<number, string>
-  >({});
-  const [committedAnnualSATargets, setCommittedAnnualSATargets] = useState<
-    Record<number, number>
-  >({});
-
-  const [saMonthlyOverrides, setSaMonthlyOverrides] = useState<
-    Record<string, number>
-  >({});
-  const [saMonthlyDrafts, setSaMonthlyDrafts] = useState<
-    Record<string, string>
-  >({});
 
   const defaultRules: Omit<
     SADistributionRule,
@@ -74,13 +55,6 @@ export const TargetsControl: React.FC = () => {
     { period_name: 'Period 3b', months: [1], percentage: 6.5 },
     { period_name: 'Period 4', months: [2, 3], percentage: 0 },
   ];
-
-  const getSAService = () =>
-    services.find(
-      s =>
-        s.service_name.toLowerCase().includes('self assessment') ||
-        s.service_name.toLowerCase() === 'sa'
-    );
 
   const fetchDistributionRules = async () => {
     const { data, error } = await supabase
@@ -100,58 +74,84 @@ export const TargetsControl: React.FC = () => {
     return data;
   };
 
-  const recalculateAllSATargets = async (
+  const fetchTargets = async () => {
+    if (!allStaff.length || !services.length) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const rules = await fetchDistributionRules();
+      setDistributionRules(rules);
+
+      const monthData = getFinancialYearMonths();
+
+      const data = await Promise.all(
+        allStaff.map(async (staff) => {
+          const { data: dbTargets, error: dbErr } = await supabase
+            .from('monthlytargets')
+            .select('month, service_id, target_value')
+            .eq('staff_id', staff.staff_id)
+            .in('year', [selectedFinancialYear.start, selectedFinancialYear.end]);
+
+          if (dbErr) {
+            console.error('Error fetching monthlytargets:', dbErr);
+          }
+
+          const targets: TargetData['targets'] = {};
+          monthData.forEach((m) => {
+            targets[m.number] = {};
+            services.forEach((s) => (targets[m.number][s.service_name] = 0));
+          });
+
+          dbTargets?.forEach((t) => {
+            const service = services.find((s) => s.service_id === t.service_id);
+            if (service) {
+              targets[t.month][service.service_name] = t.target_value ?? 0;
+            }
+          });
+
+          return { staff_id: staff.staff_id, name: staff.name, targets };
+        })
+      );
+
+      setTargetData(data);
+    } catch (err) {
+      console.error('Error fetching targets:', err);
+      setError('Failed to load targets data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTargets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFinancialYear, allStaff.length, services.length]);
+
+  const handleTargetChange = (
     staffId: number,
-    annualTarget: number
+    month: number,
+    serviceName: string,
+    value: string
   ) => {
-    const saService = getSAService();
-    if (!saService || annualTarget <= 0) return;
+    const numValue = value === '' ? 0 : parseInt(value, 10);
+    if (isNaN(numValue) || numValue < 0) return;
 
-    const actualsByPeriod = await getSAPeriodBoundedActuals(
-      staffId,
-      selectedFinancialYear
-    );
-
-    let actualDeliveredToDate = 0;
-    Object.values(actualsByPeriod).forEach(v => {
-      actualDeliveredToDate += v || 0;
-    });
-
-    const overrides: Record<number, number> = {};
-    Object.entries(saMonthlyOverrides).forEach(([key, value]) => {
-      const [sid, month] = key.split('-').map(Number);
-      if (
-        sid === staffId &&
-        isCurrentOrFutureMonth(month, selectedFinancialYear)
-      ) {
-        overrides[month] = value;
-      }
-    });
-
-    const calculated = calculateAllSAMonths({
-      annualTarget,
-      actualDeliveredToDate,
-      currentMonth: selectedMonth,
-      overrides,
-      distributionRules,
-    });
-
-    setTargetData(prev =>
-      prev.map(staff =>
+    setTargetData((prev) =>
+      prev.map((staff) =>
         staff.staff_id === staffId
           ? {
               ...staff,
               targets: {
                 ...staff.targets,
-                ...Object.fromEntries(
-                  Object.entries(calculated).map(([m, val]) => [
-                    Number(m),
-                    {
-                      ...staff.targets[Number(m)],
-                      [saService.service_name]: val,
-                    },
-                  ])
-                ),
+                [month]: {
+                  ...staff.targets[month],
+                  [serviceName]: numValue,
+                },
               },
             }
           : staff
@@ -159,99 +159,261 @@ export const TargetsControl: React.FC = () => {
     );
   };
 
-  const fetchTargets = async () => {
-    if (!allStaff.length || !services.length) return;
-
-    setLoading(true);
+  const handleSaveTargets = async () => {
+    setSaveMessage(null);
     setError(null);
 
-    const rules = await fetchDistributionRules();
-    setDistributionRules(rules);
+    try {
+      const inserts: any[] = [];
 
-    const monthData = getFinancialYearMonths();
-    const saService = getSAService();
+      targetData.forEach((staff) => {
+        Object.entries(staff.targets).forEach(([monthStr, monthTargets]) => {
+          const month = Number(monthStr);
+          const year =
+            month >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
 
-    const data = await Promise.all(
-      allStaff.map(async staff => {
-        const { data } = await supabase
-          .from('monthlytargets')
-          .select('month, service_id, target_value, services(service_name)')
-          .eq('staff_id', staff.staff_id)
-          .in('year', [selectedFinancialYear.start, selectedFinancialYear.end]);
-
-        const targets: TargetData['targets'] = {};
-        monthData.forEach(m => {
-          targets[m.number] = {};
-          services.forEach(s => (targets[m.number][s.service_name] = 0));
+          Object.entries(monthTargets).forEach(([serviceName, value]) => {
+            const service = services.find((s) => s.service_name === serviceName);
+            if (service) {
+              inserts.push({
+                staff_id: staff.staff_id,
+                service_id: service.service_id,
+                month,
+                year,
+                target_value: value ?? 0,
+              });
+            }
+          });
         });
-
-        data?.forEach(t => {
-          if (
-            t.services?.service_name &&
-            (!saService || t.service_id !== saService.service_id)
-          ) {
-            targets[t.month][t.services.service_name] = t.target_value;
-          }
-        });
-
-        return { staff_id: staff.staff_id, name: staff.name, targets };
-      })
-    );
-
-    setTargetData(data);
-
-    if (saService) {
-      const { data: annuals } = await supabase
-        .from('sa_annual_targets')
-        .select('staff_id, annual_target')
-        .eq('year', selectedFinancialYear.start);
-
-      const committed: Record<number, number> = {};
-      const drafts: Record<number, string> = {};
-
-      allStaff.forEach(s => {
-        const row = annuals?.find(a => a.staff_id === s.staff_id);
-        committed[s.staff_id] = row?.annual_target || 0;
-        drafts[s.staff_id] = String(row?.annual_target || 0);
       });
 
-      setCommittedAnnualSATargets(committed);
-      setAnnualSATargetDrafts(drafts);
-    }
+      // Replace ALL targets for the financial year (safe + consistent)
+      await supabase
+        .from('monthlytargets')
+        .delete()
+        .in('year', [selectedFinancialYear.start, selectedFinancialYear.end]);
 
-    setLoading(false);
+      const { error: insertError } = await supabase
+        .from('monthlytargets')
+        .insert(inserts);
+
+      if (insertError) throw insertError;
+
+      setSaveMessage('✅ Targets saved successfully');
+      setTimeout(() => setSaveMessage(null), 3000);
+    } catch (err) {
+      console.error('Error saving targets:', err);
+      setError('Failed to save targets');
+    }
   };
 
-  useEffect(() => {
-    fetchTargets();
-  }, [selectedFinancialYear, allStaff.length, services.length]);
+  const handleExportCSV = () => {
+    const rows: CSVRow[] = [];
 
-  useEffect(() => {
-    if (!loading && distributionRules.length) {
-      allStaff.forEach(staff => {
-        const annual = committedAnnualSATargets[staff.staff_id];
-        if (annual > 0) recalculateAllSATargets(staff.staff_id, annual);
+    targetData.forEach((staff) => {
+      Object.entries(staff.targets).forEach(([monthStr, monthTargets]) => {
+        const month = Number(monthStr);
+        const year =
+          month >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
+
+        Object.entries(monthTargets).forEach(([serviceName, value]) => {
+          const service = services.find((s) => s.service_name === serviceName);
+          if (service) {
+            rows.push({
+              staff_id: staff.staff_id,
+              staff_name: staff.name,
+              service_id: service.service_id,
+              service_name: serviceName,
+              month,
+              year,
+              target_value: value ?? 0,
+            });
+          }
+        });
       });
-    }
-  }, [loading, distributionRules, committedAnnualSATargets]);
+    });
 
-  /* ---------- RENDER ---------- */
+    const csv = unparse(rows);
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `targets_${selectedFinancialYear.label}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const monthData = getFinancialYearMonths();
 
   if (loading || authLoading || servicesLoading) {
-    return <div className="py-6 text-center">Loading…</div>;
+    return (
+      <div className="py-6 text-center text-gray-500">
+        Loading targets...
+      </div>
+    );
   }
 
-  if (error || authError || servicesError) {
+  if (authError || servicesError) {
     return (
-      <div className="p-4 bg-yellow-50 border border-yellow-300">
-        ⚠️ {error || authError || servicesError}
+      <div className="p-4 bg-red-50 border border-red-200 rounded-md">
+        <p className="text-red-800">⚠️ {authError || servicesError}</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      {/* UI unchanged — your existing table rendering works correctly */}
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-2">
+          Targets Control
+        </h2>
+        <p className="text-gray-600 dark:text-gray-400">
+          Set monthly targets for {selectedFinancialYear.label}
+        </p>
+      </div>
+
+      {error && (
+        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+          <p className="text-red-800 dark:text-red-200">❌ {error}</p>
+        </div>
+      )}
+
+      {saveMessage && (
+        <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md">
+          <p className="text-green-800 dark:text-green-200">{saveMessage}</p>
+        </div>
+      )}
+
+      <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Monthly Targets
+          </h3>
+          <div className="flex gap-3">
+            <button
+              onClick={handleExportCSV}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
+            >
+              📥 Export CSV
+            </button>
+            <button
+              onClick={handleSaveTargets}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm font-medium"
+            >
+              💾 Save Targets
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-700">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Staff Member
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Service
+                </th>
+                {monthData.map((m) => (
+                  <th
+                    key={m.number}
+                    className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                  >
+                    {m.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+
+            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+              {targetData.flatMap((staff, staffIdx) =>
+                services.map((service, serviceIdx) => {
+                  const rowIsEven = (staffIdx * services.length + serviceIdx) % 2 === 0;
+
+                  return (
+                    <tr
+                      key={`${staff.staff_id}-${service.service_id}`}
+                      className={rowIsEven ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}
+                    >
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
+                        {serviceIdx === 0 ? staff.name : ''}
+                      </td>
+
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                        {service.service_name}
+                      </td>
+
+                      {monthData.map((m) => (
+                        <td
+                          key={`${staff.staff_id}-${service.service_id}-${m.number}`}
+                          className="px-4 py-3 text-center"
+                        >
+                          <input
+                            type="number"
+                            min="0"
+                            value={staff.targets[m.number]?.[service.service_name] ?? 0}
+                            onChange={(e) =>
+                              handleTargetChange(
+                                staff.staff_id,
+                                m.number,
+                                service.service_name,
+                                e.target.value
+                              )
+                            }
+                            className="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          Distribution Rules
+        </h3>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-700">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Period
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Months
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Percentage
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+              {distributionRules.map((rule, idx) => (
+                <tr
+                  key={rule.id}
+                  className={idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}
+                >
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
+                    {rule.period_name}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                    {rule.months.join(', ')}
+                  </td>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
+                    {rule.percentage}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 };
