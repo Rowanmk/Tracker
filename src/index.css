@@ -1,0 +1,156 @@
+@font-face {
+  font-family: "Frutiger";
+  src: url("/fonts/frutiger/Frutiger-Regular.woff2") format("woff2"),
+       url("/fonts/frutiger/Frutiger-Regular.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Frutiger";
+  src: url("/fonts/frutiger/Frutiger-Bold.woff2") format("woff2"),
+       url("/fonts/frutiger/Frutiger-Bold.woff") format("woff");
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Frutiger";
+  src: url("/fonts/frutiger/Frutiger-Light.woff2") format("woff2"),
+       url("/fonts/frutiger/Frutiger-Light.woff") format("woff");
+  font-weight: 300;
+  font-style: normal;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ac-blue-dark: #001B47;
+  --ac-blue-dark-hover: #00245F;
+  --ac-orange: #FF8A2A;
+  --ac-gold: #FFB000;
+}
+
+.btn-primary {
+  @apply text-white font-semibold px-4 py-2 rounded-md shadow-sm transition;
+  background-color: var(--ac-blue-dark);
+}
+.btn-primary:hover {
+  background-color: var(--ac-blue-dark-hover);
+}
+
+.btn-secondary {
+  @apply px-4 py-2 rounded-md font-semibold border transition;
+  border-color: var(--ac-blue-dark);
+  color: var(--ac-blue-dark);
+}
+.btn-secondary:hover {
+  background-color: var(--ac-blue-dark);
+  color: white;
+}
+
+.tile-brand {
+  border: 2px solid var(--ac-blue-dark);
+  border-radius: 12px;
+  background-color: white;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+.tile-header {
+  background-color: var(--ac-blue-dark);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 8px 8px 0 0;
+}
+
+.table-header {
+  background-color: var(--ac-blue-dark);
+  color: white !important;
+}
+
+.table-row:hover {
+  background-color: rgba(0, 27, 71, 0.06);
+}
+
+.text-brand-orange {
+  color: var(--ac-orange);
+}
+
+.text-brand-blue {
+  color: var(--ac-blue-light);
+}
+
+.text-brand-gold {
+  color: var(--ac-gold);
+}
+
+.bg-brand-gradient {
+  background: linear-gradient(
+    to right,
+    var(--ac-blue-dark),
+    var(--ac-blue),
+    var(--ac-blue-light),
+    var(--ac-orange),
+    var(--ac-gold)
+  );
+}
+
+body {
+  margin: 0;
+  font-family: "Frutiger", "Helvetica Neue", "Arial", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-in-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.25s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.transition-smooth {
+  transition: all 0.25s ease-in-out;
+}
+
+.hover\:scale-102:hover {
+  transform: scale(1.02);
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.no-spinner[type=number] {
+  -moz-appearance: textfield;
+}
