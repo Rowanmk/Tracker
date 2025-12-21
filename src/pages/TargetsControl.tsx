@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
 import { getFinancialYearMonths } from '../utils/financialYear';
-import { calculateAllSAMonths, getSADistributionRules, getSAPeriodBoundedActuals, isCurrentOrFutureMonth } from '../utils/saRedistribution';
+import { calculateAllSAMonths, isCurrentOrFutureMonth } from '../utils/saRedistribution';
 import { unparse } from 'papaparse';
 import type { Database } from '../supabase/types';
 
