@@ -195,10 +195,10 @@ export function calculateAllSAMonths({
     const shortfall = Math.max(0, cumulativeExpected - cumulativeActual);
     
     // Calculate base period allocation
-    const basePeriodTotal = Math.round(annualTarget * (period.percentage / 100));
+    const basePeriodTotal = annualTarget * (period.percentage / 100);
     
     // Add shortfall to current period
-    const adjustedPeriodTotal = basePeriodTotal + Math.round(shortfall);
+    const adjustedPeriodTotal = basePeriodTotal + shortfall;
     
     // Get months in this period (excluding Feb/Mar and overridden months)
     const monthsInPeriod = period.months.filter(m => {
@@ -207,7 +207,10 @@ export function calculateAllSAMonths({
     
     if (monthsInPeriod.length > 0) {
       // Distribute across available months using stable apportionment
-      const monthlyAllocations = distributeIntegerTarget(adjustedPeriodTotal, monthsInPeriod.length);
+      const monthlyAllocations = distributeIntegerTarget(
+  Math.round(adjustedPeriodTotal),
+  monthsInPeriod.length
+);
       
       monthsInPeriod.forEach((month, index) => {
         result[month] = monthlyAllocations[index];
