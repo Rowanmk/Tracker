@@ -44,7 +44,6 @@ export const StaffTracker: React.FC = () => {
   });
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const headerScrollRef = useRef<HTMLDivElement>(null);
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
   const getInputKey = (serviceIdx: number, day: number): string => {
@@ -96,13 +95,6 @@ export const StaffTracker: React.FC = () => {
 
     // Focus the next cell
     focusCell(nextServiceIdx, nextDay);
-  };
-
-  const handleScrollSync = (e: React.UIEvent<HTMLDivElement>) => {
-    const scrollLeft = e.currentTarget.scrollLeft;
-    if (headerScrollRef.current) {
-      headerScrollRef.current.scrollLeft = scrollLeft;
-    }
   };
 
   const fetchData = async () => {
@@ -378,62 +370,59 @@ export const StaffTracker: React.FC = () => {
                 </h4>
               </div>
 
-              {/* Day Headers Row - Scrollable */}
-              <div className="px-6 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 overflow-hidden">
-                <div className="flex items-center gap-4">
-                  {/* Service Name Column Header */}
-                  <div className="w-32 flex-shrink-0">
-                    <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                      Service
-                    </span>
-                  </div>
-
-                  {/* Day Headers - Scrollable Container */}
-                  <div 
-                    ref={headerScrollRef}
-                    className="flex-1 flex gap-0 overflow-x-auto pb-2"
-                  >
-                    {dailyEntries.map((entry) => {
-                      const tooltipText = entry.isBankHoliday 
-                        ? `Public Holiday – ${entry.bankHolidayTitle}`
-                        : entry.isOnLeave 
-                        ? `Annual Leave`
-                        : '';
-                      
-                      return (
-                        <div key={entry.day} className="flex-shrink-0 w-16 text-center px-1">
-                          <div className={`px-2 py-2 rounded-t-md text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider ${
-                            entry.isBankHoliday ? 'bg-red-200 dark:bg-red-800/50' :
-                            entry.isOnLeave ? 'bg-gray-200 dark:bg-gray-600' :
-                            entry.isWeekend ? 'bg-red-100 dark:bg-red-800/30' :
-                            'bg-gray-50 dark:bg-gray-700'
-                          }`} title={tooltipText}>
-                            <div>{entry.day}</div>
-                            <div className="text-xs font-normal">{getDayName(entry.day)}</div>
-                            {entry.isBankHoliday && <div className="text-xs">🔴</div>}
-                            {entry.isOnLeave && <div className="text-xs">🟢</div>}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Annual Header */}
-                  <div className="w-24 flex-shrink-0 text-center">
-                    <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                      Total
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Service Rows - Single Scrollable Container */}
+              {/* Unified Scrollable Container - Headers and Data Together */}
               <div 
                 ref={scrollContainerRef}
-                onScroll={handleScrollSync}
-                className="overflow-x-auto divide-y divide-gray-200 dark:divide-gray-700"
+                className="overflow-x-auto"
               >
-                <div className="inline-flex flex-col min-w-full">
+                {/* Day Headers Row */}
+                <div className="px-6 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 sticky top-0 z-10">
+                  <div className="flex items-center gap-4">
+                    {/* Service Name Column Header */}
+                    <div className="w-32 flex-shrink-0">
+                      <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                        Service
+                      </span>
+                    </div>
+
+                    {/* Day Headers */}
+                    <div className="flex gap-0">
+                      {dailyEntries.map((entry) => {
+                        const tooltipText = entry.isBankHoliday 
+                          ? `Public Holiday – ${entry.bankHolidayTitle}`
+                          : entry.isOnLeave 
+                          ? `Annual Leave`
+                          : '';
+                        
+                        return (
+                          <div key={entry.day} className="flex-shrink-0 w-16 text-center px-1">
+                            <div className={`px-2 py-2 rounded-t-md text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider ${
+                              entry.isBankHoliday ? 'bg-red-200 dark:bg-red-800/50' :
+                              entry.isOnLeave ? 'bg-gray-200 dark:bg-gray-600' :
+                              entry.isWeekend ? 'bg-red-100 dark:bg-red-800/30' :
+                              'bg-gray-50 dark:bg-gray-700'
+                            }`} title={tooltipText}>
+                              <div>{entry.day}</div>
+                              <div className="text-xs font-normal">{getDayName(entry.day)}</div>
+                              {entry.isBankHoliday && <div className="text-xs">🔴</div>}
+                              {entry.isOnLeave && <div className="text-xs">🟢</div>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Annual Header */}
+                    <div className="w-24 flex-shrink-0 text-center">
+                      <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                        Total
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Service Rows */}
+                <div className="divide-y divide-gray-200 dark:divide-gray-700">
                   {services.map((service, serviceIdx) => {
                     const serviceTotal = serviceTotals[service.service_name];
                     const serviceTarget = targets[service.service_name] || 0;
@@ -441,7 +430,7 @@ export const StaffTracker: React.FC = () => {
                     return (
                       <div
                         key={`${currentStaff?.staff_id}-${service.service_id}`}
-                        className={`flex items-center gap-4 px-6 py-2 ${
+                        className={`px-6 py-2 flex items-center gap-4 ${
                           serviceIdx % 2 === 0
                             ? 'bg-white dark:bg-gray-800'
                             : 'bg-gray-50 dark:bg-gray-750'
@@ -526,7 +515,7 @@ export const StaffTracker: React.FC = () => {
                   })}
 
                   {/* Monthly Totals Row */}
-                  <div className="flex items-center gap-4 px-6 py-2 bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500">
+                  <div className="px-6 py-2 bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500 flex items-center gap-4">
                     {/* Row Label */}
                     <div className="w-32 flex-shrink-0">
                       <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
