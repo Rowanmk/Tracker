@@ -261,6 +261,15 @@ export const TargetsControl: React.FC = () => {
     );
   }
 
+  const calculateAnnualTotal = (staffId: number, serviceName: string): number => {
+    const staff = targetData.find(s => s.staff_id === staffId);
+    if (!staff) return 0;
+    
+    return monthData.reduce((sum, m) => {
+      return sum + (staff.targets[m.number]?.[serviceName] ?? 0);
+    }, 0);
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -319,50 +328,67 @@ export const TargetsControl: React.FC = () => {
 
             {/* Service Rows - Each service on one row with all months */}
             <div className="divide-y divide-gray-200 dark:divide-gray-700">
-              {services.map((service, serviceIdx) => (
-                <div
-                  key={service.service_id}
-                  className={`px-6 py-4 ${
-                    serviceIdx % 2 === 0
-                      ? 'bg-white dark:bg-gray-800'
-                      : 'bg-gray-50 dark:bg-gray-750'
-                  }`}
-                >
-                  {/* Service Name */}
-                  <div className="mb-3">
-                    <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                      {service.service_name}
-                    </span>
-                  </div>
+              {services.map((service, serviceIdx) => {
+                const annualTotal = calculateAnnualTotal(staff.staff_id, service.service_name);
+                
+                return (
+                  <div
+                    key={service.service_id}
+                    className={`px-6 py-4 ${
+                      serviceIdx % 2 === 0
+                        ? 'bg-white dark:bg-gray-800'
+                        : 'bg-gray-50 dark:bg-gray-750'
+                    }`}
+                  >
+                    {/* Service Name and Monthly Inputs in One Row */}
+                    <div className="flex items-center gap-4">
+                      {/* Service Name - Fixed Width */}
+                      <div className="w-32 flex-shrink-0">
+                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {service.service_name}
+                        </span>
+                      </div>
 
-                  {/* Horizontal Month Grid - All 12 months in one row */}
-                  <div className="overflow-x-auto">
-                    <div className="flex gap-2 min-w-max">
-                      {monthData.map((m) => (
-                        <div key={m.number} className="flex flex-col items-center flex-shrink-0">
-                          <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 whitespace-nowrap">
-                            {m.name}
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            value={staff.targets[m.number]?.[service.service_name] ?? 0}
-                            onChange={(e) =>
-                              handleTargetChange(
-                                staff.staff_id,
-                                m.number,
-                                service.service_name,
-                                e.target.value
-                              )
-                            }
-                            className="w-14 px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                          />
+                      {/* Monthly Inputs - Scrollable Container */}
+                      <div className="flex-1 overflow-x-auto">
+                        <div className="flex gap-2 min-w-max">
+                          {monthData.map((m) => (
+                            <div key={m.number} className="flex flex-col items-center flex-shrink-0">
+                              <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 whitespace-nowrap">
+                                {m.name}
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={staff.targets[m.number]?.[service.service_name] ?? 0}
+                                onChange={(e) =>
+                                  handleTargetChange(
+                                    staff.staff_id,
+                                    m.number,
+                                    service.service_name,
+                                    e.target.value
+                                  )
+                                }
+                                className="w-14 px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                              />
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      </div>
+
+                      {/* Annual Total - Fixed Width, Read-Only */}
+                      <div className="w-24 flex-shrink-0 flex flex-col items-center">
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 whitespace-nowrap">
+                          Annual
+                        </span>
+                        <div className="w-full px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
+                          {annualTotal}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))}
