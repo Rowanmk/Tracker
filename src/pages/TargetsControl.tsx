@@ -261,6 +261,15 @@ export const TargetsControl: React.FC = () => {
     );
   }
 
+  const calculateMonthlyTotal = (staffId: number, month: number): number => {
+    const staff = targetData.find(s => s.staff_id === staffId);
+    if (!staff) return 0;
+    
+    return services.reduce((sum, service) => {
+      return sum + (staff.targets[month]?.[service.service_name] ?? 0);
+    }, 0);
+  };
+
   const calculateAnnualTotal = (staffId: number, serviceName: string): number => {
     const staff = targetData.find(s => s.staff_id === staffId);
     if (!staff) return 0;
@@ -326,7 +335,7 @@ export const TargetsControl: React.FC = () => {
               </h4>
             </div>
 
-            {/* Month Header Row - Single Row with All Months */}
+            {/* Month Headers Row */}
             <div className="px-6 py-3 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <div className="flex items-center gap-4">
                 {/* Service Name Column Header */}
@@ -336,17 +345,15 @@ export const TargetsControl: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Month Headers - Scrollable */}
-                <div className="flex-1 overflow-x-auto">
-                  <div className="flex gap-2 min-w-max">
-                    {monthData.map((m) => (
-                      <div key={m.number} className="flex-shrink-0 w-14 text-center">
-                        <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                          {m.name}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                {/* Month Headers - Flex to Fill Available Space */}
+                <div className="flex-1 flex gap-0">
+                  {monthData.map((m) => (
+                    <div key={m.number} className="flex-1 text-center px-1">
+                      <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
+                        {m.name}
+                      </span>
+                    </div>
+                  ))}
                 </div>
 
                 {/* Annual Header */}
@@ -358,7 +365,7 @@ export const TargetsControl: React.FC = () => {
               </div>
             </div>
 
-            {/* Service Rows - Each service on one row */}
+            {/* Service Rows */}
             <div className="divide-y divide-gray-200 dark:divide-gray-700">
               {services.map((service, serviceIdx) => {
                 const annualTotal = calculateAnnualTotal(staff.staff_id, service.service_name);
@@ -380,11 +387,10 @@ export const TargetsControl: React.FC = () => {
                     </div>
 
                     {/* Monthly Inputs - Flex to Fill Space */}
-                    <div className="flex-1 overflow-x-auto">
-                      <div className="flex gap-2 min-w-max">
-                        {monthData.map((m) => (
+                    <div className="flex-1 flex gap-0">
+                      {monthData.map((m) => (
+                        <div key={m.number} className="flex-1 px-1">
                           <input
-                            key={m.number}
                             type="number"
                             min="0"
                             value={staff.targets[m.number]?.[service.service_name] ?? 0}
@@ -396,10 +402,10 @@ export const TargetsControl: React.FC = () => {
                                 e.target.value
                               )
                             }
-                            className="w-14 px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors flex-shrink-0"
+                            className="w-full px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                           />
-                        ))}
-                      </div>
+                        </div>
+                      ))}
                     </div>
 
                     {/* Annual Total - Fixed Width, Read-Only */}
@@ -411,6 +417,37 @@ export const TargetsControl: React.FC = () => {
                   </div>
                 );
               })}
+
+              {/* Monthly Totals Row */}
+              <div className="px-6 py-3 bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500 flex items-center gap-4">
+                {/* Row Label */}
+                <div className="w-32 flex-shrink-0">
+                  <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
+                    Monthly Total
+                  </span>
+                </div>
+
+                {/* Monthly Totals - Flex to Fill Space */}
+                <div className="flex-1 flex gap-0">
+                  {monthData.map((m) => {
+                    const monthTotal = calculateMonthlyTotal(staff.staff_id, m.number);
+                    return (
+                      <div key={m.number} className="flex-1 px-1">
+                        <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
+                          {monthTotal}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Annual Grand Total - Fixed Width */}
+                <div className="w-24 flex-shrink-0">
+                  <div className="px-2 py-2 bg-blue-600 dark:bg-blue-700 border border-blue-700 dark:border-blue-800 rounded-md text-center text-sm font-bold text-white">
+                    {monthData.reduce((sum, m) => sum + calculateMonthlyTotal(staff.staff_id, m.number), 0)}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         ))}
