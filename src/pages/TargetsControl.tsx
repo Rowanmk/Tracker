@@ -30,6 +30,10 @@ interface CSVRow {
   target_value: number;
 }
 
+interface LocalInputState {
+  [key: string]: string;
+}
+
 export const TargetsControl: React.FC = () => {
   const { selectedMonth, selectedFinancialYear } = useDate();
   const { allStaff, loading: authLoading, error: authError } = useAuth();
@@ -40,6 +44,7 @@ export const TargetsControl: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [localInputState, setLocalInputState] = useState<LocalInputState>({});
 
   const [distributionRules, setDistributionRules] = useState<
     SADistributionRule[]
@@ -119,6 +124,7 @@ export const TargetsControl: React.FC = () => {
       );
 
       setTargetData(data);
+      setLocalInputState({});
     } catch (err) {
       console.error('Error fetching targets:', err);
       setError('Failed to load targets data');
@@ -132,15 +138,48 @@ export const TargetsControl: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFinancialYear, allStaff.length, services.length]);
 
-  const handleTargetChange = (
+  const getInputKey = (staffId: number, month: number, serviceName: string): string => {
+    return `${staffId}-${month}-${serviceName}`;
+  };
+
+  const handleInputChange = (
     staffId: number,
     month: number,
     serviceName: string,
     value: string
   ) => {
-    const numValue = value === '' ? 0 : parseInt(value, 10);
-    if (isNaN(numValue) || numValue < 0) return;
+    const key = getInputKey(staffId, month, serviceName);
+    setLocalInputState(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
 
+  const handleInputBlur = (
+    staffId: number,
+    month: number,
+    serviceName: string,
+    value: string
+  ) => {
+    const key = getInputKey(staffId, month, serviceName);
+    
+    let numValue = 0;
+    if (value.trim() !== '') {
+      const parsed = parseInt(value, 10);
+      if (!isNaN(parsed) && parsed >= 0) {
+        numValue = parsed;
+      } else {
+        // Invalid input - revert to previous value
+        setLocalInputState(prev => {
+          const newState = { ...prev };
+          delete newState[key];
+          return newState;
+        });
+        return;
+      }
+    }
+
+    // Commit the validated value to main state
     setTargetData((prev) =>
       prev.map((staff) =>
         staff.staff_id === staffId
@@ -157,6 +196,13 @@ export const TargetsControl: React.FC = () => {
           : staff
       )
     );
+
+    // Clear local input state for this cell
+    setLocalInputState(prev => {
+      const newState = { ...prev };
+      delete newState[key];
+      return newState;
+    });
   };
 
   const handleSaveTargets = async () => {
@@ -279,6 +325,20 @@ export const TargetsControl: React.FC = () => {
     }, 0);
   };
 
+  const getInputValue = (staffId: number, month: number, serviceName: string): string => {
+    const key = getInputKey(staffId, month, serviceName);
+    
+    // If there's a local input state, use it (user is editing)
+    if (localInputState.hasOwnProperty(key)) {
+      return localInputState[key];
+    }
+    
+    // Otherwise use the committed value from targetData
+    const staff = targetData.find(s => s.staff_id === staffId);
+    const value = staff?.targets[month]?.[serviceName] ?? 0;
+    return value.toString();
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -393,9 +453,17 @@ export const TargetsControl: React.FC = () => {
                           <input
                             type="number"
                             min="0"
-                            value={staff.targets[m.number]?.[service.service_name] ?? 0}
+                            value={getInputValue(staff.staff_id, m.number, service.service_name)}
                             onChange={(e) =>
-                              handleTargetChange(
+                              handleInputChange(
+                                staff.staff_id,
+                                m.number,
+                                service.service_name,
+                                e.target.value
+                              )
+                            }
+                            onBlur={(e) =>
+                              handleInputBlur(
                                 staff.staff_id,
                                 m.number,
                                 service.service_name,
