@@ -26,11 +26,14 @@ export const StaffTracker: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeCell, setActiveCell] = useState<{ service: number; day: number } | null>(null);
 
-  const { currentStaff } = useAuth();
+  const { currentStaff, allStaff, selectedStaffId } = useAuth();
   const { services } = useServices();
   
   const year = selectedMonth >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
   const { workingDays, workingDaysUpToToday } = useWorkingDays(selectedMonth, year);
+
+  // Determine if Team is selected
+  const isTeamSelected = selectedStaffId === "team" || !selectedStaffId;
 
   const { 
     isDateOnLeave, 
@@ -58,7 +61,6 @@ export const StaffTracker: React.FC = () => {
       input.select();
       setActiveCell({ service: serviceIdx, day });
       
-      // Scroll into view
       input.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
     }
   };
@@ -73,7 +75,6 @@ export const StaffTracker: React.FC = () => {
     const daysInMonth = dailyEntries.length;
 
     if (e.shiftKey) {
-      // Shift+Tab: move backwards through all days, then to previous service
       nextDay--;
       if (nextDay < 1) {
         nextServiceIdx--;
@@ -83,7 +84,6 @@ export const StaffTracker: React.FC = () => {
         nextDay = daysInMonth;
       }
     } else {
-      // Tab: move forwards through all days, then to next service
       nextDay++;
       if (nextDay > daysInMonth) {
         nextServiceIdx++;
@@ -94,7 +94,6 @@ export const StaffTracker: React.FC = () => {
       }
     }
 
-    // Focus the next cell
     focusCell(nextServiceIdx, nextDay);
   };
 
@@ -133,58 +132,88 @@ export const StaffTracker: React.FC = () => {
       });
     });
 
-    const { data: activities } = await supabase
-      .from('dailyactivity')
-      .select('day, service_id, delivered_count')
-      .eq('staff_id', currentStaff.staff_id)
-      .eq('month', selectedMonth)
-      .eq('year', year);
+    if (isTeamSelected) {
+      // Team mode: aggregate all staff activities
+      const { data: allActivities } = await supabase
+        .from('dailyactivity')
+        .select('day, service_id, delivered_count')
+        .eq('month', selectedMonth)
+        .eq('year', year);
 
-    const deliveredMap: Record<number, Record<number, number>> = {};
-    activities?.forEach(activity => {
-      if (activity.service_id) {
-        if (!deliveredMap[activity.service_id]) {
-          deliveredMap[activity.service_id] = {};
+      const deliveredMap: Record<number, Record<number, number>> = {};
+      allActivities?.forEach(activity => {
+        if (activity.service_id) {
+          if (!deliveredMap[activity.service_id]) {
+            deliveredMap[activity.service_id] = {};
+          }
+          deliveredMap[activity.service_id][activity.day] = 
+            (deliveredMap[activity.service_id][activity.day] || 0) + activity.delivered_count;
         }
-        deliveredMap[activity.service_id][activity.day] = activity.delivered_count;
-      }
-    });
-
-    services.forEach(service => {
-      const serviceActivities = deliveredMap[service.service_id] || {};
-      entries.forEach(entry => {
-        entry.services[service.service_name] = serviceActivities[entry.day] || 0;
       });
-    });
 
-    const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, currentStaff.staff_id);
+      services.forEach(service => {
+        const serviceActivities = deliveredMap[service.service_id] || {};
+        entries.forEach(entry => {
+          entry.services[service.service_name] = serviceActivities[entry.day] || 0;
+        });
+      });
+    } else {
+      // Individual mode: fetch only current staff activities
+      const { data: activities } = await supabase
+        .from('dailyactivity')
+        .select('day, service_id, delivered_count')
+        .eq('staff_id', currentStaff.staff_id)
+        .eq('month', selectedMonth)
+        .eq('year', year);
 
-    const targetsMapByName: { [key: string]: number } = {};
-    services.forEach(service => {
-      targetsMapByName[service.service_name] = perService[service.service_id] || 0;
-    });
+      const deliveredMap: Record<number, Record<number, number>> = {};
+      activities?.forEach(activity => {
+        if (activity.service_id) {
+          if (!deliveredMap[activity.service_id]) {
+            deliveredMap[activity.service_id] = {};
+          }
+          deliveredMap[activity.service_id][activity.day] = activity.delivered_count;
+        }
+      });
 
-    setDailyEntries(prev => {
-      if (prev.length === entries.length) {
-        return prev.map((entry, index) => {
-          const loaded = entries[index];
-          return {
-            ...entry,
-            isWeekend: loaded.isWeekend,
-            isOnLeave: loaded.isOnLeave,
-            isBankHoliday: loaded.isBankHoliday,
-            bankHolidayTitle: loaded.bankHolidayTitle,
-            services: {
-              ...entry.services,
-              ...loaded.services
-            }
-          };
+      services.forEach(service => {
+        const serviceActivities = deliveredMap[service.service_id] || {};
+        entries.forEach(entry => {
+          entry.services[service.service_name] = serviceActivities[entry.day] || 0;
+        });
+      });
+    }
+
+    setDailyEntries(entries);
+
+    // Load targets
+    if (isTeamSelected) {
+      // Team mode: aggregate all staff targets
+      let teamTargets: { [key: string]: number } = {};
+      services.forEach(service => {
+        teamTargets[service.service_name] = 0;
+      });
+
+      for (const staff of allStaff) {
+        const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, staff.staff_id);
+        services.forEach(service => {
+          teamTargets[service.service_name] = (teamTargets[service.service_name] || 0) + (perService[service.service_id] || 0);
         });
       }
-      return entries;
-    });
 
-    setTargets(targetsMapByName);
+      setTargets(teamTargets);
+    } else {
+      // Individual mode: load targets for current staff
+      const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, currentStaff.staff_id);
+
+      const targetsMapByName: { [key: string]: number } = {};
+      services.forEach(service => {
+        targetsMapByName[service.service_name] = perService[service.service_id] || 0;
+      });
+
+      setTargets(targetsMapByName);
+    }
+
     setLoading(false);
   };
 
@@ -192,16 +221,16 @@ export const StaffTracker: React.FC = () => {
     if (!leaveHolidayLoading) {
       fetchData();
     }
-  }, [currentStaff?.staff_id, services.length, selectedMonth, selectedFinancialYear, leaveHolidayLoading]);
+  }, [currentStaff?.staff_id, services.length, selectedMonth, selectedFinancialYear, leaveHolidayLoading, isTeamSelected]);
 
   useEffect(() => {
     const handler = () => fetchData();
     window.addEventListener('activity-updated', handler);
     return () => window.removeEventListener('activity-updated', handler);
-  }, [currentStaff?.staff_id, services.length, selectedMonth, selectedFinancialYear]);
+  }, [currentStaff?.staff_id, services.length, selectedMonth, selectedFinancialYear, isTeamSelected]);
 
   const handleEntryChange = async (day: number, serviceName: string, value: string) => {
-    if (!currentStaff) return;
+    if (!currentStaff || isTeamSelected) return; // Don't allow edits in team mode
 
     const service = services.find(s => s.service_name === serviceName);
     if (!service) return;
@@ -327,6 +356,8 @@ export const StaffTracker: React.FC = () => {
     }, 0);
   };
 
+  const displayTitle = isTeamSelected ? 'Team Tracker' : `${currentStaff?.name || 'User'} Tracker`;
+
   return (
     <div>
       <h2 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-6">
@@ -374,7 +405,8 @@ export const StaffTracker: React.FC = () => {
               {/* Staff Member Header */}
               <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-6 py-4">
                 <h4 className="text-lg font-bold text-white">
-                  {currentStaff?.name || 'User'}
+                  {displayTitle}
+                  {isTeamSelected && <span className="text-sm font-normal ml-2 opacity-90">(Aggregated - Read Only)</span>}
                 </h4>
               </div>
 
@@ -478,29 +510,38 @@ export const StaffTracker: React.FC = () => {
                                   step="1"
                                   value={entry.services[service.service_name] ?? 0}
                                   onFocus={(e) => {
-                                    e.currentTarget.select();
-                                    setActiveCell({ service: serviceIdx, day: entry.day });
+                                    if (!isTeamSelected) {
+                                      e.currentTarget.select();
+                                      setActiveCell({ service: serviceIdx, day: entry.day });
+                                    }
                                   }}
                                   onChange={(e) => {
-                                    const cleaned = e.target.value.replace(/^0+(?=\d)/, "");
-                                    handleEntryChange(entry.day, service.service_name, cleaned);
+                                    if (!isTeamSelected) {
+                                      const cleaned = e.target.value.replace(/^0+(?=\d)/, "");
+                                      handleEntryChange(entry.day, service.service_name, cleaned);
+                                    }
                                   }}
                                   onBlur={(e) => {
-                                    if (e.target.value === "") {
+                                    if (!isTeamSelected && e.target.value === "") {
                                       handleEntryChange(entry.day, service.service_name, "0");
                                     }
                                     setActiveCell(null);
                                   }}
                                   onKeyDown={(e) => {
-                                    handleKeyNavigation(e, serviceIdx, entry.day);
+                                    if (!isTeamSelected) {
+                                      handleKeyNavigation(e, serviceIdx, entry.day);
+                                    }
                                   }}
                                   title={tooltipText}
+                                  disabled={isTeamSelected}
                                   className={`w-full px-2 py-2 text-center border rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                                    isActive ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 dark:border-blue-600' :
-                                    cellBgClass === 'bg-red-200 dark:bg-red-800/50' ? 'bg-red-200 dark:bg-red-800/50 border-red-300 dark:border-red-700 text-gray-900 dark:text-white' :
-                                    cellBgClass === 'bg-gray-200 dark:bg-gray-600' ? 'bg-gray-200 dark:bg-gray-600 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white' :
-                                    cellBgClass === 'bg-red-100 dark:bg-red-800/30' ? 'bg-red-100 dark:bg-red-800/30 border-red-200 dark:border-red-700 text-gray-900 dark:text-white' :
-                                    'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white'
+                                    isTeamSelected 
+                                      ? 'bg-gray-100 dark:bg-gray-600 border-gray-300 dark:border-gray-500 text-gray-700 dark:text-gray-300 cursor-not-allowed opacity-75'
+                                      : isActive ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 dark:border-blue-600' :
+                                      cellBgClass === 'bg-red-200 dark:bg-red-800/50' ? 'bg-red-200 dark:bg-red-800/50 border-red-300 dark:border-red-700 text-gray-900 dark:text-white' :
+                                      cellBgClass === 'bg-gray-200 dark:bg-gray-600' ? 'bg-gray-200 dark:bg-gray-600 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white' :
+                                      cellBgClass === 'bg-red-100 dark:bg-red-800/30' ? 'bg-red-100 dark:bg-red-800/30 border-red-200 dark:border-red-700 text-gray-900 dark:text-white' :
+                                      'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white'
                                   }`}
                                   placeholder="0"
                                 />
