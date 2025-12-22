@@ -30,7 +30,10 @@ export const StaffTracker: React.FC = () => {
   const { services } = useServices();
   
   const year = selectedMonth >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
-  const { workingDays, workingDaysUpToToday } = useWorkingDays(selectedMonth, year);
+  const { teamWorkingDays, workingDaysUpToToday } = useWorkingDays({
+    financialYear: selectedFinancialYear,
+    month: selectedMonth,
+  });
 
   // Determine if Team is selected
   const isTeamSelected = selectedStaffId === "team" || !selectedStaffId;
@@ -327,9 +330,9 @@ export const StaffTracker: React.FC = () => {
   const overallTotal = Object.values(serviceTotals).reduce((sum, total) => sum + total, 0);
   const overallTarget = Object.values(targets).reduce((sum, target) => sum + target, 0);
 
-  const daysWorked = Math.min(workingDaysUpToToday, workingDays);
-  const dailyTarget = workingDays > 0 ? overallTarget / workingDays : 0;
-  const workingDaysCompleted = Math.min(workingDaysUpToToday, workingDays);
+  const daysWorked = Math.min(workingDaysUpToToday, teamWorkingDays);
+  const dailyTarget = teamWorkingDays > 0 ? overallTarget / teamWorkingDays : 0;
+  const workingDaysCompleted = Math.min(workingDaysUpToToday, teamWorkingDays);
   const expectedByNow = Math.round(dailyTarget * workingDaysCompleted);
 
   const getMonthName = (monthNum: number) => {
@@ -364,7 +367,7 @@ export const StaffTracker: React.FC = () => {
         My Tracker
       </h2>
 
-      {/* Status bar positioned below the page title */}
+      {/* Status bar positioned below the page title - MATCHES DASHBOARD EXACTLY */}
       <div className="w-full py-4 bg-[#001B47] rounded-xl flex justify-between items-center px-6 mb-6">
         {/* Left: Month selector dropdown */}
         <div className="flex items-center">
@@ -382,10 +385,10 @@ export const StaffTracker: React.FC = () => {
           </select>
         </div>
 
-        {/* Centre: Status text */}
+        {/* Centre: Status text - EXACT SAME FORMAT AS DASHBOARD */}
         <div className="flex-1 text-center">
           <span className="text-white text-lg font-semibold tracking-wide">
-            Expected by now: {expectedByNow} | Delivered: {overallTotal} | Target: {overallTarget}
+            Ahead by {Math.max(0, overallTotal - expectedByNow)} | Delivered: {overallTotal} | Expected: {expectedByNow}
           </span>
         </div>
 
@@ -664,12 +667,12 @@ export const StaffTracker: React.FC = () => {
                     <div className="text-sm text-gray-500 dark:text-gray-400">Days Worked</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-gray-600 dark:text-gray-300">{workingDays}</div>
+                    <div className="text-2xl font-bold text-gray-600 dark:text-gray-300">{teamWorkingDays}</div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">Total Working Days</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                      {workingDays - daysWorked}
+                      {teamWorkingDays - daysWorked}
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">Days Remaining</div>
                   </div>
