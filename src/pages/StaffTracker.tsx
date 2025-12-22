@@ -70,21 +70,22 @@ export const StaffTracker: React.FC = () => {
 
     let nextServiceIdx = serviceIdx;
     let nextDay = day;
+    const daysInMonth = dailyEntries.length;
 
     if (e.shiftKey) {
-      // Shift+Tab: move backwards
+      // Shift+Tab: move backwards through all days, then to previous service
       nextDay--;
       if (nextDay < 1) {
         nextServiceIdx--;
         if (nextServiceIdx < 0) {
           nextServiceIdx = services.length - 1;
         }
-        nextDay = dailyEntries.length;
+        nextDay = daysInMonth;
       }
     } else {
-      // Tab: move forwards
+      // Tab: move forwards through all days, then to next service
       nextDay++;
-      if (nextDay > dailyEntries.length) {
+      if (nextDay > daysInMonth) {
         nextServiceIdx++;
         if (nextServiceIdx >= services.length) {
           nextServiceIdx = 0;
