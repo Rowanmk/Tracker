@@ -253,10 +253,8 @@ export const StaffTracker: React.FC = () => {
         break;
       case "Tab":
         if (e.shiftKey) {
-          // Shift+Tab: move to previous day in same row
           nextCol = col - 1;
           if (nextCol < 1) {
-            // Wrap to previous service's last day
             nextRow = row - 1;
             if (nextRow < 0) {
               nextRow = services.length - 1;
@@ -264,10 +262,8 @@ export const StaffTracker: React.FC = () => {
             nextCol = dailyEntries.length;
           }
         } else {
-          // Tab: move to next day in same row
           nextCol = col + 1;
           if (nextCol > dailyEntries.length) {
-            // Wrap to next service's first day
             nextRow = row + 1;
             if (nextRow >= services.length) {
               nextRow = 0;
@@ -383,29 +379,9 @@ export const StaffTracker: React.FC = () => {
   };
 
   const getStatusColor = (delivered: number, target: number) => {
-    if (delivered >= target) return 'text-green-600';
-    if (delivered >= target * 0.5) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
-  const getCellBackgroundClass = (entry: DailyEntry) => {
-    if (entry.isBankHoliday) return 'bg-red-100 dark:bg-red-900/20';
-    if (entry.isOnLeave) return 'bg-gray-100 dark:bg-gray-700/50';
-    if (entry.isWeekend) return 'bg-red-50 dark:bg-red-900/10';
-    return 'bg-white dark:bg-gray-800';
-  };
-
-  const getHeaderBackgroundClass = (entry: DailyEntry) => {
-    if (entry.isBankHoliday) return 'bg-red-200 dark:bg-red-800/50';
-    if (entry.isOnLeave) return 'bg-gray-200 dark:bg-gray-600';
-    if (entry.isWeekend) return 'bg-red-100 dark:bg-red-800/30';
-    return 'bg-gray-50 dark:bg-gray-700';
-  };
-
-  const getTooltipText = (entry: DailyEntry) => {
-    if (entry.isBankHoliday) return `Public Holiday – ${entry.bankHolidayTitle}`;
-    if (entry.isOnLeave) return `Annual Leave – ${entry.day} ${new Date(year, selectedMonth - 1).toLocaleDateString('en-GB', { month: 'long' })} ${year}`;
-    return '';
+    if (delivered >= target) return 'text-green-600 dark:text-green-400';
+    if (delivered >= target * 0.5) return 'text-yellow-600 dark:text-yellow-400';
+    return 'text-red-600 dark:text-red-400';
   };
 
   const serviceTotals = getServiceTotals();
@@ -443,12 +419,12 @@ export const StaffTracker: React.FC = () => {
 
   return (
     <div>
-      <h2 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-4.8">
-        My Tracker - {currentStaff?.name || 'User'}
+      <h2 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-6">
+        My Tracker
       </h2>
 
       {/* Status bar positioned below the page title */}
-      <div className="w-full py-4 bg-[#001B47] rounded-xl flex justify-between items-center px-6 mb-3.2">
+      <div className="w-full py-4 bg-[#001B47] rounded-xl flex justify-between items-center px-6 mb-6">
         {/* Left: Month selector dropdown */}
         <div className="flex items-center">
           <select
@@ -479,207 +455,263 @@ export const StaffTracker: React.FC = () => {
       </div>
 
       <div className="mt-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-xl shadow">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Monthly Progress</h3>
-            <div className="space-y-3">
-              {services.map(service => {
-                const total = serviceTotals[service.service_name];
-                const target = targets[service.service_name] || 0;
-                const percentage = target > 0 ? (total / target) * 100 : 0;
-                const statusColor = getStatusColor(total, target);
-                
-                return (
-                  <div key={service.service_id}>
-                    <div className="flex justify-between text-sm">
-                      <span className="font-medium">{service.service_name}</span>
-                      <span className={statusColor}>{total} / {target}</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className={`h-2 rounded-full ${
-                          total >= target ? 'bg-green-500' :
-                          total >= target * 0.5 ? 'bg-yellow-500' : 'bg-red-500'
-                        }`}
-                        style={{ width: `${Math.min(percentage, 100)}%` }}
-                      />
-                    </div>
-                    <div className={`text-xs mt-1 ${statusColor}`}>
-                      {Math.round(percentage)}% achieved
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Run Rate Status</h3>
-            <div className="space-y-4">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-blue-600">{overallTotal}</div>
-                <div className="text-sm text-gray-500">Total Delivered</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-gray-600">
-                  {expectedByNow}
-                </div>
-                <div className="text-sm text-gray-500">Expected by Now</div>
-              </div>
-              <div className="text-center">
-                <div className={`text-2xl font-bold ${getStatusColor(overallTotal, expectedByNow)}`}>
-                  {overallTotal >= expectedByNow
-                    ? '✓ On Track' : '⚠ Behind'}
-                </div>
-                <div className="text-sm text-gray-500">Status</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Working Days</h3>
-            <div className="space-y-4">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-purple-600">{daysWorked}</div>
-                <div className="text-sm text-gray-500">Days Worked</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-gray-600">{workingDays}</div>
-                <div className="text-sm text-gray-500">Total Working Days</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">
-                  {workingDays - daysWorked}
-                </div>
-                <div className="text-sm text-gray-500">Days Remaining</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {loading || leaveHolidayLoading ? (
           <div className="text-center py-4">Loading...</div>
         ) : (
-          <div className="bg-white shadow rounded-xl overflow-hidden">
-            <div className="px-4 py-5 sm:p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Daily Entry Grid
-              </h3>
-              <div className="relative">
-                <div ref={scrollRef} className="overflow-x-auto">
-                  <table className="w-full table-auto border-collapse">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="sticky left-0 bg-gray-50 px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider border p-2 text-center z-20">
-                          Service
-                        </th>
-                        {dailyEntries.map(entry => {
-                          const tooltipText = getTooltipText(entry);
+          <div className="space-y-6">
+            {/* Card-based layout matching Targets Control */}
+            <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden">
+              {/* Staff Member Header */}
+              <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-6 py-4">
+                <h4 className="text-lg font-bold text-white">
+                  {currentStaff?.name || 'User'}
+                </h4>
+              </div>
+
+              {/* Day Headers Row */}
+              <div className="px-6 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                <div className="flex items-center gap-4">
+                  {/* Service Name Column Header */}
+                  <div className="w-32 flex-shrink-0">
+                    <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                      Service
+                    </span>
+                  </div>
+
+                  {/* Day Headers - Flex to Fill Available Space */}
+                  <div ref={scrollRef} className="flex-1 flex gap-0 overflow-x-auto">
+                    {dailyEntries.map((entry) => {
+                      const tooltipText = entry.isBankHoliday 
+                        ? `Public Holiday – ${entry.bankHolidayTitle}`
+                        : entry.isOnLeave 
+                        ? `Annual Leave`
+                        : '';
+                      
+                      return (
+                        <div key={entry.day} className="flex-shrink-0 w-16 text-center px-1">
+                          <div className={`px-2 py-2 rounded-t-md text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider ${
+                            entry.isBankHoliday ? 'bg-red-200 dark:bg-red-800/50' :
+                            entry.isOnLeave ? 'bg-gray-200 dark:bg-gray-600' :
+                            entry.isWeekend ? 'bg-red-100 dark:bg-red-800/30' :
+                            'bg-gray-50 dark:bg-gray-700'
+                          }`} title={tooltipText}>
+                            <div>{entry.day}</div>
+                            <div className="text-xs font-normal">{getDayName(entry.day)}</div>
+                            {entry.isBankHoliday && <div className="text-xs">🔴</div>}
+                            {entry.isOnLeave && <div className="text-xs">🟢</div>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Annual Header */}
+                  <div className="w-24 flex-shrink-0 text-center">
+                    <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                      Total
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Service Rows */}
+              <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                {services.map((service, serviceIdx) => {
+                  const serviceTotal = serviceTotals[service.service_name];
+                  const serviceTarget = targets[service.service_name] || 0;
+                  
+                  return (
+                    <div
+                      key={`${currentStaff?.staff_id}-${service.service_id}`}
+                      className={`px-6 py-2 flex items-center gap-4 ${
+                        serviceIdx % 2 === 0
+                          ? 'bg-white dark:bg-gray-800'
+                          : 'bg-gray-50 dark:bg-gray-750'
+                      } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
+                    >
+                      {/* Service Name - Fixed Width */}
+                      <div className="w-32 flex-shrink-0">
+                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {service.service_name}
+                        </span>
+                      </div>
+
+                      {/* Daily Inputs - Flex to Fill Space */}
+                      <div ref={scrollRef} className="flex-1 flex gap-0 overflow-x-auto">
+                        {dailyEntries.map((entry) => {
+                          const tooltipText = entry.isBankHoliday 
+                            ? `Public Holiday – ${entry.bankHolidayTitle}`
+                            : entry.isOnLeave 
+                            ? `Annual Leave`
+                            : '';
+                          
                           return (
-                            <th 
-                              key={entry.day} 
-                              className={`border p-2 text-center text-sm font-medium text-gray-500 uppercase tracking-wider min-w-[60px] ${
-                                getHeaderBackgroundClass(entry)
-                              } ${activeCol === entry.day ? 'bg-blue-50' : ''}`}
-                              title={tooltipText}
-                            >
-                              <div>{entry.day}</div>
-                              <div className="text-xs font-normal">{getDayName(entry.day)}</div>
-                              {entry.isBankHoliday && <div className="text-xs text-red-600">🔴</div>}
-                              {entry.isOnLeave && <div className="text-xs text-gray-600">🟢</div>}
-                            </th>
+                            <div key={entry.day} className="flex-shrink-0 w-16 px-1">
+                              <input
+                                id={`cell-${services.indexOf(service)}-${entry.day}`}
+                                type="number"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                min="0"
+                                step="1"
+                                value={entry.services[service.service_name] ?? 0}
+                                onFocus={(e) => {
+                                  preserveScroll();
+                                  e.currentTarget.select();
+                                  setActiveCol(entry.day);
+                                  setTimeout(restoreScroll, 0);
+                                }}
+                                onChange={(e) => {
+                                  preserveScroll();
+                                  const cleaned = e.target.value.replace(/^0+(?=\d)/, "");
+                                  handleEntryChange(entry.day, service.service_name, cleaned);
+                                }}
+                                onBlur={(e) => {
+                                  stopSmoothScroll();
+                                  if (e.target.value === "") {
+                                    handleEntryChange(entry.day, service.service_name, "0");
+                                  }
+                                  setActiveCol(null);
+                                }}
+                                onKeyDown={(e) => {
+                                  handleKeyNavigation(e, services.indexOf(service), entry.day);
+                                }}
+                                onKeyUp={handleKeyUp}
+                                disabled={entry.isWeekend || entry.isOnLeave || entry.isBankHoliday}
+                                className={`w-full px-2 py-2 text-center border rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                                  entry.isBankHoliday ? 'bg-red-100 dark:bg-red-900/20 border-red-300 dark:border-red-700 text-gray-400 cursor-not-allowed' :
+                                  entry.isOnLeave ? 'bg-gray-100 dark:bg-gray-700/50 border-gray-300 dark:border-gray-600 text-gray-400 cursor-not-allowed' :
+                                  entry.isWeekend ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800 text-gray-400 cursor-not-allowed' :
+                                  activeCol === entry.day ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 dark:border-blue-600' :
+                                  'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white'
+                                }`}
+                                placeholder="0"
+                              />
+                            </div>
                           );
                         })}
-                        <th className="border p-2 text-center text-sm font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
-                          Total
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white space-y-1">
-                      {services.map((service, serviceIndex) => (
-                        <tr key={service.service_id} className={serviceIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                          <td className="sticky left-0 bg-inherit border p-2 text-center text-sm font-medium text-gray-900 z-10">
-                            {service.service_name}
-                          </td>
-                          {dailyEntries.map(entry => {
-                            const tooltipText = getTooltipText(entry);
-                            return (
-                              <td 
-                                key={entry.day} 
-                                className={`border p-2 text-center ${
-                                  getCellBackgroundClass(entry)
-                                } ${activeCol === entry.day ? 'bg-blue-50' : ''}`}
-                                title={tooltipText}
-                              >
-                                <input
-                                  id={`cell-${serviceIndex}-${entry.day}`}
-                                  type="number"
-                                  inputMode="numeric"
-                                  pattern="[0-9]*"
-                                  min="0"
-                                  step="1"
-                                  value={entry.services[service.service_name] ?? 0}
-                                  onFocus={(e) => {
-                                    preserveScroll();
-                                    e.currentTarget.select();
-                                    setActiveCol(entry.day);
-                                    setTimeout(restoreScroll, 0);
-                                  }}
-                                  onChange={(e) => {
-                                    preserveScroll();
-                                    const cleaned = e.target.value.replace(/^0+(?=\d)/, "");
-                                    handleEntryChange(entry.day, service.service_name, cleaned);
-                                  }}
-                                  onBlur={(e) => {
-                                    stopSmoothScroll();
-                                    if (e.target.value === "") {
-                                      handleEntryChange(entry.day, service.service_name, "0");
-                                    }
-                                    setActiveCol(null);
-                                  }}
-                                  onKeyDown={(e) => {
-                                    handleKeyNavigation(e, serviceIndex, entry.day);
-                                  }}
-                                  onKeyUp={handleKeyUp}
-                                  className={`w-full p-1 text-center border rounded ${
-                                    getCellBackgroundClass(entry)
-                                  } ${activeCol === entry.day ? 'bg-blue-50' : ''}`}
-                                  placeholder="0"
-                                />
-                              </td>
-                            );
-                          })}
-                          <td className="border p-2 text-center text-sm font-bold text-gray-900 bg-blue-50">
-                            <span className={getStatusColor(serviceTotals[service.service_name], targets[service.service_name] || 0)}>
-                              {serviceTotals[service.service_name]}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                      {/* Total Row */}
-                      <tr className="bg-gray-100 font-bold">
-                        <td className="sticky left-0 bg-gray-100 border p-2 text-center text-sm font-bold text-gray-900 z-10">
-                          Total
-                        </td>
-                        {dailyEntries.map(entry => {
-                          const dayTotal = services.reduce((sum, service) => 
-                            sum + (entry.services[service.service_name] || 0), 0
-                          );
-                          return (
-                            <td 
-                              key={entry.day} 
-                              className="border p-2 text-center text-sm font-bold text-gray-900 bg-gray-100"
-                            >
-                              {dayTotal}
-                            </td>
-                          );
-                        })}
-                        <td className="border p-2 text-center text-sm font-bold text-gray-900 bg-gray-200">
-                          {overallTotal}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+                      </div>
+
+                      {/* Service Total - Fixed Width, Read-Only */}
+                      <div className="w-24 flex-shrink-0">
+                        <div className={`px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold ${getStatusColor(serviceTotal, serviceTarget)}`}>
+                          {serviceTotal}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Monthly Totals Row */}
+                <div className="px-6 py-2 bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500 flex items-center gap-4">
+                  {/* Row Label */}
+                  <div className="w-32 flex-shrink-0">
+                    <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
+                      Daily Total
+                    </span>
+                  </div>
+
+                  {/* Daily Totals - Flex to Fill Space */}
+                  <div className="flex-1 flex gap-0 overflow-x-auto">
+                    {dailyEntries.map((entry) => {
+                      const dayTotal = services.reduce((sum, service) => 
+                        sum + (entry.services[service.service_name] || 0), 0
+                      );
+                      return (
+                        <div key={entry.day} className="flex-shrink-0 w-16 px-1">
+                          <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
+                            {dayTotal}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Overall Total - Fixed Width */}
+                  <div className="w-24 flex-shrink-0">
+                    <div className="px-2 py-2 bg-blue-600 dark:bg-blue-700 border border-blue-700 dark:border-blue-800 rounded-md text-center text-sm font-bold text-white">
+                      {overallTotal}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Monthly Progress</h3>
+                <div className="space-y-3">
+                  {services.map(service => {
+                    const total = serviceTotals[service.service_name];
+                    const target = targets[service.service_name] || 0;
+                    const percentage = target > 0 ? (total / target) * 100 : 0;
+                    const statusColor = getStatusColor(total, target);
+                    
+                    return (
+                      <div key={service.service_id}>
+                        <div className="flex justify-between text-sm">
+                          <span className="font-medium text-gray-900 dark:text-white">{service.service_name}</span>
+                          <span className={statusColor}>{total} / {target}</span>
+                        </div>
+                        <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full ${
+                              total >= target ? 'bg-green-500' :
+                              total >= target * 0.5 ? 'bg-yellow-500' : 'bg-red-500'
+                            }`}
+                            style={{ width: `${Math.min(percentage, 100)}%` }}
+                          />
+                        </div>
+                        <div className={`text-xs mt-1 ${statusColor}`}>
+                          {Math.round(percentage)}% achieved
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Run Rate Status</h3>
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">{overallTotal}</div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Total Delivered</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-gray-600 dark:text-gray-300">
+                      {expectedByNow}
+                    </div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Expected by Now</div>
+                  </div>
+                  <div className="text-center">
+                    <div className={`text-2xl font-bold ${getStatusColor(overallTotal, expectedByNow)}`}>
+                      {overallTotal >= expectedByNow
+                        ? '✓ On Track' : '⚠ Behind'}
+                    </div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Status</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Working Days</h3>
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">{daysWorked}</div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Days Worked</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-gray-600 dark:text-gray-300">{workingDays}</div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Total Working Days</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                      {workingDays - daysWorked}
+                    </div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Days Remaining</div>
+                  </div>
                 </div>
               </div>
             </div>
