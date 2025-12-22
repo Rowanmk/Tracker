@@ -454,6 +454,9 @@ export const TargetsControl: React.FC = () => {
                             type="number"
                             min="0"
                             value={getInputValue(staff.staff_id, m.number, service.service_name)}
+                            onFocus={(e) => {
+                              e.currentTarget.select();
+                            }}
                             onChange={(e) =>
                               handleInputChange(
                                 staff.staff_id,
