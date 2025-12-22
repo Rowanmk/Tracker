@@ -253,15 +253,25 @@ export const StaffTracker: React.FC = () => {
         break;
       case "Tab":
         if (e.shiftKey) {
+          // Shift+Tab: move to previous day in same row
           nextCol = col - 1;
           if (nextCol < 1) {
+            // Wrap to previous service's last day
             nextRow = row - 1;
-            nextCol = 31;
+            if (nextRow < 0) {
+              nextRow = services.length - 1;
+            }
+            nextCol = dailyEntries.length;
           }
         } else {
+          // Tab: move to next day in same row
           nextCol = col + 1;
-          if (nextCol > 31) {
+          if (nextCol > dailyEntries.length) {
+            // Wrap to next service's first day
             nextRow = row + 1;
+            if (nextRow >= services.length) {
+              nextRow = 0;
+            }
             nextCol = 1;
           }
         }
@@ -270,7 +280,7 @@ export const StaffTracker: React.FC = () => {
     }
 
     if (nextRow < 0 || nextRow >= services.length) return;
-    if (nextCol < 1 || nextCol > 31) return;
+    if (nextCol < 1 || nextCol > dailyEntries.length) return;
 
     const nextCell = document.getElementById(`cell-${nextRow}-${nextCol}`);
     if (nextCell) {
