@@ -44,6 +44,7 @@ export const StaffTracker: React.FC = () => {
   });
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const headerScrollRef = useRef<HTMLDivElement>(null);
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
   const getInputKey = (serviceIdx: number, day: number): string => {
@@ -95,6 +96,13 @@ export const StaffTracker: React.FC = () => {
 
     // Focus the next cell
     focusCell(nextServiceIdx, nextDay);
+  };
+
+  const handleScrollSync = (e: React.UIEvent<HTMLDivElement>) => {
+    const scrollLeft = e.currentTarget.scrollLeft;
+    if (headerScrollRef.current) {
+      headerScrollRef.current.scrollLeft = scrollLeft;
+    }
   };
 
   const fetchData = async () => {
@@ -370,9 +378,9 @@ export const StaffTracker: React.FC = () => {
                 </h4>
               </div>
 
-              {/* Day Headers Row */}
-              <div className="px-6 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 overflow-x-auto">
-                <div className="flex items-center gap-4 min-w-min">
+              {/* Day Headers Row - Scrollable */}
+              <div className="px-6 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 overflow-hidden">
+                <div className="flex items-center gap-4">
                   {/* Service Name Column Header */}
                   <div className="w-32 flex-shrink-0">
                     <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
@@ -380,8 +388,11 @@ export const StaffTracker: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* Day Headers - Scrollable */}
-                  <div ref={scrollContainerRef} className="flex gap-0 overflow-x-auto pb-2">
+                  {/* Day Headers - Scrollable Container */}
+                  <div 
+                    ref={headerScrollRef}
+                    className="flex-1 flex gap-0 overflow-x-auto pb-2"
+                  >
                     {dailyEntries.map((entry) => {
                       const tooltipText = entry.isBankHoliday 
                         ? `Public Holiday – ${entry.bankHolidayTitle}`
@@ -416,136 +427,134 @@ export const StaffTracker: React.FC = () => {
                 </div>
               </div>
 
-              {/* Service Rows */}
-              <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                {services.map((service, serviceIdx) => {
-                  const serviceTotal = serviceTotals[service.service_name];
-                  const serviceTarget = targets[service.service_name] || 0;
-                  
-                  return (
-                    <div
-                      key={`${currentStaff?.staff_id}-${service.service_id}`}
-                      className={`px-6 py-2 flex items-center gap-4 ${
-                        serviceIdx % 2 === 0
-                          ? 'bg-white dark:bg-gray-800'
-                          : 'bg-gray-50 dark:bg-gray-750'
-                      } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
-                    >
-                      {/* Service Name - Fixed Width */}
-                      <div className="w-32 flex-shrink-0">
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                          {service.service_name}
-                        </span>
-                      </div>
-
-                      {/* Daily Inputs - Synchronized Scroll */}
-                      <div className="flex-1 flex gap-0 overflow-x-auto pb-2" onScroll={(e) => {
-                        if (scrollContainerRef.current) {
-                          scrollContainerRef.current.scrollLeft = e.currentTarget.scrollLeft;
-                        }
-                      }}>
-                        {dailyEntries.map((entry) => {
-                          const tooltipText = entry.isBankHoliday 
-                            ? `Public Holiday – ${entry.bankHolidayTitle}`
-                            : entry.isOnLeave 
-                            ? `Annual Leave`
-                            : '';
-                          
-                          const inputKey = getInputKey(serviceIdx, entry.day);
-                          const isActive = activeCell?.service === serviceIdx && activeCell?.day === entry.day;
-                          
-                          return (
-                            <div key={entry.day} className="flex-shrink-0 w-16 px-1">
-                              <input
-                                ref={(el) => {
-                                  if (el) {
-                                    inputRefs.current.set(inputKey, el);
-                                  } else {
-                                    inputRefs.current.delete(inputKey);
-                                  }
-                                }}
-                                type="number"
-                                inputMode="numeric"
-                                pattern="[0-9]*"
-                                min="0"
-                                step="1"
-                                value={entry.services[service.service_name] ?? 0}
-                                onFocus={(e) => {
-                                  e.currentTarget.select();
-                                  setActiveCell({ service: serviceIdx, day: entry.day });
-                                }}
-                                onChange={(e) => {
-                                  const cleaned = e.target.value.replace(/^0+(?=\d)/, "");
-                                  handleEntryChange(entry.day, service.service_name, cleaned);
-                                }}
-                                onBlur={(e) => {
-                                  if (e.target.value === "") {
-                                    handleEntryChange(entry.day, service.service_name, "0");
-                                  }
-                                  setActiveCell(null);
-                                }}
-                                onKeyDown={(e) => {
-                                  handleKeyNavigation(e, serviceIdx, entry.day);
-                                }}
-                                disabled={entry.isWeekend || entry.isOnLeave || entry.isBankHoliday}
-                                title={tooltipText}
-                                className={`w-full px-2 py-2 text-center border rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                                  entry.isBankHoliday ? 'bg-red-100 dark:bg-red-900/20 border-red-300 dark:border-red-700 text-gray-400 cursor-not-allowed' :
-                                  entry.isOnLeave ? 'bg-gray-100 dark:bg-gray-700/50 border-gray-300 dark:border-gray-600 text-gray-400 cursor-not-allowed' :
-                                  entry.isWeekend ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800 text-gray-400 cursor-not-allowed' :
-                                  isActive ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 dark:border-blue-600' :
-                                  'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white'
-                                }`}
-                                placeholder="0"
-                              />
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Service Total - Fixed Width, Read-Only */}
-                      <div className="w-24 flex-shrink-0">
-                        <div className={`px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold ${getStatusColor(serviceTotal, serviceTarget)}`}>
-                          {serviceTotal}
+              {/* Service Rows - Single Scrollable Container */}
+              <div 
+                ref={scrollContainerRef}
+                onScroll={handleScrollSync}
+                className="overflow-x-auto divide-y divide-gray-200 dark:divide-gray-700"
+              >
+                <div className="inline-flex flex-col min-w-full">
+                  {services.map((service, serviceIdx) => {
+                    const serviceTotal = serviceTotals[service.service_name];
+                    const serviceTarget = targets[service.service_name] || 0;
+                    
+                    return (
+                      <div
+                        key={`${currentStaff?.staff_id}-${service.service_id}`}
+                        className={`flex items-center gap-4 px-6 py-2 ${
+                          serviceIdx % 2 === 0
+                            ? 'bg-white dark:bg-gray-800'
+                            : 'bg-gray-50 dark:bg-gray-750'
+                        } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
+                      >
+                        {/* Service Name - Fixed Width */}
+                        <div className="w-32 flex-shrink-0">
+                          <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                            {service.service_name}
+                          </span>
                         </div>
-                      </div>
-                    </div>
-                  );
-                })}
 
-                {/* Monthly Totals Row */}
-                <div className="px-6 py-2 bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500 flex items-center gap-4">
-                  {/* Row Label */}
-                  <div className="w-32 flex-shrink-0">
-                    <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
-                      Daily Total
-                    </span>
-                  </div>
+                        {/* Daily Inputs */}
+                        <div className="flex gap-0">
+                          {dailyEntries.map((entry) => {
+                            const tooltipText = entry.isBankHoliday 
+                              ? `Public Holiday – ${entry.bankHolidayTitle}`
+                              : entry.isOnLeave 
+                              ? `Annual Leave`
+                              : '';
+                            
+                            const inputKey = getInputKey(serviceIdx, entry.day);
+                            const isActive = activeCell?.service === serviceIdx && activeCell?.day === entry.day;
+                            
+                            return (
+                              <div key={entry.day} className="flex-shrink-0 w-16 px-1">
+                                <input
+                                  ref={(el) => {
+                                    if (el) {
+                                      inputRefs.current.set(inputKey, el);
+                                    } else {
+                                      inputRefs.current.delete(inputKey);
+                                    }
+                                  }}
+                                  type="number"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  min="0"
+                                  step="1"
+                                  value={entry.services[service.service_name] ?? 0}
+                                  onFocus={(e) => {
+                                    e.currentTarget.select();
+                                    setActiveCell({ service: serviceIdx, day: entry.day });
+                                  }}
+                                  onChange={(e) => {
+                                    const cleaned = e.target.value.replace(/^0+(?=\d)/, "");
+                                    handleEntryChange(entry.day, service.service_name, cleaned);
+                                  }}
+                                  onBlur={(e) => {
+                                    if (e.target.value === "") {
+                                      handleEntryChange(entry.day, service.service_name, "0");
+                                    }
+                                    setActiveCell(null);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    handleKeyNavigation(e, serviceIdx, entry.day);
+                                  }}
+                                  disabled={entry.isWeekend || entry.isOnLeave || entry.isBankHoliday}
+                                  title={tooltipText}
+                                  className={`w-full px-2 py-2 text-center border rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                                    entry.isBankHoliday ? 'bg-red-100 dark:bg-red-900/20 border-red-300 dark:border-red-700 text-gray-400 cursor-not-allowed' :
+                                    entry.isOnLeave ? 'bg-gray-100 dark:bg-gray-700/50 border-gray-300 dark:border-gray-600 text-gray-400 cursor-not-allowed' :
+                                    entry.isWeekend ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800 text-gray-400 cursor-not-allowed' :
+                                    isActive ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 dark:border-blue-600' :
+                                    'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white'
+                                  }`}
+                                  placeholder="0"
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
 
-                  {/* Daily Totals - Synchronized Scroll */}
-                  <div className="flex-1 flex gap-0 overflow-x-auto pb-2" onScroll={(e) => {
-                    if (scrollContainerRef.current) {
-                      scrollContainerRef.current.scrollLeft = e.currentTarget.scrollLeft;
-                    }
-                  }}>
-                    {dailyEntries.map((entry) => {
-                      const dayTotal = services.reduce((sum, service) => 
-                        sum + (entry.services[service.service_name] || 0), 0
-                      );
-                      return (
-                        <div key={entry.day} className="flex-shrink-0 w-16 px-1">
-                          <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
-                            {dayTotal}
+                        {/* Service Total - Fixed Width, Read-Only */}
+                        <div className="w-24 flex-shrink-0">
+                          <div className={`px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold ${getStatusColor(serviceTotal, serviceTarget)}`}>
+                            {serviceTotal}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    );
+                  })}
 
-                  {/* Overall Total - Fixed Width */}
-                  <div className="w-24 flex-shrink-0">
-                    <div className="px-2 py-2 bg-blue-600 dark:bg-blue-700 border border-blue-700 dark:border-blue-800 rounded-md text-center text-sm font-bold text-white">
-                      {overallTotal}
+                  {/* Monthly Totals Row */}
+                  <div className="flex items-center gap-4 px-6 py-2 bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500">
+                    {/* Row Label */}
+                    <div className="w-32 flex-shrink-0">
+                      <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
+                        Daily Total
+                      </span>
+                    </div>
+
+                    {/* Daily Totals */}
+                    <div className="flex gap-0">
+                      {dailyEntries.map((entry) => {
+                        const dayTotal = services.reduce((sum, service) => 
+                          sum + (entry.services[service.service_name] || 0), 0
+                        );
+                        return (
+                          <div key={entry.day} className="flex-shrink-0 w-16 px-1">
+                            <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
+                              {dayTotal}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Overall Total - Fixed Width */}
+                    <div className="w-24 flex-shrink-0">
+                      <div className="px-2 py-2 bg-blue-600 dark:bg-blue-700 border border-blue-700 dark:border-blue-800 rounded-md text-center text-sm font-bold text-white">
+                        {overallTotal}
+                      </div>
                     </div>
                   </div>
                 </div>
