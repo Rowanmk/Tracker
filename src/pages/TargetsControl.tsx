@@ -422,7 +422,7 @@ export const TargetsControl: React.FC = () => {
         </div>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-3">
         {targetData.map((staff) => (
           <div
             key={`${staff.staff_id}-${JSON.stringify(staff.targets)}`}
@@ -436,7 +436,7 @@ export const TargetsControl: React.FC = () => {
             </div>
 
             {/* Month Headers Row */}
-            <div className="px-6 py-3 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+            <div className="px-6 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <div className="flex items-center gap-4">
                 {/* Service Name Column Header */}
                 <div className="w-32 flex-shrink-0">
@@ -473,7 +473,7 @@ export const TargetsControl: React.FC = () => {
                 return (
                   <div
                     key={`${staff.staff_id}-${service.service_id}`}
-                    className={`px-6 py-3 flex items-center gap-4 ${
+                    className={`px-6 py-2 flex items-center gap-4 ${
                       serviceIdx % 2 === 0
                         ? 'bg-white dark:bg-gray-800'
                         : 'bg-gray-50 dark:bg-gray-750'
@@ -549,7 +549,7 @@ export const TargetsControl: React.FC = () => {
               })}
 
               {/* Monthly Totals Row */}
-              <div className="px-6 py-3 bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500 flex items-center gap-4">
+              <div className="px-6 py-2 bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500 flex items-center gap-4">
                 {/* Row Label */}
                 <div className="w-32 flex-shrink-0">
                   <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
