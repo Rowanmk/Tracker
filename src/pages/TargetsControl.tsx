@@ -269,14 +269,15 @@ export const TargetsControl: React.FC = () => {
 
     if (nextStaff && nextService && nextMonth) {
       const nextKey = getInputKey(nextStaff.staff_id, nextMonth.number, nextService.service_name);
-      const nextInput = inputRefs.current.get(nextKey);
       
-      if (nextInput) {
-        setTimeout(() => {
+      // Use requestAnimationFrame to ensure DOM is updated before focusing
+      requestAnimationFrame(() => {
+        const nextInput = inputRefs.current.get(nextKey);
+        if (nextInput) {
           nextInput.focus();
           nextInput.select();
-        }, 0);
-      }
+        }
+      });
     }
   };
 
