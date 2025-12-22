@@ -325,7 +325,7 @@ export const TargetsControl: React.FC = () => {
       <div className="space-y-6">
         {targetData.map((staff) => (
           <div
-            key={staff.staff_id}
+            key={`${staff.staff_id}-${JSON.stringify(staff.targets)}`}
             className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden"
           >
             {/* Staff Member Header */}
@@ -372,7 +372,7 @@ export const TargetsControl: React.FC = () => {
                 
                 return (
                   <div
-                    key={service.service_id}
+                    key={`${staff.staff_id}-${service.service_id}`}
                     className={`px-6 py-3 flex items-center gap-4 ${
                       serviceIdx % 2 === 0
                         ? 'bg-white dark:bg-gray-800'
@@ -432,7 +432,7 @@ export const TargetsControl: React.FC = () => {
                   {monthData.map((m) => {
                     const monthTotal = calculateMonthlyTotal(staff.staff_id, m.number);
                     return (
-                      <div key={m.number} className="flex-1 px-1">
+                      <div key={`total-${m.number}`} className="flex-1 px-1">
                         <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
                           {monthTotal}
                         </div>
