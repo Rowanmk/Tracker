@@ -284,94 +284,85 @@ export const TargetsControl: React.FC = () => {
         </div>
       )}
 
-      <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Monthly Targets
-          </h3>
-          <div className="flex gap-3">
-            <button
-              onClick={handleExportCSV}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
-            >
-              📥 Export CSV
-            </button>
-            <button
-              onClick={handleSaveTargets}
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm font-medium"
-            >
-              💾 Save Targets
-            </button>
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+          Monthly Targets by Staff Member
+        </h3>
+        <div className="flex gap-3">
+          <button
+            onClick={handleExportCSV}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
+          >
+            📥 Export CSV
+          </button>
+          <button
+            onClick={handleSaveTargets}
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm font-medium"
+          >
+            💾 Save Targets
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        {targetData.map((staff) => (
+          <div
+            key={staff.staff_id}
+            className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200"
+          >
+            {/* Staff Member Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-6 py-4 rounded-t-[calc(0.5rem-2px)]">
+              <h4 className="text-lg font-bold text-white">
+                {staff.name}
+              </h4>
+            </div>
+
+            {/* Service Rows Container */}
+            <div className="divide-y divide-gray-200 dark:divide-gray-700">
+              {services.map((service, serviceIdx) => (
+                <div
+                  key={service.service_id}
+                  className={`px-6 py-4 ${
+                    serviceIdx % 2 === 0
+                      ? 'bg-white dark:bg-gray-800'
+                      : 'bg-gray-50 dark:bg-gray-750'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {service.service_name}
+                    </span>
+                  </div>
+
+                  {/* Month Input Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    {monthData.map((m) => (
+                      <div key={m.number} className="flex flex-col">
+                        <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                          {m.name}
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={staff.targets[m.number]?.[service.service_name] ?? 0}
+                          onChange={(e) =>
+                            handleTargetChange(
+                              staff.staff_id,
+                              m.number,
+                              service.service_name,
+                              e.target.value
+                            )
+                          }
+                          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-700">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Staff Member
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Service
-                </th>
-                {monthData.map((m) => (
-                  <th
-                    key={m.number}
-                    className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
-                  >
-                    {m.name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-              {targetData.flatMap((staff, staffIdx) =>
-                services.map((service, serviceIdx) => {
-                  const rowIsEven = (staffIdx * services.length + serviceIdx) % 2 === 0;
-
-                  return (
-                    <tr
-                      key={`${staff.staff_id}-${service.service_id}`}
-                      className={rowIsEven ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}
-                    >
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
-                        {serviceIdx === 0 ? staff.name : ''}
-                      </td>
-
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
-                        {service.service_name}
-                      </td>
-
-                      {monthData.map((m) => (
-                        <td
-                          key={`${staff.staff_id}-${service.service_id}-${m.number}`}
-                          className="px-4 py-3 text-center"
-                        >
-                          <input
-                            type="number"
-                            min="0"
-                            value={staff.targets[m.number]?.[service.service_name] ?? 0}
-                            onChange={(e) =>
-                              handleTargetChange(
-                                staff.staff_id,
-                                m.number,
-                                service.service_name,
-                                e.target.value
-                              )
-                            }
-                            className="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </td>
-                      ))}
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+        ))}
       </div>
 
       <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
