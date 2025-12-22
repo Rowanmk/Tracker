@@ -378,8 +378,8 @@ export const StaffTracker: React.FC = () => {
                 {/* Day Headers Row */}
                 <div className="px-6 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 sticky top-0 z-10">
                   <div className="flex items-center gap-4">
-                    {/* Service Name Column Header */}
-                    <div className="w-32 flex-shrink-0">
+                    {/* Service Name Column Header - Sticky Left */}
+                    <div className="w-32 flex-shrink-0 sticky left-0 z-20 bg-gray-100 dark:bg-gray-700 pr-4">
                       <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                         Service
                       </span>
@@ -412,8 +412,8 @@ export const StaffTracker: React.FC = () => {
                       })}
                     </div>
 
-                    {/* Annual Header */}
-                    <div className="w-24 flex-shrink-0 text-center">
+                    {/* Annual Header - Sticky Right */}
+                    <div className="w-24 flex-shrink-0 sticky right-0 z-20 bg-gray-100 dark:bg-gray-700 pl-4 text-center">
                       <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                         Total
                       </span>
@@ -436,8 +436,8 @@ export const StaffTracker: React.FC = () => {
                             : 'bg-gray-50 dark:bg-gray-750'
                         } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
                       >
-                        {/* Service Name - Fixed Width */}
-                        <div className="w-32 flex-shrink-0">
+                        {/* Service Name - Sticky Left */}
+                        <div className="w-32 flex-shrink-0 sticky left-0 z-10 pr-4 bg-inherit">
                           <span className="text-sm font-semibold text-gray-900 dark:text-white">
                             {service.service_name}
                           </span>
@@ -504,8 +504,8 @@ export const StaffTracker: React.FC = () => {
                           })}
                         </div>
 
-                        {/* Service Total - Fixed Width, Read-Only */}
-                        <div className="w-24 flex-shrink-0">
+                        {/* Service Total - Sticky Right */}
+                        <div className="w-24 flex-shrink-0 sticky right-0 z-10 pl-4 bg-inherit">
                           <div className={`px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold ${getStatusColor(serviceTotal, serviceTarget)}`}>
                             {serviceTotal}
                           </div>
@@ -516,8 +516,8 @@ export const StaffTracker: React.FC = () => {
 
                   {/* Monthly Totals Row */}
                   <div className="px-6 py-2 bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500 flex items-center gap-4">
-                    {/* Row Label */}
-                    <div className="w-32 flex-shrink-0">
+                    {/* Row Label - Sticky Left */}
+                    <div className="w-32 flex-shrink-0 sticky left-0 z-10 pr-4 bg-gray-200 dark:bg-gray-600">
                       <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
                         Daily Total
                       </span>
@@ -539,8 +539,8 @@ export const StaffTracker: React.FC = () => {
                       })}
                     </div>
 
-                    {/* Overall Total - Fixed Width */}
-                    <div className="w-24 flex-shrink-0">
+                    {/* Overall Total - Sticky Right */}
+                    <div className="w-24 flex-shrink-0 sticky right-0 z-10 pl-4 bg-gray-200 dark:bg-gray-600">
                       <div className="px-2 py-2 bg-blue-600 dark:bg-blue-700 border border-blue-700 dark:border-blue-800 rounded-md text-center text-sm font-bold text-white">
                         {overallTotal}
                       </div>
