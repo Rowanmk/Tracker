@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useDate } from '../context/DateContext';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
@@ -24,7 +24,7 @@ export const StaffTracker: React.FC = () => {
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
   const [targets, setTargets] = useState<{ [key: string]: number }>({});
   const [loading, setLoading] = useState(true);
-  const [activeCol, setActiveCol] = useState<number | null>(null);
+  const [activeCell, setActiveCell] = useState<{ service: number; day: number } | null>(null);
 
   const { currentStaff } = useAuth();
   const { services } = useServices();
@@ -43,73 +43,58 @@ export const StaffTracker: React.FC = () => {
     homeRegion: currentStaff?.home_region || 'england-and-wales'
   });
 
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const scrollInterval = useRef<NodeJS.Timeout | null>(null);
-  const scrollSpeed = useRef(5);
-  const savedScrollLeft = useRef(0);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
-  const preserveScroll = () => {
-    if (!scrollRef.current) return;
-    savedScrollLeft.current = scrollRef.current.scrollLeft;
+  const getInputKey = (serviceIdx: number, day: number): string => {
+    return `${serviceIdx}-${day}`;
   };
 
-  const restoreScroll = () => {
-    if (!scrollRef.current) return;
-    scrollRef.current.scrollLeft = savedScrollLeft.current;
-  };
-
-  useLayoutEffect(() => {
-    restoreScroll();
-  });
-
-  const scrollCellIntoView = (row: number, col: number) => {
-    const cell = document.getElementById(`cell-${row}-${col}`);
-    if (!cell || !scrollRef.current) return;
-
-    const container = scrollRef.current;
-
-    const cellLeft = cell.offsetLeft;
-    const cellRight = cell.offsetLeft + cell.offsetWidth;
-
-    const containerLeft = container.scrollLeft;
-    const containerRight = container.scrollLeft + container.clientWidth;
-
-    if (cellRight > containerRight) {
-      container.scrollTo({
-        left: cellRight - container.clientWidth + 20,
-        behavior: "smooth",
-      });
-    }
-
-    if (cellLeft < containerLeft) {
-      container.scrollTo({
-        left: cellLeft - 20,
-        behavior: "smooth",
-      });
+  const focusCell = (serviceIdx: number, day: number) => {
+    const key = getInputKey(serviceIdx, day);
+    const input = inputRefs.current.get(key);
+    if (input) {
+      input.focus();
+      input.select();
+      setActiveCell({ service: serviceIdx, day });
+      
+      // Scroll into view
+      input.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
     }
   };
 
-  const handleSmoothScroll = (key: string) => {
-    if (scrollInterval.current) return;
+  const handleKeyNavigation = (e: React.KeyboardEvent, serviceIdx: number, day: number) => {
+    if (e.key !== 'Tab') return;
 
-    scrollSpeed.current = 5;
+    e.preventDefault();
 
-    scrollInterval.current = setInterval(() => {
-      if (!scrollRef.current) return;
+    let nextServiceIdx = serviceIdx;
+    let nextDay = day;
 
-      scrollRef.current.scrollLeft += key === "ArrowRight"
-        ? scrollSpeed.current
-        : -scrollSpeed.current;
-
-      scrollSpeed.current = Math.min(scrollSpeed.current + 1, 60);
-    }, 16);
-  };
-
-  const stopSmoothScroll = () => {
-    if (scrollInterval.current) {
-      clearInterval(scrollInterval.current);
-      scrollInterval.current = null;
+    if (e.shiftKey) {
+      // Shift+Tab: move backwards
+      nextDay--;
+      if (nextDay < 1) {
+        nextServiceIdx--;
+        if (nextServiceIdx < 0) {
+          nextServiceIdx = services.length - 1;
+        }
+        nextDay = dailyEntries.length;
+      }
+    } else {
+      // Tab: move forwards
+      nextDay++;
+      if (nextDay > dailyEntries.length) {
+        nextServiceIdx++;
+        if (nextServiceIdx >= services.length) {
+          nextServiceIdx = 0;
+        }
+        nextDay = 1;
+      }
     }
+
+    // Focus the next cell
+    focusCell(nextServiceIdx, nextDay);
   };
 
   const fetchData = async () => {
@@ -214,85 +199,6 @@ export const StaffTracker: React.FC = () => {
     return () => window.removeEventListener('activity-updated', handler);
   }, [currentStaff?.staff_id, services.length, selectedMonth, selectedFinancialYear]);
 
-  const handleKeyNavigation = (e: React.KeyboardEvent, row: number, col: number) => {
-    const key = e.key;
-
-    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter", "Tab"].includes(key)) {
-      if (key !== "Tab") {
-        e.preventDefault();
-      }
-      preserveScroll();
-    }
-
-    let nextRow = row;
-    let nextCol = col;
-
-    switch (key) {
-      case "ArrowRight":
-        if (e.repeat) {
-          handleSmoothScroll(key);
-          return;
-        }
-        nextCol = col + 1;
-        break;
-      case "ArrowLeft":
-        if (e.repeat) {
-          handleSmoothScroll(key);
-          return;
-        }
-        nextCol = col - 1;
-        break;
-      case "Enter":
-        nextCol = col + 1;
-        break;
-      case "ArrowDown":
-        nextRow = row + 1;
-        break;
-      case "ArrowUp":
-        nextRow = row - 1;
-        break;
-      case "Tab":
-        if (e.shiftKey) {
-          nextCol = col - 1;
-          if (nextCol < 1) {
-            nextRow = row - 1;
-            if (nextRow < 0) {
-              nextRow = services.length - 1;
-            }
-            nextCol = dailyEntries.length;
-          }
-        } else {
-          nextCol = col + 1;
-          if (nextCol > dailyEntries.length) {
-            nextRow = row + 1;
-            if (nextRow >= services.length) {
-              nextRow = 0;
-            }
-            nextCol = 1;
-          }
-        }
-        e.preventDefault();
-        break;
-    }
-
-    if (nextRow < 0 || nextRow >= services.length) return;
-    if (nextCol < 1 || nextCol > dailyEntries.length) return;
-
-    const nextCell = document.getElementById(`cell-${nextRow}-${nextCol}`);
-    if (nextCell) {
-      nextCell.focus({ preventScroll: true });
-      scrollCellIntoView(nextRow, nextCol);
-    }
-
-    setTimeout(restoreScroll, 0);
-  };
-
-  const handleKeyUp = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-      stopSmoothScroll();
-    }
-  };
-
   const handleEntryChange = async (day: number, serviceName: string, value: string) => {
     if (!currentStaff) return;
 
@@ -310,8 +216,6 @@ export const StaffTracker: React.FC = () => {
     }
 
     const date = `${year}-${selectedMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-
-    preserveScroll();
 
     setDailyEntries(prev => prev.map(entry => 
       entry.day === day 
@@ -358,8 +262,6 @@ export const StaffTracker: React.FC = () => {
           : entry
       ));
     }
-
-    setTimeout(restoreScroll, 0);
   };
 
   const getServiceTotals = () => {
@@ -469,8 +371,8 @@ export const StaffTracker: React.FC = () => {
               </div>
 
               {/* Day Headers Row */}
-              <div className="px-6 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-                <div className="flex items-center gap-4">
+              <div className="px-6 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 overflow-x-auto">
+                <div className="flex items-center gap-4 min-w-min">
                   {/* Service Name Column Header */}
                   <div className="w-32 flex-shrink-0">
                     <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
@@ -478,8 +380,8 @@ export const StaffTracker: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* Day Headers - Flex to Fill Available Space */}
-                  <div ref={scrollRef} className="flex-1 flex gap-0 overflow-x-auto">
+                  {/* Day Headers - Scrollable */}
+                  <div ref={scrollContainerRef} className="flex gap-0 overflow-x-auto pb-2">
                     {dailyEntries.map((entry) => {
                       const tooltipText = entry.isBankHoliday 
                         ? `Public Holiday – ${entry.bankHolidayTitle}`
@@ -536,8 +438,12 @@ export const StaffTracker: React.FC = () => {
                         </span>
                       </div>
 
-                      {/* Daily Inputs - Flex to Fill Space */}
-                      <div ref={scrollRef} className="flex-1 flex gap-0 overflow-x-auto">
+                      {/* Daily Inputs - Synchronized Scroll */}
+                      <div className="flex-1 flex gap-0 overflow-x-auto pb-2" onScroll={(e) => {
+                        if (scrollContainerRef.current) {
+                          scrollContainerRef.current.scrollLeft = e.currentTarget.scrollLeft;
+                        }
+                      }}>
                         {dailyEntries.map((entry) => {
                           const tooltipText = entry.isBankHoliday 
                             ? `Public Holiday – ${entry.bankHolidayTitle}`
@@ -545,10 +451,19 @@ export const StaffTracker: React.FC = () => {
                             ? `Annual Leave`
                             : '';
                           
+                          const inputKey = getInputKey(serviceIdx, entry.day);
+                          const isActive = activeCell?.service === serviceIdx && activeCell?.day === entry.day;
+                          
                           return (
                             <div key={entry.day} className="flex-shrink-0 w-16 px-1">
                               <input
-                                id={`cell-${services.indexOf(service)}-${entry.day}`}
+                                ref={(el) => {
+                                  if (el) {
+                                    inputRefs.current.set(inputKey, el);
+                                  } else {
+                                    inputRefs.current.delete(inputKey);
+                                  }
+                                }}
                                 type="number"
                                 inputMode="numeric"
                                 pattern="[0-9]*"
@@ -556,33 +471,29 @@ export const StaffTracker: React.FC = () => {
                                 step="1"
                                 value={entry.services[service.service_name] ?? 0}
                                 onFocus={(e) => {
-                                  preserveScroll();
                                   e.currentTarget.select();
-                                  setActiveCol(entry.day);
-                                  setTimeout(restoreScroll, 0);
+                                  setActiveCell({ service: serviceIdx, day: entry.day });
                                 }}
                                 onChange={(e) => {
-                                  preserveScroll();
                                   const cleaned = e.target.value.replace(/^0+(?=\d)/, "");
                                   handleEntryChange(entry.day, service.service_name, cleaned);
                                 }}
                                 onBlur={(e) => {
-                                  stopSmoothScroll();
                                   if (e.target.value === "") {
                                     handleEntryChange(entry.day, service.service_name, "0");
                                   }
-                                  setActiveCol(null);
+                                  setActiveCell(null);
                                 }}
                                 onKeyDown={(e) => {
-                                  handleKeyNavigation(e, services.indexOf(service), entry.day);
+                                  handleKeyNavigation(e, serviceIdx, entry.day);
                                 }}
-                                onKeyUp={handleKeyUp}
                                 disabled={entry.isWeekend || entry.isOnLeave || entry.isBankHoliday}
+                                title={tooltipText}
                                 className={`w-full px-2 py-2 text-center border rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                                   entry.isBankHoliday ? 'bg-red-100 dark:bg-red-900/20 border-red-300 dark:border-red-700 text-gray-400 cursor-not-allowed' :
                                   entry.isOnLeave ? 'bg-gray-100 dark:bg-gray-700/50 border-gray-300 dark:border-gray-600 text-gray-400 cursor-not-allowed' :
                                   entry.isWeekend ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800 text-gray-400 cursor-not-allowed' :
-                                  activeCol === entry.day ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 dark:border-blue-600' :
+                                  isActive ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 dark:border-blue-600' :
                                   'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white'
                                 }`}
                                 placeholder="0"
@@ -611,8 +522,12 @@ export const StaffTracker: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* Daily Totals - Flex to Fill Space */}
-                  <div className="flex-1 flex gap-0 overflow-x-auto">
+                  {/* Daily Totals - Synchronized Scroll */}
+                  <div className="flex-1 flex gap-0 overflow-x-auto pb-2" onScroll={(e) => {
+                    if (scrollContainerRef.current) {
+                      scrollContainerRef.current.scrollLeft = e.currentTarget.scrollLeft;
+                    }
+                  }}>
                     {dailyEntries.map((entry) => {
                       const dayTotal = services.reduce((sum, service) => 
                         sum + (entry.services[service.service_name] || 0), 0
