@@ -287,6 +287,13 @@ export const StaffTracker: React.FC = () => {
     return 'text-red-600 dark:text-red-400';
   };
 
+  const getCellBackgroundClass = (entry: DailyEntry): string => {
+    if (entry.isBankHoliday) return 'bg-red-200 dark:bg-red-800/50';
+    if (entry.isOnLeave) return 'bg-gray-200 dark:bg-gray-600';
+    if (entry.isWeekend) return 'bg-red-100 dark:bg-red-800/30';
+    return 'bg-white dark:bg-gray-700';
+  };
+
   const serviceTotals = getServiceTotals();
   const overallTotal = Object.values(serviceTotals).reduce((sum, total) => sum + total, 0);
   const overallTarget = Object.values(targets).reduce((sum, target) => sum + target, 0);
@@ -395,14 +402,11 @@ export const StaffTracker: React.FC = () => {
                           ? `Annual Leave`
                           : '';
                         
+                        const headerBgClass = getCellBackgroundClass(entry);
+                        
                         return (
-                          <div key={entry.day} className="flex-shrink-0 w-16 text-center px-1">
-                            <div className={`px-2 py-2 rounded-t-md text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider ${
-                              entry.isBankHoliday ? 'bg-red-200 dark:bg-red-800/50' :
-                              entry.isOnLeave ? 'bg-gray-200 dark:bg-gray-600' :
-                              entry.isWeekend ? 'bg-red-100 dark:bg-red-800/30' :
-                              'bg-gray-50 dark:bg-gray-700'
-                            }`} title={tooltipText}>
+                          <div key={entry.day} className={`flex-shrink-0 w-16 text-center px-1 ${headerBgClass} rounded-t-md`}>
+                            <div className="px-2 py-2 text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                               <div>{entry.day}</div>
                               <div className="text-xs font-normal">{getDayName(entry.day)}</div>
                               {entry.isBankHoliday && <div className="text-xs">🔴</div>}
@@ -455,9 +459,10 @@ export const StaffTracker: React.FC = () => {
                             
                             const inputKey = getInputKey(serviceIdx, entry.day);
                             const isActive = activeCell?.service === serviceIdx && activeCell?.day === entry.day;
+                            const cellBgClass = getCellBackgroundClass(entry);
                             
                             return (
-                              <div key={entry.day} className="flex-shrink-0 w-16 px-1">
+                              <div key={entry.day} className={`flex-shrink-0 w-16 px-1 ${cellBgClass}`}>
                                 <input
                                   ref={(el) => {
                                     if (el) {
@@ -492,6 +497,9 @@ export const StaffTracker: React.FC = () => {
                                   title={tooltipText}
                                   className={`w-full px-2 py-2 text-center border rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                                     isActive ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 dark:border-blue-600' :
+                                    cellBgClass === 'bg-red-200 dark:bg-red-800/50' ? 'bg-red-200 dark:bg-red-800/50 border-red-300 dark:border-red-700 text-gray-900 dark:text-white' :
+                                    cellBgClass === 'bg-gray-200 dark:bg-gray-600' ? 'bg-gray-200 dark:bg-gray-600 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white' :
+                                    cellBgClass === 'bg-red-100 dark:bg-red-800/30' ? 'bg-red-100 dark:bg-red-800/30 border-red-200 dark:border-red-700 text-gray-900 dark:text-white' :
                                     'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white'
                                   }`}
                                   placeholder="0"
@@ -526,8 +534,10 @@ export const StaffTracker: React.FC = () => {
                         const dayTotal = services.reduce((sum, service) => 
                           sum + (entry.services[service.service_name] || 0), 0
                         );
+                        const cellBgClass = getCellBackgroundClass(entry);
+                        
                         return (
-                          <div key={entry.day} className="flex-shrink-0 w-16 px-1">
+                          <div key={entry.day} className={`flex-shrink-0 w-16 px-1 ${cellBgClass}`}>
                             <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
                               {dayTotal}
                             </div>
