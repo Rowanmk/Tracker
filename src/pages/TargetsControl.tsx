@@ -46,40 +46,7 @@ export const TargetsControl: React.FC = () => {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [localInputState, setLocalInputState] = useState<LocalInputState>({});
 
-  const [distributionRules, setDistributionRules] = useState<
-    SADistributionRule[]
-  >([]);
-
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
-
-  const defaultRules: Omit<
-    SADistributionRule,
-    'id' | 'created_at' | 'updated_at'
-  >[] = [
-    { period_name: 'Period 1', months: [4, 5, 6, 7], percentage: 50 },
-    { period_name: 'Period 2', months: [8, 9, 10, 11], percentage: 40 },
-    { period_name: 'Period 3a', months: [12], percentage: 3.5 },
-    { period_name: 'Period 3b', months: [1], percentage: 6.5 },
-    { period_name: 'Period 4', months: [2, 3], percentage: 0 },
-  ];
-
-  const fetchDistributionRules = async () => {
-    const { data, error } = await supabase
-      .from('sa_distribution_rules')
-      .select('*')
-      .order('id');
-
-    if (error || !data || data.length === 0) {
-      return defaultRules.map((r, i) => ({
-        ...r,
-        id: i + 1,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }));
-    }
-
-    return data;
-  };
 
   const fetchTargets = async () => {
     if (!allStaff.length || !services.length) {
@@ -91,9 +58,6 @@ export const TargetsControl: React.FC = () => {
     setError(null);
 
     try {
-      const rules = await fetchDistributionRules();
-      setDistributionRules(rules);
-
       const monthData = getFinancialYearMonths();
 
       const data = await Promise.all(
@@ -617,47 +581,6 @@ export const TargetsControl: React.FC = () => {
             </div>
           </div>
         ))}
-      </div>
-
-      <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          Distribution Rules
-        </h3>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-700">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Period
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Months
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Percentage
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-              {distributionRules.map((rule, idx) => (
-                <tr
-                  key={rule.id}
-                  className={idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}
-                >
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
-                    {rule.period_name}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                    {rule.months.join(', ')}
-                  </td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
-                    {rule.percentage}%
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </div>
     </div>
   );
