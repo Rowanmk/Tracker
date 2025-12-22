@@ -332,11 +332,6 @@ export const Dashboard: React.FC = () => {
   const showWarning =
     authWarning || servicesWarning || workingDaysWarning || !!error;
 
-  // Determine dashboard title based on mode
-  const dashboardTitle = isTeamSelected 
-    ? "Team Dashboard" 
-    : `${currentStaff?.name || "Dashboard"} Dashboard`;
-
   // Get current staff for individual mode
   const currentIndividualStaff = !isTeamSelected && currentStaff 
     ? { staff_id: currentStaff.staff_id, name: currentStaff.name }
@@ -346,7 +341,7 @@ export const Dashboard: React.FC = () => {
     <div>
       <div className="mb-3.2">
         <h2 className="text-2xl lg:text-3xl font-bold text-brand-blue dark:text-white mb-4.8">
-          {dashboardTitle}
+          Dashboard
         </h2>
       </div>
 

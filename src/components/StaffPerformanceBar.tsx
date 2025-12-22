@@ -33,7 +33,6 @@ export const StaffPerformanceBar: React.FC<StaffPerformanceBarProps> = ({
   const [loading, setLoading] = useState(false);
 
   const { selectedMonth, setSelectedMonth, selectedFinancialYear } = useDate();
-  const { viewMode, setViewMode } = useDashboardView();
 
   const totalDelivered = staffPerformance.reduce((sum, s) => sum + s.total, 0);
 
@@ -99,10 +98,6 @@ export const StaffPerformanceBar: React.FC<StaffPerformanceBarProps> = ({
     }, 0);
   };
 
-  const handleViewModeChange = (mode: "percent" | "numbers") => {
-    setViewMode(mode);
-  };
-
   if (loading) {
     return (
       <div className="w-full py-4 bg-[#001B47] rounded-xl flex justify-center items-center">
@@ -138,17 +133,9 @@ export const StaffPerformanceBar: React.FC<StaffPerformanceBarProps> = ({
         </span>
       </div>
 
-      {/* Right: View mode dropdown */}
+      {/* Right: Empty space for layout consistency */}
       <div className="flex items-center space-x-3">
-        <select
-          value={viewMode}
-          onChange={(e) => handleViewModeChange(e.target.value as "percent" | "numbers")}
-          disabled={loading}
-          className="bg-white text-gray-900 px-3 py-2 rounded-md shadow-sm text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <option value="percent">% View</option>
-          <option value="numbers">Numbers View</option>
-        </select>
+        {/* View mode selector removed */}
       </div>
     </div>
   );
