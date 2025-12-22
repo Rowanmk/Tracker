@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useDate } from '../context/DateContext';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
@@ -49,6 +49,8 @@ export const TargetsControl: React.FC = () => {
   const [distributionRules, setDistributionRules] = useState<
     SADistributionRule[]
   >([]);
+
+  const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
   const defaultRules: Omit<
     SADistributionRule,
@@ -125,6 +127,7 @@ export const TargetsControl: React.FC = () => {
 
       setTargetData(data);
       setLocalInputState({});
+      inputRefs.current.clear();
     } catch (err) {
       console.error('Error fetching targets:', err);
       setError('Failed to load targets data');
@@ -203,6 +206,78 @@ export const TargetsControl: React.FC = () => {
       delete newState[key];
       return newState;
     });
+  };
+
+  const handleKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    staffId: number,
+    month: number,
+    serviceName: string,
+    value: string
+  ) => {
+    if (e.key !== 'Tab') return;
+
+    e.preventDefault();
+
+    // First, commit the current cell's value
+    handleInputBlur(staffId, month, serviceName, value);
+
+    // Find the next cell to focus
+    const monthData = getFinancialYearMonths();
+    const currentMonthIndex = monthData.findIndex(m => m.number === month);
+    const currentServiceIndex = services.findIndex(s => s.service_name === serviceName);
+    const currentStaffIndex = targetData.findIndex(s => s.staff_id === staffId);
+
+    let nextStaffIndex = currentStaffIndex;
+    let nextServiceIndex = currentServiceIndex;
+    let nextMonthIndex = currentMonthIndex;
+
+    if (e.shiftKey) {
+      // Shift+Tab: move backwards
+      nextMonthIndex--;
+      if (nextMonthIndex < 0) {
+        nextServiceIndex--;
+        if (nextServiceIndex < 0) {
+          nextStaffIndex--;
+          if (nextStaffIndex < 0) {
+            nextStaffIndex = targetData.length - 1;
+          }
+          nextServiceIndex = services.length - 1;
+        }
+        nextMonthIndex = monthData.length - 1;
+      }
+    } else {
+      // Tab: move forwards
+      nextMonthIndex++;
+      if (nextMonthIndex >= monthData.length) {
+        nextServiceIndex++;
+        if (nextServiceIndex >= services.length) {
+          nextStaffIndex++;
+          if (nextStaffIndex >= targetData.length) {
+            nextStaffIndex = 0;
+          }
+          nextServiceIndex = 0;
+        }
+        nextMonthIndex = 0;
+      }
+    }
+
+    // Focus the next cell
+    const nextStaff = targetData[nextStaffIndex];
+    const nextService = services[nextServiceIndex];
+    const nextMonth = monthData[nextMonthIndex];
+
+    if (nextStaff && nextService && nextMonth) {
+      const nextKey = getInputKey(nextStaff.staff_id, nextMonth.number, nextService.service_name);
+      const nextInput = inputRefs.current.get(nextKey);
+      
+      if (nextInput) {
+        setTimeout(() => {
+          nextInput.focus();
+          nextInput.select();
+        }, 0);
+      }
+    }
   };
 
   const handleSaveTargets = async () => {
@@ -448,35 +523,54 @@ export const TargetsControl: React.FC = () => {
 
                     {/* Monthly Inputs - Flex to Fill Space */}
                     <div className="flex-1 flex gap-0">
-                      {monthData.map((m) => (
-                        <div key={m.number} className="flex-1 px-1">
-                          <input
-                            type="number"
-                            min="0"
-                            value={getInputValue(staff.staff_id, m.number, service.service_name)}
-                            onFocus={(e) => {
-                              e.currentTarget.select();
-                            }}
-                            onChange={(e) =>
-                              handleInputChange(
-                                staff.staff_id,
-                                m.number,
-                                service.service_name,
-                                e.target.value
-                              )
-                            }
-                            onBlur={(e) =>
-                              handleInputBlur(
-                                staff.staff_id,
-                                m.number,
-                                service.service_name,
-                                e.target.value
-                              )
-                            }
-                            className="w-full px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                          />
-                        </div>
-                      ))}
+                      {monthData.map((m) => {
+                        const inputKey = getInputKey(staff.staff_id, m.number, service.service_name);
+                        return (
+                          <div key={m.number} className="flex-1 px-1">
+                            <input
+                              ref={(el) => {
+                                if (el) {
+                                  inputRefs.current.set(inputKey, el);
+                                } else {
+                                  inputRefs.current.delete(inputKey);
+                                }
+                              }}
+                              type="number"
+                              min="0"
+                              value={getInputValue(staff.staff_id, m.number, service.service_name)}
+                              onFocus={(e) => {
+                                e.currentTarget.select();
+                              }}
+                              onChange={(e) =>
+                                handleInputChange(
+                                  staff.staff_id,
+                                  m.number,
+                                  service.service_name,
+                                  e.target.value
+                                )
+                              }
+                              onBlur={(e) =>
+                                handleInputBlur(
+                                  staff.staff_id,
+                                  m.number,
+                                  service.service_name,
+                                  e.target.value
+                                )
+                              }
+                              onKeyDown={(e) =>
+                                handleKeyDown(
+                                  e,
+                                  staff.staff_id,
+                                  m.number,
+                                  service.service_name,
+                                  e.currentTarget.value
+                                )
+                              }
+                              className="w-full px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                            />
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {/* Annual Total - Fixed Width, Read-Only */}
