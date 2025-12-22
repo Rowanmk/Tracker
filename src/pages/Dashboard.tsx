@@ -35,6 +35,7 @@ export const Dashboard: React.FC = () => {
   const {
     currentStaff,
     allStaff,
+    selectedStaffId,
     loading: authLoading,
     showFallbackWarning: authWarning,
   } = useAuth();
@@ -43,6 +44,10 @@ export const Dashboard: React.FC = () => {
     loading: servicesLoading,
     showFallbackWarning: servicesWarning,
   } = useServices();
+
+  // Determine dashboard mode based on selectedStaffId
+  const isTeamSelected = selectedStaffId === "team" || !selectedStaffId;
+  const dashboardMode: "team" | "individual" = isTeamSelected ? "team" : "individual";
 
   const {
     teamWorkingDays,
@@ -327,11 +332,21 @@ export const Dashboard: React.FC = () => {
   const showWarning =
     authWarning || servicesWarning || workingDaysWarning || !!error;
 
+  // Determine dashboard title based on mode
+  const dashboardTitle = isTeamSelected 
+    ? "Team Dashboard" 
+    : `${currentStaff?.name || "Dashboard"} Dashboard`;
+
+  // Get current staff for individual mode
+  const currentIndividualStaff = !isTeamSelected && currentStaff 
+    ? { staff_id: currentStaff.staff_id, name: currentStaff.name }
+    : null;
+
   return (
     <div>
       <div className="mb-3.2">
         <h2 className="text-2xl lg:text-3xl font-bold text-brand-blue dark:text-white mb-4.8">
-          Team Dashboard
+          {dashboardTitle}
         </h2>
       </div>
 
@@ -347,8 +362,8 @@ export const Dashboard: React.FC = () => {
       <div className="mb-6 animate-slide-up">
         <StaffPerformanceBar
           staffPerformance={staffPerformance}
-          dashboardMode="team"
-          currentStaff={currentStaff}
+          dashboardMode={dashboardMode}
+          currentStaff={currentIndividualStaff}
           workingDays={teamWorkingDays}
           workingDaysUpToToday={workingDaysUpToToday}
           month={selectedMonth}
@@ -359,7 +374,13 @@ export const Dashboard: React.FC = () => {
       <div className="mb-6 animate-slide-up">
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6">
           <div className="space-y-4">
-            {renderProgressBar("Team Progress", teamDelivered, teamTarget)}
+            {isTeamSelected 
+              ? renderProgressBar("Team Progress", teamDelivered, teamTarget)
+              : renderProgressBar(`${currentStaff?.name || "My"} Progress`, 
+                  staffPerformance.find(s => s.staff_id === currentStaff?.staff_id)?.total || 0,
+                  staffPerformance.find(s => s.staff_id === currentStaff?.staff_id)?.target || 0
+                )
+            }
           </div>
         </div>
       </div>
@@ -369,8 +390,8 @@ export const Dashboard: React.FC = () => {
           <TeamProgressTile
             services={services}
             staffPerformance={staffPerformance}
-            dashboardMode="team"
-            currentStaff={currentStaff}
+            dashboardMode={dashboardMode}
+            currentStaff={currentIndividualStaff}
             viewMode={viewMode}
             workingDays={teamWorkingDays}
             workingDaysUpToToday={workingDaysUpToToday}
@@ -382,8 +403,8 @@ export const Dashboard: React.FC = () => {
           <EmployeeProgressChart
             services={services}
             staffPerformance={staffPerformance}
-            dashboardMode="team"
-            currentStaff={currentStaff}
+            dashboardMode={dashboardMode}
+            currentStaff={currentIndividualStaff}
             viewMode={viewMode}
             workingDays={teamWorkingDays}
             workingDaysUpToToday={workingDaysUpToToday}
@@ -399,8 +420,8 @@ export const Dashboard: React.FC = () => {
             dailyActivities={dailyActivities}
             month={selectedMonth}
             financialYear={selectedFinancialYear}
-            dashboardMode="team"
-            currentStaff={currentStaff}
+            dashboardMode={dashboardMode}
+            currentStaff={currentIndividualStaff}
             viewMode={viewMode}
           />
         </div>

@@ -28,8 +28,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
 
   const handleStaffChange = (value: string) => {
     if (value === "team") {
-      // Team mode - set to first staff member but in team view context
-      onStaffChange(allStaff[0]?.staff_id || 0);
+      onStaffChange("team");
     } else {
       onStaffChange(Number(value));
     }

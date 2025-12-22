@@ -18,7 +18,7 @@ interface AuthContextType {
   currentStaff: Staff | null;
   isAdmin: boolean;
   selectedStaffId: string | null;
-  onStaffChange: (staffId: number) => void;
+  onStaffChange: (staffId: number | "team") => void;
   showFallbackWarning: boolean;
   error: string | null;
 }
@@ -35,7 +35,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [allStaff, setAllStaff] = useState<Staff[]>([]);
   const [currentStaff, setCurrentStaff] = useState<Staff | null>(null);
-  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
+  const [selectedStaffId, setSelectedStaffId] = useState<string | null>("team");
   const [showFallbackWarning, setShowFallbackWarning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -179,11 +179,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signInWithFacebook = async () => signInWithOAuth('facebook');
   const signInWithGitHub = async () => signInWithOAuth('github');
 
-  const onStaffChange = (staffId: number) => {
-    const selectedStaff = allStaff.find(s => s.staff_id === staffId);
-    if (selectedStaff) {
-      setCurrentStaff(selectedStaff);
-      setSelectedStaffId(staffId.toString());
+  const onStaffChange = (staffIdOrTeam: number | "team") => {
+    if (staffIdOrTeam === "team") {
+      setSelectedStaffId("team");
+      // Keep currentStaff as is for reference, but mode is team
+    } else {
+      const selectedStaff = allStaff.find(s => s.staff_id === staffIdOrTeam);
+      if (selectedStaff) {
+        setCurrentStaff(selectedStaff);
+        setSelectedStaffId(staffIdOrTeam.toString());
+      }
     }
   };
 
