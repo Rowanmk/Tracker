@@ -326,7 +326,39 @@ export const TargetsControl: React.FC = () => {
               </h4>
             </div>
 
-            {/* Service Rows - Each service on one row with all months */}
+            {/* Month Header Row - Single Row with All Months */}
+            <div className="px-6 py-3 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+              <div className="flex items-center gap-4">
+                {/* Service Name Column Header */}
+                <div className="w-32 flex-shrink-0">
+                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                    Service
+                  </span>
+                </div>
+
+                {/* Month Headers - Scrollable */}
+                <div className="flex-1 overflow-x-auto">
+                  <div className="flex gap-2 min-w-max">
+                    {monthData.map((m) => (
+                      <div key={m.number} className="flex-shrink-0 w-14 text-center">
+                        <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                          {m.name}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Annual Header */}
+                <div className="w-24 flex-shrink-0 text-center">
+                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                    Annual
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Service Rows - Each service on one row */}
             <div className="divide-y divide-gray-200 dark:divide-gray-700">
               {services.map((service, serviceIdx) => {
                 const annualTotal = calculateAnnualTotal(staff.staff_id, service.service_name);
@@ -334,56 +366,46 @@ export const TargetsControl: React.FC = () => {
                 return (
                   <div
                     key={service.service_id}
-                    className={`px-6 py-4 ${
+                    className={`px-6 py-3 flex items-center gap-4 ${
                       serviceIdx % 2 === 0
                         ? 'bg-white dark:bg-gray-800'
                         : 'bg-gray-50 dark:bg-gray-750'
-                    }`}
+                    } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
                   >
-                    {/* Service Name and Monthly Inputs in One Row */}
-                    <div className="flex items-center gap-4">
-                      {/* Service Name - Fixed Width */}
-                      <div className="w-32 flex-shrink-0">
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                          {service.service_name}
-                        </span>
-                      </div>
+                    {/* Service Name - Fixed Width */}
+                    <div className="w-32 flex-shrink-0">
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                        {service.service_name}
+                      </span>
+                    </div>
 
-                      {/* Monthly Inputs - Scrollable Container */}
-                      <div className="flex-1 overflow-x-auto">
-                        <div className="flex gap-2 min-w-max">
-                          {monthData.map((m) => (
-                            <div key={m.number} className="flex flex-col items-center flex-shrink-0">
-                              <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 whitespace-nowrap">
-                                {m.name}
-                              </label>
-                              <input
-                                type="number"
-                                min="0"
-                                value={staff.targets[m.number]?.[service.service_name] ?? 0}
-                                onChange={(e) =>
-                                  handleTargetChange(
-                                    staff.staff_id,
-                                    m.number,
-                                    service.service_name,
-                                    e.target.value
-                                  )
-                                }
-                                className="w-14 px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                              />
-                            </div>
-                          ))}
-                        </div>
+                    {/* Monthly Inputs - Flex to Fill Space */}
+                    <div className="flex-1 overflow-x-auto">
+                      <div className="flex gap-2 min-w-max">
+                        {monthData.map((m) => (
+                          <input
+                            key={m.number}
+                            type="number"
+                            min="0"
+                            value={staff.targets[m.number]?.[service.service_name] ?? 0}
+                            onChange={(e) =>
+                              handleTargetChange(
+                                staff.staff_id,
+                                m.number,
+                                service.service_name,
+                                e.target.value
+                              )
+                            }
+                            className="w-14 px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors flex-shrink-0"
+                          />
+                        ))}
                       </div>
+                    </div>
 
-                      {/* Annual Total - Fixed Width, Read-Only */}
-                      <div className="w-24 flex-shrink-0 flex flex-col items-center">
-                        <span className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 whitespace-nowrap">
-                          Annual
-                        </span>
-                        <div className="w-full px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
-                          {annualTotal}
-                        </div>
+                    {/* Annual Total - Fixed Width, Read-Only */}
+                    <div className="w-24 flex-shrink-0">
+                      <div className="px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
+                        {annualTotal}
                       </div>
                     </div>
                   </div>
