@@ -34,8 +34,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  const displayLabel = selectedStaffId === "team" ? "Team" : currentStaff?.name || "Select Staff";
-
   return (
     <DashboardViewProvider>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -70,10 +68,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
             </nav>
 
             <div className="flex items-center space-x-3">
-              <span className="text-white font-semibold">
-                {displayLabel}
-              </span>
-
               <select
                 className="bg-white text-gray-900 px-2 py-1 rounded-md shadow cursor-pointer"
                 value={selectedStaffId === "team" ? "team" : selectedStaffId || currentStaff?.staff_id || ""}
