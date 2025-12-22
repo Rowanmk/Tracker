@@ -489,12 +489,8 @@ export const StaffTracker: React.FC = () => {
                                   onKeyDown={(e) => {
                                     handleKeyNavigation(e, serviceIdx, entry.day);
                                   }}
-                                  disabled={entry.isWeekend || entry.isOnLeave || entry.isBankHoliday}
                                   title={tooltipText}
                                   className={`w-full px-2 py-2 text-center border rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                                    entry.isBankHoliday ? 'bg-red-100 dark:bg-red-900/20 border-red-300 dark:border-red-700 text-gray-400 cursor-not-allowed' :
-                                    entry.isOnLeave ? 'bg-gray-100 dark:bg-gray-700/50 border-gray-300 dark:border-gray-600 text-gray-400 cursor-not-allowed' :
-                                    entry.isWeekend ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800 text-gray-400 cursor-not-allowed' :
                                     isActive ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 dark:border-blue-600' :
                                     'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white'
                                   }`}
