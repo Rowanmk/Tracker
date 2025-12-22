@@ -308,16 +308,16 @@ export const TargetsControl: React.FC = () => {
         {targetData.map((staff) => (
           <div
             key={staff.staff_id}
-            className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200"
+            className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden"
           >
             {/* Staff Member Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-6 py-4 rounded-t-[calc(0.5rem-2px)]">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-6 py-4">
               <h4 className="text-lg font-bold text-white">
                 {staff.name}
               </h4>
             </div>
 
-            {/* Service Rows Container */}
+            {/* Service Rows - Each service on one row with all months */}
             <div className="divide-y divide-gray-200 dark:divide-gray-700">
               {services.map((service, serviceIdx) => (
                 <div
@@ -328,35 +328,38 @@ export const TargetsControl: React.FC = () => {
                       : 'bg-gray-50 dark:bg-gray-750'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-4">
+                  {/* Service Name */}
+                  <div className="mb-3">
                     <span className="text-sm font-semibold text-gray-900 dark:text-white">
                       {service.service_name}
                     </span>
                   </div>
 
-                  {/* Month Input Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                    {monthData.map((m) => (
-                      <div key={m.number} className="flex flex-col">
-                        <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                          {m.name}
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={staff.targets[m.number]?.[service.service_name] ?? 0}
-                          onChange={(e) =>
-                            handleTargetChange(
-                              staff.staff_id,
-                              m.number,
-                              service.service_name,
-                              e.target.value
-                            )
-                          }
-                          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                        />
-                      </div>
-                    ))}
+                  {/* Horizontal Month Grid - All 12 months in one row */}
+                  <div className="overflow-x-auto">
+                    <div className="flex gap-2 min-w-max">
+                      {monthData.map((m) => (
+                        <div key={m.number} className="flex flex-col items-center flex-shrink-0">
+                          <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 whitespace-nowrap">
+                            {m.name}
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={staff.targets[m.number]?.[service.service_name] ?? 0}
+                            onChange={(e) =>
+                              handleTargetChange(
+                                staff.staff_id,
+                                m.number,
+                                service.service_name,
+                                e.target.value
+                              )
+                            }
+                            className="w-14 px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                          />
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               ))}
