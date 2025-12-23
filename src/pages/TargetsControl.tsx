@@ -365,6 +365,18 @@ export const TargetsControl: React.FC = () => {
     }, 0);
   };
 
+  const calculateServiceMonthlyTotal = (month: number, serviceName: string): number => {
+    return targetData.reduce((sum, staff) => {
+      return sum + (staff.targets[month]?.[serviceName] ?? 0);
+    }, 0);
+  };
+
+  const calculateServiceAnnualTotal = (serviceName: string): number => {
+    return monthData.reduce((sum, m) => {
+      return sum + calculateServiceMonthlyTotal(m.number, serviceName);
+    }, 0);
+  };
+
   const getInputValue = (staffId: number, month: number, serviceName: string): string => {
     const key = getInputKey(staffId, month, serviceName);
     
@@ -581,6 +593,128 @@ export const TargetsControl: React.FC = () => {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Service Totals Summary Table */}
+      <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden mt-8">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-purple-600 to-purple-700 dark:from-purple-700 dark:to-purple-800 px-6 py-4">
+          <h4 className="text-lg font-bold text-white">
+            Service Totals by Month
+          </h4>
+          <p className="text-sm text-purple-100 mt-1">
+            Aggregated targets across all staff members (Read-Only)
+          </p>
+        </div>
+
+        {/* Month Headers Row */}
+        <div className="px-6 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+          <div className="flex items-center gap-4">
+            {/* Service Name Column Header */}
+            <div className="w-32 flex-shrink-0">
+              <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                Service
+              </span>
+            </div>
+
+            {/* Month Headers - Flex to Fill Available Space */}
+            <div className="flex-1 flex gap-0">
+              {monthData.map((m) => (
+                <div key={m.number} className="flex-1 text-center px-1">
+                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
+                    {m.name}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Annual Header */}
+            <div className="w-24 flex-shrink-0 text-center">
+              <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                Annual
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Service Rows */}
+        <div className="divide-y divide-gray-200 dark:divide-gray-700">
+          {services.map((service, serviceIdx) => {
+            const annualTotal = calculateServiceAnnualTotal(service.service_name);
+            
+            return (
+              <div
+                key={`service-total-${service.service_id}`}
+                className={`px-6 py-2 flex items-center gap-4 ${
+                  serviceIdx % 2 === 0
+                    ? 'bg-white dark:bg-gray-800'
+                    : 'bg-gray-50 dark:bg-gray-750'
+                } hover:bg-purple-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
+              >
+                {/* Service Name - Fixed Width */}
+                <div className="w-32 flex-shrink-0">
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {service.service_name}
+                  </span>
+                </div>
+
+                {/* Monthly Totals - Flex to Fill Space */}
+                <div className="flex-1 flex gap-0">
+                  {monthData.map((m) => {
+                    const monthTotal = calculateServiceMonthlyTotal(m.number, service.service_name);
+                    return (
+                      <div key={`${service.service_id}-${m.number}`} className="flex-1 px-1">
+                        <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
+                          {monthTotal}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Annual Total - Fixed Width, Read-Only */}
+                <div className="w-24 flex-shrink-0">
+                  <div className="px-2 py-2 bg-purple-100 dark:bg-purple-900/30 border border-purple-300 dark:border-purple-700 rounded-md text-center text-sm font-bold text-purple-900 dark:text-purple-200">
+                    {annualTotal}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Grand Total Row */}
+          <div className="px-6 py-2 bg-purple-200 dark:bg-purple-900/50 border-t-2 border-purple-300 dark:border-purple-700 flex items-center gap-4">
+            {/* Row Label */}
+            <div className="w-32 flex-shrink-0">
+              <span className="text-sm font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider">
+                Grand Total
+              </span>
+            </div>
+
+            {/* Monthly Grand Totals - Flex to Fill Space */}
+            <div className="flex-1 flex gap-0">
+              {monthData.map((m) => {
+                const monthGrandTotal = services.reduce((sum, service) => {
+                  return sum + calculateServiceMonthlyTotal(m.number, service.service_name);
+                }, 0);
+                return (
+                  <div key={`grand-${m.number}`} className="flex-1 px-1">
+                    <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-purple-300 dark:border-purple-700 rounded-md text-center text-sm font-bold text-purple-900 dark:text-purple-200">
+                      {monthGrandTotal}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Overall Grand Total - Fixed Width */}
+            <div className="w-24 flex-shrink-0">
+              <div className="px-2 py-2 bg-purple-600 dark:bg-purple-700 border border-purple-700 dark:border-purple-800 rounded-md text-center text-sm font-bold text-white">
+                {services.reduce((sum, service) => sum + calculateServiceAnnualTotal(service.service_name), 0)}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
