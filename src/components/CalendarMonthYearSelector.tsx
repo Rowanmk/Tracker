@@ -24,6 +24,8 @@ import React from 'react';
       ];
 
       const financialYears = getFinancialYears();
+      const currentYear = new Date().getFullYear();
+      const years = Array.from({ length: 16 }, (_, i) => currentYear - 10 + i);
 
       return (
         <div className="flex space-x-4 mb-6">
@@ -48,7 +50,7 @@ import React from 'react';
               onChange={(e) => onYearChange(parseInt(e.target.value))}
               className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 dark:hover:border-gray-500 transition-colors"
             >
-              {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 5 + i).map((yearOption) => (
+              {years.map((yearOption) => (
                 <option key={yearOption} value={yearOption}>
                   {yearOption}
                 </option>

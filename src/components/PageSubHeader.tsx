@@ -23,11 +23,8 @@ import React from 'react';
       onFinancialYearChange,
       showFinancialYear = false
     }) => {
-      const years = [];
       const currentYear = new Date().getFullYear();
-      for (let y = currentYear - 5; y <= currentYear + 2; y++) {
-        years.push(y);
-      }
+      const years = Array.from({ length: 16 }, (_, i) => currentYear - 10 + i);
 
       const monthData = getFinancialYearMonths();
 
