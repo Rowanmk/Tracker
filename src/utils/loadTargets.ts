@@ -16,7 +16,10 @@ export async function loadTargets(month: number, financialYear: FinancialYear, s
 
   const { data, error } = await query;
 
-  if (error) throw error;
+  if (error) {
+    console.error('Error loading targets:', error);
+    throw error;
+  }
 
   const perService: Record<number, number> = {};
   let totalTarget = 0;
@@ -25,8 +28,10 @@ export async function loadTargets(month: number, financialYear: FinancialYear, s
     const sid = row.service_id;
     const val = row.target_value || 0;
     
-    perService[sid] = (perService[sid] || 0) + val;
-    totalTarget += val;
+    if (sid) {
+      perService[sid] = (perService[sid] || 0) + val;
+      totalTarget += val;
+    }
   });
 
   return { perService, totalTarget };
