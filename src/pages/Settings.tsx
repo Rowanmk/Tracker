@@ -7,7 +7,6 @@ import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
-type SADistributionRule = Database['public']['Tables']['sa_distribution_rules']['Row'];
 type BankHoliday = Database['public']['Tables']['bank_holidays']['Row'];
 type StaffLeave = Database['public']['Tables']['staff_leave']['Row'];
 
@@ -25,10 +24,7 @@ export const Settings: React.FC = () => {
     role: 'staff' as 'admin' | 'staff',
     home_region: 'england-and-wales' as 'england-and-wales' | 'scotland' | 'northern-ireland',
   });
-  const [activeTab, setActiveTab] = useState<'users' | 'sa-distribution' | 'calendar'>('users');
-  const [distributionRules, setDistributionRules] = useState<SADistributionRule[]>([]);
-  const [editingRules, setEditingRules] = useState<SADistributionRule[]>([]);
-  const [isEditingDistribution, setIsEditingDistribution] = useState(false);
+  const [activeTab, setActiveTab] = useState<'users' | 'calendar'>('users');
 
   // Calendar tab state
   const [bankHolidays, setBankHolidays] = useState<BankHoliday[]>([]);
@@ -59,14 +55,6 @@ export const Settings: React.FC = () => {
   const { selectedFinancialYear, setSelectedFinancialYear } = useDate();
   const { isSyncing: autoSyncing, error: syncError } = useBankHolidaySync();
 
-  const defaultRules: Omit<SADistributionRule, 'id' | 'created_at' | 'updated_at'>[] = [
-    { period_name: 'Period 1', months: [4, 5, 6, 7], percentage: 50 },
-    { period_name: 'Period 2', months: [8, 9, 10, 11], percentage: 40 },
-    { period_name: 'Period 3a', months: [12], percentage: 3.5 },
-    { period_name: 'Period 3b', months: [1], percentage: 6.5 },
-    { period_name: 'Period 4', months: [2, 3], percentage: 0 },
-  ];
-
   const regionLabels = {
     'england-and-wales': 'England & Wales',
     'scotland': 'Scotland',
@@ -84,10 +72,7 @@ export const Settings: React.FC = () => {
       setError(null);
 
       try {
-        const [usersResult, rulesResult] = await Promise.all([
-          supabase.from('staff').select('*').order('name'),
-          supabase.from('sa_distribution_rules').select('*').order('id')
-        ]);
+        const usersResult = await supabase.from('staff').select('*').order('name');
 
         if (usersResult.error) {
           console.error('Error fetching users:', usersResult.error);
@@ -96,35 +81,10 @@ export const Settings: React.FC = () => {
         } else {
           setAllUsers(usersResult.data || []);
         }
-
-        if (rulesResult.error) {
-          console.error('Error fetching SA distribution rules:', rulesResult.error);
-          setDistributionRules(defaultRules.map((rule, index) => ({
-            ...rule,
-            id: index + 1,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })));
-        } else if (rulesResult.data && rulesResult.data.length > 0) {
-          setDistributionRules(rulesResult.data);
-        } else {
-          setDistributionRules(defaultRules.map((rule, index) => ({
-            ...rule,
-            id: index + 1,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })));
-        }
       } catch (err) {
         console.error('Error in fetchData:', err);
         setError('Failed to connect to database');
         setAllUsers([]);
-        setDistributionRules(defaultRules.map((rule, index) => ({
-          ...rule,
-          id: index + 1,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })));
       } finally {
         setLoading(false);
       }
@@ -284,98 +244,6 @@ export const Settings: React.FC = () => {
   const handleCancelEdit = () => {
     setEditingUser(null);
     setEditForm({ name: '', role: 'staff', home_region: 'england-and-wales' });
-  };
-
-  const handleEditDistribution = () => {
-    setEditingRules([...distributionRules]);
-    setIsEditingDistribution(true);
-  };
-
-  const handleSaveDistribution = async () => {
-    const totalPercentage = editingRules.reduce((sum, rule) => sum + rule.percentage, 0);
-    if (Math.abs(totalPercentage - 100) > 0.01) {
-      setError('Total percentage must equal 100%');
-      return;
-    }
-
-    const allMonths = editingRules.flatMap(rule => rule.months);
-    const uniqueMonths = new Set(allMonths);
-    if (uniqueMonths.size !== 12 || allMonths.length !== 12) {
-      setError('All 12 months must appear exactly once');
-      return;
-    }
-
-    for (let month = 1; month <= 12; month++) {
-      if (!uniqueMonths.has(month)) {
-        setError(`Month ${month} is missing from the configuration`);
-        return;
-      }
-    }
-
-    setError(null);
-
-    try {
-      await supabase.from('sa_distribution_rules').delete().neq('id', 0);
-
-      const { error: insertError } = await supabase
-        .from('sa_distribution_rules')
-        .insert(editingRules.map(rule => ({
-          period_name: rule.period_name,
-          months: rule.months,
-          percentage: rule.percentage,
-        })));
-
-      if (insertError) {
-        console.error('Error saving distribution rules:', insertError);
-        setError('Failed to save distribution rules');
-      } else {
-        setDistributionRules(editingRules);
-        setIsEditingDistribution(false);
-        window.dispatchEvent(new Event('sa-distribution-updated'));
-      }
-    } catch (err) {
-      console.error('Error in handleSaveDistribution:', err);
-      setError('Failed to connect to database');
-    }
-  };
-
-  const handleCancelDistributionEdit = () => {
-    setEditingRules([]);
-    setIsEditingDistribution(false);
-    setError(null);
-  };
-
-  const updateRulePercentage = (index: number, percentage: number) => {
-    setEditingRules(prev => prev.map((rule, i) => 
-      i === index ? { ...rule, percentage } : rule
-    ));
-  };
-
-  const updateRuleMonths = (index: number, months: number[]) => {
-    setEditingRules(prev => prev.map((rule, i) => 
-      i === index ? { ...rule, months } : rule
-    ));
-  };
-
-  const addNewRule = () => {
-    const newRule: SADistributionRule = {
-      id: Math.max(...editingRules.map(r => r.id)) + 1,
-      period_name: `Period ${editingRules.length + 1}`,
-      months: [],
-      percentage: 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    setEditingRules(prev => [...prev, newRule]);
-  };
-
-  const removeRule = (index: number) => {
-    setEditingRules(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const getMonthName = (month: number) => {
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return monthNames[month - 1];
   };
 
   const handleAddHoliday = async () => {
@@ -587,16 +455,6 @@ export const Settings: React.FC = () => {
               }`}
             >
               Users / Staff
-            </button>
-            <button
-              onClick={() => setActiveTab('sa-distribution')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'sa-distribution'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Self Assessment Distribution
             </button>
             <button
               onClick={() => setActiveTab('calendar')}
@@ -812,158 +670,6 @@ export const Settings: React.FC = () => {
               </div>
             )}
           </>
-        )}
-
-        {activeTab === 'sa-distribution' && (
-          <div className="bg-white shadow rounded-lg mt-6">
-            <div className="px-4 py-5 sm:p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-medium text-gray-900">Self Assessment Distribution Settings</h3>
-                {!isEditingDistribution && (
-                  <button
-                    onClick={handleEditDistribution}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    Edit Distribution
-                  </button>
-                )}
-              </div>
-
-              <div className="mb-4 p-4 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-800">
-                  These rules determine how annual Self Assessment targets are automatically distributed across months.
-                  Each month must appear exactly once, and percentages must total 100%.
-                </p>
-              </div>
-
-              {loading ? (
-                <div className="text-center py-4">Loading...</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Period Name
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Months Included
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          % of Annual Target
-                        </th>
-                        {isEditingDistribution && (
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Actions
-                          </th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {(isEditingDistribution ? editingRules : distributionRules).map((rule, index) => (
-                        <tr key={rule.id}>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {isEditingDistribution ? (
-                              <input
-                                type="text"
-                                value={rule.period_name}
-                                onChange={(e) => setEditingRules(prev => prev.map((r, i) => 
-                                  i === index ? { ...r, period_name: e.target.value } : r
-                                ))}
-                                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                              />
-                            ) : (
-                              rule.period_name
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-900">
-                            {isEditingDistribution ? (
-                              <div className="flex flex-wrap gap-1">
-                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(month => (
-                                  <label key={month} className="inline-flex items-center">
-                                    <input
-                                      type="checkbox"
-                                      checked={rule.months.includes(month)}
-                                      onChange={(e) => {
-                                        const newMonths = e.target.checked
-                                          ? [...rule.months, month].sort((a, b) => a - b)
-                                          : rule.months.filter(m => m !== month);
-                                        updateRuleMonths(index, newMonths);
-                                      }}
-                                      className="form-checkbox h-4 w-4 text-blue-600"
-                                    />
-                                    <span className="ml-1 text-xs">{getMonthName(month)}</span>
-                                  </label>
-                                ))}
-                              </div>
-                            ) : (
-                              rule.months.map(month => getMonthName(month)).join(', ')
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {isEditingDistribution ? (
-                              <input
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                max="100"
-                                value={rule.percentage}
-                                onChange={(e) => updateRulePercentage(index, parseFloat(e.target.value) || 0)}
-                                className="block w-20 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                              />
-                            ) : (
-                              `${rule.percentage}%`
-                            )}
-                          </td>
-                          {isEditingDistribution && (
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              <button
-                                onClick={() => removeRule(index)}
-                                className="text-red-600 hover:text-red-900"
-                              >
-                                Remove
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  {isEditingDistribution && (
-                    <div className="mt-4 space-y-4">
-                      <button
-                        onClick={addNewRule}
-                        className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-                      >
-                        Add New Period
-                      </button>
-
-                      <div className="flex justify-between items-center pt-4 border-t">
-                        <div className="text-sm text-gray-600">
-                          Total: {editingRules.reduce((sum, rule) => sum + rule.percentage, 0).toFixed(1)}%
-                        </div>
-                        <div className="space-x-3">
-                          <button
-                            onClick={handleCancelDistributionEdit}
-                            className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={handleSaveDistribution}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            Save Changes
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
         )}
 
         {activeTab === 'calendar' && (
