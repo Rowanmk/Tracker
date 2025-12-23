@@ -14,7 +14,7 @@ export const getFinancialYears = (): FinancialYear[] => {
   // If today is before April, current FY starts the previous calendar year
   const currentFYStart = currentMonth >= 4 ? currentYear : currentYear - 1;
   
-  // Generate: 2 years back, current, 1 year forward
+  // Generate exactly 4 years: 2 back, current, 1 forward
   const years: FinancialYear[] = [];
   
   for (let i = -2; i <= 1; i++) {
