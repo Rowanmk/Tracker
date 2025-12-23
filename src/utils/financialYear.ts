@@ -6,12 +6,16 @@ export interface FinancialYear {
 
 export const getFinancialYears = (): FinancialYear[] => {
   const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth() + 1;
+  
+  // Determine current financial year
+  const currentFYStart = currentMonth >= 4 ? currentYear : currentYear - 1;
+  
+  // Generate: 2 years back, current, 1 year forward
   const years: FinancialYear[] = [];
   
-  // Range: April 2023 to March 2027
-  // That's FY 2023/24, 2024/25, 2025/26, 2026/27
-  for (let i = -1; i <= 3; i++) {
-    const startYear = 2023 + i;
+  for (let i = -2; i <= 1; i++) {
+    const startYear = currentFYStart + i;
     const endYear = startYear + 1;
     years.push({
       label: `${startYear}/${endYear.toString().slice(-2)}`,
