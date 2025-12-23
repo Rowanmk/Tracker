@@ -61,6 +61,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
           });
         } else {
           // Team View: load targets for every staff member in staffPerformance
+          // This ensures SA targets are properly calculated for each staff member
           for (const staff of effectiveStaffPerformance) {
             const { perService } = await loadTargets(month, financialYear, staff.staff_id);
             Object.entries(perService).forEach(([serviceId, value]) => {
