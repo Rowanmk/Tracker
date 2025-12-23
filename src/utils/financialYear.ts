@@ -5,10 +5,13 @@ export interface FinancialYear {
 }
 
 export const getFinancialYears = (): FinancialYear[] => {
-  const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().getMonth() + 1;
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
   
-  // Determine current financial year
+  // Determine current financial year using UK rules
+  // Financial year starts 1 April
+  // If today is before April, current FY starts the previous calendar year
   const currentFYStart = currentMonth >= 4 ? currentYear : currentYear - 1;
   
   // Generate: 2 years back, current, 1 year forward
@@ -32,6 +35,8 @@ export const getCurrentFinancialYear = (): FinancialYear => {
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
   
+  // Financial year starts 1 April
+  // If today is before April, current FY starts the previous calendar year
   if (currentMonth >= 4) {
     return {
       label: `${currentYear}/${(currentYear + 1).toString().slice(-2)}`,
