@@ -24,6 +24,12 @@ interface StaffPerformanceBarProps {
   financialYear: FinancialYear;
 }
 
+interface MonthYearOption {
+  month: number;
+  year: number;
+  label: string;
+}
+
 export const StaffPerformanceBar: React.FC<StaffPerformanceBarProps> = ({
   staffPerformance,
   workingDays,
@@ -31,10 +37,36 @@ export const StaffPerformanceBar: React.FC<StaffPerformanceBarProps> = ({
 }) => {
   const [totalTarget, setTotalTarget] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [monthOptions, setMonthOptions] = useState<MonthYearOption[]>([]);
 
-  const { selectedMonth, setSelectedMonth, selectedFinancialYear } = useDate();
+  const { selectedMonth, setSelectedMonth, selectedYear, setSelectedYear, selectedFinancialYear } = useDate();
 
   const totalDelivered = staffPerformance.reduce((sum, s) => sum + s.total, 0);
+
+  // Generate continuous month-year list: 24 months back, current, 12 months forward
+  useEffect(() => {
+    const today = new Date();
+    const options: MonthYearOption[] = [];
+
+    const startDate = new Date(today.getFullYear(), today.getMonth() - 24, 1);
+
+    for (let i = 0; i < 37; i++) {
+      const date = new Date(startDate.getFullYear(), startDate.getMonth() + i, 1);
+      const month = date.getMonth() + 1;
+      const year = date.getFullYear();
+
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                         'July', 'August', 'September', 'October', 'November', 'December'];
+
+      options.push({
+        month,
+        year,
+        label: `${monthNames[month - 1]} ${year}`,
+      });
+    }
+
+    setMonthOptions(options);
+  }, []);
 
   useEffect(() => {
     const fetchTotalTarget = async () => {
@@ -74,52 +106,29 @@ export const StaffPerformanceBar: React.FC<StaffPerformanceBarProps> = ({
 
   const statusText = `${getVarianceText()} | Delivered: ${totalDelivered} | Expected: ${Math.round(expectedByNow)}`;
 
-  const getMonthName = (monthNum: number) => {
-    const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                   'July', 'August', 'September', 'October', 'November', 'December'];
-    return months[monthNum - 1];
-  };
-
-  const getMonthsForFinancialYear = () => {
-    const months = [];
-    for (let m = 4; m <= 12; m++) {
-      months.push({ value: m, label: `${getMonthName(m)} ${selectedFinancialYear.start}` });
-    }
-    for (let m = 1; m <= 3; m++) {
-      months.push({ value: m, label: `${getMonthName(m)} ${selectedFinancialYear.end}` });
-    }
-    return months;
-  };
-
-  const handleMonthChange = (newMonth: number) => {
+  const handleMonthChange = (newMonth: number, newYear: number) => {
     setSelectedMonth(newMonth);
+    setSelectedYear(newYear);
     setTimeout(() => {
       window.dispatchEvent(new Event('activity-updated'));
     }, 0);
   };
-
-  if (loading) {
-    return (
-      <div className="w-full py-4 bg-[#001B47] rounded-xl flex justify-center items-center">
-        <span className="text-white text-lg font-semibold tracking-wide">
-          Loading performance data...
-        </span>
-      </div>
-    );
-  }
 
   return (
     <div className="w-full py-4 bg-[#001B47] rounded-xl flex justify-between items-center px-6">
       {/* Left: Month selector dropdown */}
       <div className="flex items-center">
         <select
-          value={selectedMonth}
-          onChange={(e) => handleMonthChange(parseInt(e.target.value))}
+          value={`${selectedYear}-${selectedMonth}`}
+          onChange={(e) => {
+            const [year, month] = e.target.value.split('-').map(Number);
+            handleMonthChange(month, year);
+          }}
           disabled={loading}
           className="bg-white text-gray-900 px-3 py-2 rounded-md shadow-sm text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {getMonthsForFinancialYear().map(({ value, label }) => (
-            <option key={value} value={value}>
+          {monthOptions.map(({ month, year, label }) => (
+            <option key={`${year}-${month}`} value={`${year}-${month}`}>
               {label}
             </option>
           ))}
