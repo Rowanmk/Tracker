@@ -7,6 +7,8 @@ interface DateContextType {
   setSelectedMonth: (month: number) => void;
   setSelectedYear: (year: number) => void;
   derivedFinancialYear: FinancialYear;
+  selectedFinancialYear: FinancialYear;
+  setSelectedFinancialYear: (fy: FinancialYear) => void;
 }
 
 interface DateProviderProps {
@@ -22,6 +24,9 @@ export const DateProvider: React.FC<DateProviderProps> = ({ children }) => {
   const [derivedFinancialYear, setDerivedFinancialYear] = useState<FinancialYear>(
     getFinancialYearFromMonth(today.getMonth() + 1, today.getFullYear())
   );
+  const [selectedFinancialYear, setSelectedFinancialYear] = useState<FinancialYear>(
+    getFinancialYearFromMonth(today.getMonth() + 1, today.getFullYear())
+  );
 
   // Recalculate derived FY whenever month or year changes
   useEffect(() => {
@@ -35,6 +40,8 @@ export const DateProvider: React.FC<DateProviderProps> = ({ children }) => {
     setSelectedMonth,
     setSelectedYear,
     derivedFinancialYear,
+    selectedFinancialYear,
+    setSelectedFinancialYear,
   };
 
   return (
