@@ -1,11 +1,12 @@
-import React, { createContext, useContext, ReactNode, useState } from 'react';
-import { FinancialYear, getCurrentFinancialYear } from '../utils/financialYear';
+import React, { createContext, useContext, ReactNode, useState, useEffect } from 'react';
+import { FinancialYear, getFinancialYearFromMonth } from '../utils/financialYear';
 
 interface DateContextType {
   selectedMonth: number;
+  selectedYear: number;
   setSelectedMonth: (month: number) => void;
-  selectedFinancialYear: FinancialYear;
-  setSelectedFinancialYear: (fy: FinancialYear) => void;
+  setSelectedYear: (year: number) => void;
+  derivedFinancialYear: FinancialYear;
 }
 
 interface DateProviderProps {
@@ -15,14 +16,25 @@ interface DateProviderProps {
 const DateContext = createContext<DateContextType>({} as DateContextType);
 
 export const DateProvider: React.FC<DateProviderProps> = ({ children }) => {
-  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
-  const [selectedFinancialYear, setSelectedFinancialYear] = useState<FinancialYear>(getCurrentFinancialYear());
+  const today = new Date();
+  const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
+  const [derivedFinancialYear, setDerivedFinancialYear] = useState<FinancialYear>(
+    getFinancialYearFromMonth(today.getMonth() + 1, today.getFullYear())
+  );
+
+  // Recalculate derived FY whenever month or year changes
+  useEffect(() => {
+    const newFY = getFinancialYearFromMonth(selectedMonth, selectedYear);
+    setDerivedFinancialYear(newFY);
+  }, [selectedMonth, selectedYear]);
 
   const value: DateContextType = {
     selectedMonth,
+    selectedYear,
     setSelectedMonth,
-    selectedFinancialYear,
-    setSelectedFinancialYear,
+    setSelectedYear,
+    derivedFinancialYear,
   };
 
   return (

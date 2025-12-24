@@ -4,19 +4,38 @@ export interface FinancialYear {
   end: number;
 }
 
+/**
+ * Derive Financial Year from calendar month and year
+ * UK rules: April → March
+ * Apr–Dec → FY starts same year
+ * Jan–Mar → FY starts previous year
+ */
+export const getFinancialYearFromMonth = (month: number, year: number): FinancialYear => {
+  if (month >= 4) {
+    // April onwards: FY starts this year
+    return {
+      label: `${year}/${(year + 1).toString().slice(-2)}`,
+      start: year,
+      end: year + 1,
+    };
+  } else {
+    // January to March: FY starts previous year
+    return {
+      label: `${year - 1}/${year.toString().slice(-2)}`,
+      start: year - 1,
+      end: year,
+    };
+  }
+};
+
 export const getFinancialYears = (): FinancialYear[] => {
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
   
-  // Determine current financial year using UK rules
-  // Financial year starts 1 April
-  // If today is before April, current FY starts the previous calendar year
   const currentFYStart = currentMonth >= 4 ? currentYear : currentYear - 1;
   
-  // Generate exactly 4 years: 2 back, current, 1 forward
   const years: FinancialYear[] = [];
-  
   for (let i = -2; i <= 1; i++) {
     const startYear = currentFYStart + i;
     const endYear = startYear + 1;
@@ -35,27 +54,13 @@ export const getCurrentFinancialYear = (): FinancialYear => {
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
   
-  // Financial year starts 1 April
-  // If today is before April, current FY starts the previous calendar year
-  if (currentMonth >= 4) {
-    return {
-      label: `${currentYear}/${(currentYear + 1).toString().slice(-2)}`,
-      start: currentYear,
-      end: currentYear + 1,
-    };
-  } else {
-    return {
-      label: `${currentYear - 1}/${currentYear.toString().slice(-2)}`,
-      start: currentYear - 1,
-      end: currentYear,
-    };
-  }
+  return getFinancialYearFromMonth(currentMonth, currentYear);
 };
 
 export const getFinancialYearDateRange = (fy: FinancialYear) => {
   return {
-    startDate: new Date(fy.start, 3, 1), // April 1st
-    endDate: new Date(fy.end, 2, 31),   // March 31st
+    startDate: new Date(fy.start, 3, 1),
+    endDate: new Date(fy.end, 2, 31),
   };
 };
 
@@ -84,18 +89,5 @@ export const isDateInFinancialYear = (date: Date, fy: FinancialYear): boolean =>
 export const getFinancialYearFromDate = (date: Date): FinancialYear => {
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
-  
-  if (month >= 4) {
-    return {
-      label: `${year}/${(year + 1).toString().slice(-2)}`,
-      start: year,
-      end: year + 1,
-    };
-  } else {
-    return {
-      label: `${year - 1}/${year.toString().slice(-2)}`,
-      start: year - 1,
-      end: year,
-    };
-  }
+  return getFinancialYearFromMonth(month, year);
 };

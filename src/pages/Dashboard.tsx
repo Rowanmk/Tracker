@@ -24,7 +24,7 @@ interface StaffPerformance {
 
 export const Dashboard: React.FC = () => {
   const { viewMode } = useDashboardView();
-  const { selectedMonth, selectedFinancialYear } = useDate();
+  const { selectedMonth, selectedYear, derivedFinancialYear } = useDate();
   const [staffPerformance, setStaffPerformance] = useState<StaffPerformance[]>([]);
   const [dailyActivities, setDailyActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,7 +45,6 @@ export const Dashboard: React.FC = () => {
     showFallbackWarning: servicesWarning,
   } = useServices();
 
-  // Determine dashboard mode based on selectedStaffId
   const isTeamSelected = selectedStaffId === "team" || !selectedStaffId;
   const dashboardMode: "team" | "individual" = isTeamSelected ? "team" : "individual";
 
@@ -54,7 +53,7 @@ export const Dashboard: React.FC = () => {
     workingDaysUpToToday,
     showFallbackWarning: workingDaysWarning,
   } = useWorkingDays({
-    financialYear: selectedFinancialYear,
+    financialYear: derivedFinancialYear,
     month: selectedMonth,
   });
 
@@ -69,14 +68,15 @@ export const Dashboard: React.FC = () => {
 
     try {
       const { startDate, endDate } = {
-        startDate: new Date(selectedFinancialYear.start, 3, 1),
-        endDate: new Date(selectedFinancialYear.end, 2, 31),
+        startDate: new Date(derivedFinancialYear.start, 3, 1),
+        endDate: new Date(derivedFinancialYear.end, 2, 31),
       };
 
       const { data: activities, error: activitiesError } = await supabase
         .from("dailyactivity")
         .select("staff_id, service_id, delivered_count, month, year, day, date")
         .eq("month", selectedMonth)
+        .eq("year", selectedYear)
         .gte("date", startDate.toISOString().split("T")[0])
         .lte("date", endDate.toISOString().split("T")[0]);
 
@@ -102,12 +102,7 @@ export const Dashboard: React.FC = () => {
       }
 
       const previousMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
-      const year =
-        selectedMonth >= 4
-          ? selectedFinancialYear.start
-          : selectedFinancialYear.end;
-      const previousYear =
-        selectedMonth === 1 ? selectedFinancialYear.end - 1 : year;
+      const previousYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
 
       let previousMonthQuery = supabase
         .from("dailyactivity")
@@ -139,17 +134,7 @@ export const Dashboard: React.FC = () => {
 
           const total = Object.values(serviceData).reduce((sum, val) => sum + val, 0);
 
-          const { data: targetsData } = await supabase
-            .from("monthlytargets")
-            .select("target_value")
-            .eq("staff_id", staff.staff_id)
-            .eq("month", selectedMonth)
-            .eq("year", year);
-
-          const totalTarget = (targetsData || []).reduce(
-            (sum, row) => sum + (row.target_value || 0),
-            0
-          );
+          const { totalTarget } = await loadTargets(selectedMonth, derivedFinancialYear, staff.staff_id);
 
           const achieved_percent = totalTarget > 0 ? (total / totalTarget) * 100 : 0;
 
@@ -177,17 +162,7 @@ export const Dashboard: React.FC = () => {
             0
           );
 
-          const { data: prevTargetsData } = await supabase
-            .from("monthlytargets")
-            .select("target_value")
-            .eq("staff_id", staff.staff_id)
-            .eq("month", previousMonth)
-            .eq("year", previousYear);
-
-          const prevMonthTarget = (prevTargetsData || []).reduce(
-            (sum, row) => sum + (row.target_value || 0),
-            0
-          );
+          const { totalTarget: prevMonthTarget } = await loadTargets(previousMonth, derivedFinancialYear, staff.staff_id);
           const previousMonthRatio =
             prevMonthTarget > 0 ? prevMonthTotal / prevMonthTarget : 0;
 
@@ -218,7 +193,7 @@ export const Dashboard: React.FC = () => {
 
       let teamTotalTarget = 0;
       for (const staff of allStaff) {
-        const { totalTarget: staffTarget } = await loadTargets(selectedMonth, selectedFinancialYear, staff.staff_id);
+        const { totalTarget: staffTarget } = await loadTargets(selectedMonth, derivedFinancialYear, staff.staff_id);
         teamTotalTarget += staffTarget;
       }
       setTeamTarget(teamTotalTarget);
@@ -236,7 +211,8 @@ export const Dashboard: React.FC = () => {
     fetchPerformanceData();
   }, [
     selectedMonth,
-    selectedFinancialYear,
+    selectedYear,
+    derivedFinancialYear,
     allStaff.length,
     services.length,
     authLoading,
@@ -252,7 +228,8 @@ export const Dashboard: React.FC = () => {
     return () => window.removeEventListener("activity-updated", handler);
   }, [
     selectedMonth,
-    selectedFinancialYear,
+    selectedYear,
+    derivedFinancialYear,
     allStaff.length,
     services.length,
     sortMode,
@@ -332,7 +309,6 @@ export const Dashboard: React.FC = () => {
   const showWarning =
     authWarning || servicesWarning || workingDaysWarning || !!error;
 
-  // Get current staff for individual mode
   const currentIndividualStaff = !isTeamSelected && currentStaff 
     ? { staff_id: currentStaff.staff_id, name: currentStaff.name }
     : null;
@@ -362,7 +338,7 @@ export const Dashboard: React.FC = () => {
           workingDays={teamWorkingDays}
           workingDaysUpToToday={workingDaysUpToToday}
           month={selectedMonth}
-          financialYear={selectedFinancialYear}
+          financialYear={derivedFinancialYear}
         />
       </div>
 
@@ -391,7 +367,7 @@ export const Dashboard: React.FC = () => {
             workingDays={teamWorkingDays}
             workingDaysUpToToday={workingDaysUpToToday}
             month={selectedMonth}
-            financialYear={selectedFinancialYear}
+            financialYear={derivedFinancialYear}
           />
         </div>
         <div className="animate-slide-up" style={{ animationDelay: "0.05s" }}>
@@ -404,7 +380,7 @@ export const Dashboard: React.FC = () => {
             workingDays={teamWorkingDays}
             workingDaysUpToToday={workingDaysUpToToday}
             month={selectedMonth}
-            financialYear={selectedFinancialYear}
+            financialYear={derivedFinancialYear}
           />
         </div>
         <div className="animate-slide-up" style={{ animationDelay: "0.1s" }}>
@@ -414,7 +390,7 @@ export const Dashboard: React.FC = () => {
             totalActual={totalActual}
             dailyActivities={dailyActivities}
             month={selectedMonth}
-            financialYear={selectedFinancialYear}
+            financialYear={derivedFinancialYear}
             dashboardMode={dashboardMode}
             currentStaff={currentIndividualStaff}
             viewMode={viewMode}

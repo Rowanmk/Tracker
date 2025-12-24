@@ -3,9 +3,10 @@ import { Link, useLocation } from "react-router-dom";
 import { useDate } from "../context/DateContext";
 import { useAuth } from "../context/AuthContext";
 import { DashboardViewProvider } from "../context/DashboardViewContext";
+import { MonthYearScrollSelector } from "./MonthYearScrollSelector";
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
-  const { selectedMonth, selectedFinancialYear } = useDate();
+  const { selectedMonth, selectedYear } = useDate();
   const { currentStaff, allStaff, onStaffChange, isAdmin, selectedStaffId } = useAuth();
   const location = useLocation();
 
@@ -121,6 +122,9 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
             </div>
           </div>
         </header>
+
+        {/* Month-Year Scroll Selector */}
+        <MonthYearScrollSelector />
 
         <main className="w-full px-6 py-6">
           {children}
