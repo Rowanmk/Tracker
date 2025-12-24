@@ -154,3 +154,13 @@ input[type="number"] {
 .no-spinner[type=number] {
   -moz-appearance: textfield;
 }
+
+/* Hide scrollbars while preserving scroll functionality */
+::-webkit-scrollbar {
+  display: none;
+}
+
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

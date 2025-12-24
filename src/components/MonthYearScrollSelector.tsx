@@ -8,7 +8,7 @@ interface MonthYearOption {
 }
 
 export const MonthYearScrollSelector: React.FC = () => {
-  const { selectedMonth, selectedYear, setSelectedMonth, setSelectedYear, derivedFinancialYear } = useDate();
+  const { selectedMonth, selectedYear, setSelectedMonth, setSelectedYear } = useDate();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const selectedOptionRef = useRef<HTMLButtonElement>(null);
 
@@ -60,49 +60,42 @@ export const MonthYearScrollSelector: React.FC = () => {
   return (
     <div className="sticky top-0 z-50 bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 transition-all duration-300 ease-in-out">
       <div className="px-4 py-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-4">
-          {/* Title and FY Display */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Select Month
-              </h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Financial Year: {derivedFinancialYear.label} (Auto-derived)
-              </p>
-            </div>
-          </div>
+        <div
+          ref={scrollContainerRef}
+          className="flex gap-2 overflow-x-auto"
+          style={{
+            scrollBehavior: 'smooth',
+            WebkitOverflowScrolling: 'touch',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+          }}
+        >
+          {monthList.map((option) => {
+            const isSelected = option.month === selectedMonth && option.year === selectedYear;
 
-          {/* Scrollable Month List */}
-          <div
-            ref={scrollContainerRef}
-            className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide"
-            style={{
-              scrollBehavior: 'smooth',
-              WebkitOverflowScrolling: 'touch',
-            }}
-          >
-            {monthList.map((option) => {
-              const isSelected = option.month === selectedMonth && option.year === selectedYear;
-
-              return (
-                <button
-                  key={`${option.year}-${option.month}`}
-                  ref={isSelected ? selectedOptionRef : null}
-                  onClick={() => handleSelectMonth(option.month, option.year)}
-                  className={`flex-shrink-0 px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 whitespace-nowrap ${
-                    isSelected
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
+            return (
+              <button
+                key={`${option.year}-${option.month}`}
+                ref={isSelected ? selectedOptionRef : null}
+                onClick={() => handleSelectMonth(option.month, option.year)}
+                className={`flex-shrink-0 px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 whitespace-nowrap ${
+                  isSelected
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600'
+                }`}
+              >
+                {option.label}
+              </button>
+            );
+          })}
         </div>
       </div>
+
+      <style>{`
+        div::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
     </div>
   );
 };
