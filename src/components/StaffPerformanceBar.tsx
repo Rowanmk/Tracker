@@ -1,27 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useDate } from '../context/DateContext';
 import { useAuth } from '../context/AuthContext';
 import { useDashboardView } from '../context/DashboardViewContext';
-import { loadTargets } from '../utils/loadTargets';
-import type { FinancialYear } from '../utils/financialYear';
 
-interface StaffPerformanceBarProps {
-  staffPerformance: Array<{
-    staff_id: number;
-    name: string;
-    services: { [key: string]: number };
-    total: number;
-    target: number;
-    achieved_percent: number;
-    historicalAverage: number;
-    previousMonthRatio?: number;
-  }>;
-  dashboardMode?: "team" | "individual";
-  currentStaff?: { staff_id: number; name: string } | null;
-  workingDays: number;
-  workingDaysUpToToday: number;
-  month: number;
-  financialYear: FinancialYear;
+interface GlobalDateSelectorProps {
+  showViewModeToggle?: boolean;
 }
 
 interface MonthYearOption {
@@ -30,7 +13,7 @@ interface MonthYearOption {
   label: string;
 }
 
-export const StaffPerformanceBar: React.FC<StaffPerformanceBarProps> = ({
+export const StaffPerformanceBar: React.FC<any> = ({
   staffPerformance,
   workingDays,
   workingDaysUpToToday,
@@ -38,6 +21,7 @@ export const StaffPerformanceBar: React.FC<StaffPerformanceBarProps> = ({
   const [totalTarget, setTotalTarget] = useState(0);
   const [loading, setLoading] = useState(false);
   const [monthOptions, setMonthOptions] = useState<MonthYearOption[]>([]);
+  const selectRef = useRef<HTMLSelectElement>(null);
 
   const { selectedMonth, setSelectedMonth, selectedYear, setSelectedYear, selectedFinancialYear } = useDate();
 
@@ -68,6 +52,29 @@ export const StaffPerformanceBar: React.FC<StaffPerformanceBarProps> = ({
     setMonthOptions(options);
   }, []);
 
+  // Scroll the select dropdown to center the current month
+  useEffect(() => {
+    if (selectRef.current && monthOptions.length > 0) {
+      const currentIndex = monthOptions.findIndex(
+        opt => opt.month === selectedMonth && opt.year === selectedYear
+      );
+
+      if (currentIndex !== -1) {
+        // Use setTimeout to ensure the DOM is ready
+        setTimeout(() => {
+          if (selectRef.current) {
+            // Calculate the option height (approximately 20px per option in most browsers)
+            const optionHeight = 20;
+            const visibleOptions = 8; // Approximate number of visible options
+            const scrollPosition = Math.max(0, (currentIndex - Math.floor(visibleOptions / 2)) * optionHeight);
+            
+            selectRef.current.scrollTop = scrollPosition;
+          }
+        }, 0);
+      }
+    }
+  }, [selectedMonth, selectedYear, monthOptions]);
+
   useEffect(() => {
     const fetchTotalTarget = async () => {
       setLoading(true);
@@ -75,6 +82,7 @@ export const StaffPerformanceBar: React.FC<StaffPerformanceBarProps> = ({
         let combinedTarget = 0;
 
         for (const staff of staffPerformance) {
+          const { loadTargets } = await import('../utils/loadTargets');
           const { totalTarget: staffTarget } = await loadTargets(selectedMonth, selectedFinancialYear, staff.staff_id);
           combinedTarget += staffTarget;
         }
@@ -119,13 +127,14 @@ export const StaffPerformanceBar: React.FC<StaffPerformanceBarProps> = ({
       {/* Left: Month selector dropdown */}
       <div className="flex items-center">
         <select
+          ref={selectRef}
           value={`${selectedYear}-${selectedMonth}`}
           onChange={(e) => {
             const [year, month] = e.target.value.split('-').map(Number);
             handleMonthChange(month, year);
           }}
           disabled={loading}
-          className="bg-white text-gray-900 px-3 py-2 rounded-md shadow-sm text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="bg-white text-gray-900 px-3 py-2 rounded-md shadow-sm text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed max-h-64 overflow-y-auto"
         >
           {monthOptions.map(({ month, year, label }) => (
             <option key={`${year}-${month}`} value={`${year}-${month}`}>
