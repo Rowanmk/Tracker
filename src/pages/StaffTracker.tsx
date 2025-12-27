@@ -417,7 +417,7 @@ export const StaffTracker: React.FC = () => {
               {/* SINGLE SHARED SCROLL CONTAINER - ALL CONTENT INSIDE */}
               <div 
                 ref={scrollContainerRef}
-                className="overflow-x-auto"
+                className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800"
                 style={{ scrollBehavior: 'smooth' }}
               >
                 {/* Header Row */}
