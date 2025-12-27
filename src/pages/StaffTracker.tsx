@@ -414,10 +414,14 @@ export const StaffTracker: React.FC = () => {
                 </h4>
               </div>
 
-              {/* Single Shared Scroll Container */}
-              <div className="overflow-hidden">
+              {/* SINGLE SHARED SCROLL CONTAINER - ALL CONTENT INSIDE */}
+              <div 
+                ref={scrollContainerRef}
+                className="overflow-x-auto"
+                style={{ scrollBehavior: 'smooth' }}
+              >
                 {/* Header Row */}
-                <div className="flex bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                <div className="flex bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 min-w-min">
                   {/* Left Zone: Service Names (Sticky) */}
                   <div className="w-32 flex-shrink-0 sticky left-0 z-20 bg-gray-100 dark:bg-gray-700 border-r border-gray-200 dark:border-gray-600 px-4 py-3">
                     <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
@@ -425,24 +429,18 @@ export const StaffTracker: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* Middle Zone: Scrollable Date Grid */}
-                  <div 
-                    ref={scrollContainerRef}
-                    className="flex-1 overflow-x-auto"
-                    style={{ scrollBehavior: 'smooth' }}
-                  >
-                    <div className="flex">
-                      {dailyEntries.map((entry) => (
-                        <div key={entry.day} className={`flex-shrink-0 w-16 text-center px-1 py-3 border-r border-gray-200 dark:border-gray-600 ${getCellBackgroundClass(entry)}`}>
-                          <div className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                            <div>{entry.day}</div>
-                            <div className="text-xs font-normal">{getDayName(entry.day)}</div>
-                            {entry.isBankHoliday && <div className="text-xs">🔴</div>}
-                            {entry.isOnLeave && <div className="text-xs">🟢</div>}
-                          </div>
+                  {/* Middle Zone: Scrollable Date Headers */}
+                  <div className="flex">
+                    {dailyEntries.map((entry) => (
+                      <div key={entry.day} className={`flex-shrink-0 w-16 text-center px-1 py-3 border-r border-gray-200 dark:border-gray-600 ${getCellBackgroundClass(entry)}`}>
+                        <div className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                          <div>{entry.day}</div>
+                          <div className="text-xs font-normal">{getDayName(entry.day)}</div>
+                          {entry.isBankHoliday && <div className="text-xs">🔴</div>}
+                          {entry.isOnLeave && <div className="text-xs">🟢</div>}
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    ))}
                   </div>
 
                   {/* Right Zone: Total Column (Sticky) */}
@@ -454,7 +452,7 @@ export const StaffTracker: React.FC = () => {
                 </div>
 
                 {/* Service Rows - All children of single scroll container */}
-                <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                <div className="divide-y divide-gray-200 dark:divide-gray-700 min-w-min">
                   {services.map((service, serviceIdx) => {
                     const serviceTotal = serviceTotals[service.service_name];
                     const serviceTarget = targets[service.service_name] || 0;
@@ -475,8 +473,8 @@ export const StaffTracker: React.FC = () => {
                           </span>
                         </div>
 
-                        {/* Middle Zone: Scrollable Daily Inputs - NO INDEPENDENT SCROLL */}
-                        <div className="flex-1 flex">
+                        {/* Middle Zone: Scrollable Daily Inputs */}
+                        <div className="flex">
                           {dailyEntries.map((entry) => {
                             const inputKey = getInputKey(serviceIdx, entry.day);
                             const isActive = activeCell?.service === serviceIdx && activeCell?.day === entry.day;
@@ -562,7 +560,7 @@ export const StaffTracker: React.FC = () => {
                     </div>
 
                     {/* Middle Zone: Scrollable Daily Totals */}
-                    <div className="flex-1 flex">
+                    <div className="flex">
                       {dailyEntries.map((entry) => {
                         const dayTotal = services.reduce((sum, service) => 
                           sum + (entry.services[service.service_name] || 0), 0
