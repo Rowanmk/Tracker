@@ -423,7 +423,7 @@ export const StaffTracker: React.FC = () => {
                 {/* Header Row */}
                 <div className="flex bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 min-w-min">
                   {/* Left Zone: Service Names (Sticky) */}
-                  <div className="w-32 flex-shrink-0 sticky left-0 z-20 bg-gray-100 dark:bg-gray-700 border-r border-gray-200 dark:border-gray-600 px-4 py-3">
+                  <div className="w-48 flex-shrink-0 sticky left-0 z-20 bg-gray-100 dark:bg-gray-700 border-r border-gray-200 dark:border-gray-600 px-4 py-3">
                     <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Service
                     </span>
@@ -463,12 +463,12 @@ export const StaffTracker: React.FC = () => {
                         className="flex"
                       >
                         {/* Left Zone: Service Name (Sticky) */}
-                        <div className={`w-32 flex-shrink-0 sticky left-0 z-10 bg-inherit border-r border-gray-200 dark:border-gray-600 px-4 py-3 ${
+                        <div className={`w-48 flex-shrink-0 sticky left-0 z-10 bg-inherit border-r border-gray-200 dark:border-gray-600 px-4 py-3 flex items-center ${
                           serviceIdx % 2 === 0
                             ? 'bg-white dark:bg-gray-800'
                             : 'bg-gray-50 dark:bg-gray-750'
                         }`}>
-                          <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                          <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap">
                             {service.service_name}
                           </span>
                         </div>
@@ -537,12 +537,12 @@ export const StaffTracker: React.FC = () => {
                         </div>
 
                         {/* Right Zone: Service Total (Sticky) */}
-                        <div className={`w-24 flex-shrink-0 sticky right-0 z-10 bg-inherit border-l border-gray-200 dark:border-gray-600 px-3 py-3 ${
+                        <div className={`w-24 flex-shrink-0 sticky right-0 z-10 bg-inherit border-l border-gray-200 dark:border-gray-600 px-3 py-3 flex items-center ${
                           serviceIdx % 2 === 0
                             ? 'bg-white dark:bg-gray-800'
                             : 'bg-gray-50 dark:bg-gray-750'
                         }`}>
-                          <div className={`px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold ${getStatusColor(serviceTotal, serviceTarget)}`}>
+                          <div className={`w-full px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold ${getStatusColor(serviceTotal, serviceTarget)}`}>
                             {serviceTotal}
                           </div>
                         </div>
@@ -553,8 +553,8 @@ export const StaffTracker: React.FC = () => {
                   {/* Monthly Totals Row */}
                   <div className="flex bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500">
                     {/* Left Zone: Row Label (Sticky) */}
-                    <div className="w-32 flex-shrink-0 sticky left-0 z-10 bg-gray-200 dark:bg-gray-600 border-r border-gray-300 dark:border-gray-500 px-4 py-3">
-                      <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
+                    <div className="w-48 flex-shrink-0 sticky left-0 z-10 bg-gray-200 dark:bg-gray-600 border-r border-gray-300 dark:border-gray-500 px-4 py-3 flex items-center">
+                      <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider whitespace-nowrap">
                         Daily Total
                       </span>
                     </div>
@@ -578,8 +578,8 @@ export const StaffTracker: React.FC = () => {
                     </div>
 
                     {/* Right Zone: Overall Total (Sticky) */}
-                    <div className="w-24 flex-shrink-0 sticky right-0 z-10 bg-gray-200 dark:bg-gray-600 border-l border-gray-300 dark:border-gray-500 px-3 py-3">
-                      <div className="px-2 py-2 bg-blue-600 dark:bg-blue-700 border border-blue-700 dark:border-blue-800 rounded-md text-center text-sm font-bold text-white">
+                    <div className="w-24 flex-shrink-0 sticky right-0 z-10 bg-gray-200 dark:bg-gray-600 border-l border-gray-300 dark:border-gray-500 px-3 py-3 flex items-center">
+                      <div className="w-full px-2 py-2 bg-blue-600 dark:bg-blue-700 border border-blue-700 dark:border-blue-800 rounded-md text-center text-sm font-bold text-white">
                         {overallTotal}
                       </div>
                     </div>
