@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { TeamProgressTile } from "../components/TeamProgressTile";
 import { EmployeeProgressChart } from "../components/EmployeeProgressChart";
 import { RunRateTile } from "../components/RunRateTile";
@@ -31,6 +31,8 @@ export const Dashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<"desc" | "asc" | "name">("desc");
   const [teamTarget, setTeamTarget] = useState(0);
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const {
     currentStaff,
@@ -356,45 +358,51 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        <div className="animate-slide-up">
-          <TeamProgressTile
-            services={services}
-            staffPerformance={staffPerformance}
-            dashboardMode={dashboardMode}
-            currentStaff={currentIndividualStaff}
-            viewMode={viewMode}
-            workingDays={teamWorkingDays}
-            workingDaysUpToToday={workingDaysUpToToday}
-            month={selectedMonth}
-            financialYear={derivedFinancialYear}
-          />
-        </div>
-        <div className="animate-slide-up" style={{ animationDelay: "0.05s" }}>
-          <EmployeeProgressChart
-            services={services}
-            staffPerformance={staffPerformance}
-            dashboardMode={dashboardMode}
-            currentStaff={currentIndividualStaff}
-            viewMode={viewMode}
-            workingDays={teamWorkingDays}
-            workingDaysUpToToday={workingDaysUpToToday}
-            month={selectedMonth}
-            financialYear={derivedFinancialYear}
-          />
-        </div>
-        <div className="animate-slide-up" style={{ animationDelay: "0.1s" }}>
-          <RunRateTile
-            workingDays={teamWorkingDays}
-            workingDaysUpToToday={workingDaysUpToToday}
-            totalActual={totalActual}
-            dailyActivities={dailyActivities}
-            month={selectedMonth}
-            financialYear={derivedFinancialYear}
-            dashboardMode={dashboardMode}
-            currentStaff={currentIndividualStaff}
-            viewMode={viewMode}
-          />
+      <div className="animate-slide-up">
+        <div
+          ref={scrollContainerRef}
+          className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 overflow-x-auto pb-4"
+          style={{ scrollBehavior: 'smooth' }}
+        >
+          <div className="min-w-full lg:min-w-0">
+            <TeamProgressTile
+              services={services}
+              staffPerformance={staffPerformance}
+              dashboardMode={dashboardMode}
+              currentStaff={currentIndividualStaff}
+              viewMode={viewMode}
+              workingDays={teamWorkingDays}
+              workingDaysUpToToday={workingDaysUpToToday}
+              month={selectedMonth}
+              financialYear={derivedFinancialYear}
+            />
+          </div>
+          <div className="min-w-full lg:min-w-0">
+            <EmployeeProgressChart
+              services={services}
+              staffPerformance={staffPerformance}
+              dashboardMode={dashboardMode}
+              currentStaff={currentIndividualStaff}
+              viewMode={viewMode}
+              workingDays={teamWorkingDays}
+              workingDaysUpToToday={workingDaysUpToToday}
+              month={selectedMonth}
+              financialYear={derivedFinancialYear}
+            />
+          </div>
+          <div className="min-w-full lg:min-w-0">
+            <RunRateTile
+              workingDays={teamWorkingDays}
+              workingDaysUpToToday={workingDaysUpToToday}
+              totalActual={totalActual}
+              dailyActivities={dailyActivities}
+              month={selectedMonth}
+              financialYear={derivedFinancialYear}
+              dashboardMode={dashboardMode}
+              currentStaff={currentIndividualStaff}
+              viewMode={viewMode}
+            />
+          </div>
         </div>
       </div>
     </div>
