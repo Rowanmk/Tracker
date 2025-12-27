@@ -49,6 +49,7 @@ export const StaffTracker: React.FC = () => {
     homeRegion: currentStaff?.home_region || 'england-and-wales'
   });
 
+  // Single shared scroll container ref
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
@@ -413,7 +414,7 @@ export const StaffTracker: React.FC = () => {
                 </h4>
               </div>
 
-              {/* Three-Zone Table Layout */}
+              {/* Single Shared Scroll Container */}
               <div className="overflow-hidden">
                 {/* Header Row */}
                 <div className="flex bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
@@ -452,7 +453,7 @@ export const StaffTracker: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Service Rows */}
+                {/* Service Rows - All children of single scroll container */}
                 <div className="divide-y divide-gray-200 dark:divide-gray-700">
                   {services.map((service, serviceIdx) => {
                     const serviceTotal = serviceTotals[service.service_name];
@@ -474,72 +475,67 @@ export const StaffTracker: React.FC = () => {
                           </span>
                         </div>
 
-                        {/* Middle Zone: Scrollable Daily Inputs */}
-                        <div 
-                          className="flex-1 overflow-x-auto"
-                          style={{ scrollBehavior: 'smooth' }}
-                        >
-                          <div className="flex">
-                            {dailyEntries.map((entry) => {
-                              const inputKey = getInputKey(serviceIdx, entry.day);
-                              const isActive = activeCell?.service === serviceIdx && activeCell?.day === entry.day;
-                              const cellBgClass = getCellBackgroundClass(entry);
-                              
-                              return (
-                                <div key={entry.day} className={`flex-shrink-0 w-16 px-1 py-2 border-r border-gray-200 dark:border-gray-600 ${cellBgClass}`}>
-                                  <input
-                                    ref={(el) => {
-                                      if (el) {
-                                        inputRefs.current.set(inputKey, el);
-                                      } else {
-                                        inputRefs.current.delete(inputKey);
-                                      }
-                                    }}
-                                    type="number"
-                                    inputMode="numeric"
-                                    pattern="[0-9]*"
-                                    min="0"
-                                    step="1"
-                                    value={entry.services[service.service_name] ?? 0}
-                                    onFocus={(e) => {
-                                      if (!isTeamSelected) {
-                                        e.currentTarget.select();
-                                        setActiveCell({ service: serviceIdx, day: entry.day });
-                                      }
-                                    }}
-                                    onChange={(e) => {
-                                      if (!isTeamSelected) {
-                                        const cleaned = e.target.value.replace(/^0+(?=\d)/, "");
-                                        handleEntryChange(entry.day, service.service_name, cleaned);
-                                      }
-                                    }}
-                                    onBlur={(e) => {
-                                      if (!isTeamSelected && e.target.value === "") {
-                                        handleEntryChange(entry.day, service.service_name, "0");
-                                      }
-                                      setActiveCell(null);
-                                    }}
-                                    onKeyDown={(e) => {
-                                      if (!isTeamSelected) {
-                                        handleKeyNavigation(e, serviceIdx, entry.day);
-                                      }
-                                    }}
-                                    disabled={isTeamSelected}
-                                    className={`w-full px-2 py-2 text-center border rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                                      isTeamSelected 
-                                        ? 'bg-gray-100 dark:bg-gray-600 border-gray-300 dark:border-gray-500 text-gray-700 dark:text-gray-300 cursor-not-allowed opacity-75'
-                                        : isActive ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 dark:border-blue-600' :
-                                        cellBgClass === 'bg-red-200 dark:bg-red-800/50' ? 'bg-red-200 dark:bg-red-800/50 border-red-300 dark:border-red-700 text-gray-900 dark:text-white' :
-                                        cellBgClass === 'bg-gray-200 dark:bg-gray-600' ? 'bg-gray-200 dark:bg-gray-600 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white' :
-                                        cellBgClass === 'bg-red-100 dark:bg-red-800/30' ? 'bg-red-100 dark:bg-red-800/30 border-red-200 dark:border-red-700 text-gray-900 dark:text-white' :
-                                        'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white'
-                                    }`}
-                                    placeholder="0"
-                                  />
-                                </div>
-                              );
-                            })}
-                          </div>
+                        {/* Middle Zone: Scrollable Daily Inputs - NO INDEPENDENT SCROLL */}
+                        <div className="flex-1 flex">
+                          {dailyEntries.map((entry) => {
+                            const inputKey = getInputKey(serviceIdx, entry.day);
+                            const isActive = activeCell?.service === serviceIdx && activeCell?.day === entry.day;
+                            const cellBgClass = getCellBackgroundClass(entry);
+                            
+                            return (
+                              <div key={entry.day} className={`flex-shrink-0 w-16 px-1 py-2 border-r border-gray-200 dark:border-gray-600 ${cellBgClass}`}>
+                                <input
+                                  ref={(el) => {
+                                    if (el) {
+                                      inputRefs.current.set(inputKey, el);
+                                    } else {
+                                      inputRefs.current.delete(inputKey);
+                                    }
+                                  }}
+                                  type="number"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  min="0"
+                                  step="1"
+                                  value={entry.services[service.service_name] ?? 0}
+                                  onFocus={(e) => {
+                                    if (!isTeamSelected) {
+                                      e.currentTarget.select();
+                                      setActiveCell({ service: serviceIdx, day: entry.day });
+                                    }
+                                  }}
+                                  onChange={(e) => {
+                                    if (!isTeamSelected) {
+                                      const cleaned = e.target.value.replace(/^0+(?=\d)/, "");
+                                      handleEntryChange(entry.day, service.service_name, cleaned);
+                                    }
+                                  }}
+                                  onBlur={(e) => {
+                                    if (!isTeamSelected && e.target.value === "") {
+                                      handleEntryChange(entry.day, service.service_name, "0");
+                                    }
+                                    setActiveCell(null);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (!isTeamSelected) {
+                                      handleKeyNavigation(e, serviceIdx, entry.day);
+                                    }
+                                  }}
+                                  disabled={isTeamSelected}
+                                  className={`w-full px-2 py-2 text-center border rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                                    isTeamSelected 
+                                      ? 'bg-gray-100 dark:bg-gray-600 border-gray-300 dark:border-gray-500 text-gray-700 dark:text-gray-300 cursor-not-allowed opacity-75'
+                                      : isActive ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 dark:border-blue-600' :
+                                      cellBgClass === 'bg-red-200 dark:bg-red-800/50' ? 'bg-red-200 dark:bg-red-800/50 border-red-300 dark:border-red-700 text-gray-900 dark:text-white' :
+                                      cellBgClass === 'bg-gray-200 dark:bg-gray-600' ? 'bg-gray-200 dark:bg-gray-600 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white' :
+                                      cellBgClass === 'bg-red-100 dark:bg-red-800/30' ? 'bg-red-100 dark:bg-red-800/30 border-red-200 dark:border-red-700 text-gray-900 dark:text-white' :
+                                      'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white'
+                                  }`}
+                                  placeholder="0"
+                                />
+                              </div>
+                            );
+                          })}
                         </div>
 
                         {/* Right Zone: Service Total (Sticky) */}
@@ -566,26 +562,21 @@ export const StaffTracker: React.FC = () => {
                     </div>
 
                     {/* Middle Zone: Scrollable Daily Totals */}
-                    <div 
-                      className="flex-1 overflow-x-auto"
-                      style={{ scrollBehavior: 'smooth' }}
-                    >
-                      <div className="flex">
-                        {dailyEntries.map((entry) => {
-                          const dayTotal = services.reduce((sum, service) => 
-                            sum + (entry.services[service.service_name] || 0), 0
-                          );
-                          const cellBgClass = getCellBackgroundClass(entry);
-                          
-                          return (
-                            <div key={entry.day} className={`flex-shrink-0 w-16 px-1 py-2 border-r border-gray-300 dark:border-gray-500 ${cellBgClass}`}>
-                              <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
-                                {dayTotal}
-                              </div>
+                    <div className="flex-1 flex">
+                      {dailyEntries.map((entry) => {
+                        const dayTotal = services.reduce((sum, service) => 
+                          sum + (entry.services[service.service_name] || 0), 0
+                        );
+                        const cellBgClass = getCellBackgroundClass(entry);
+                        
+                        return (
+                          <div key={entry.day} className={`flex-shrink-0 w-16 px-1 py-2 border-r border-gray-300 dark:border-gray-500 ${cellBgClass}`}>
+                            <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
+                              {dayTotal}
                             </div>
-                          );
-                        })}
-                      </div>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {/* Right Zone: Overall Total (Sticky) */}
