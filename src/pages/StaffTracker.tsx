@@ -456,18 +456,15 @@ export const StaffTracker: React.FC = () => {
                   {services.map((service, serviceIdx) => {
                     const serviceTotal = serviceTotals[service.service_name];
                     const serviceTarget = targets[service.service_name] || 0;
+                    const rowBgClass = serviceIdx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-750';
                     
                     return (
                       <div
                         key={`${currentStaff?.staff_id}-${service.service_id}`}
                         className="flex"
                       >
-                        {/* Left Zone: Service Name (Sticky) */}
-                        <div className={`w-48 flex-shrink-0 sticky left-0 z-10 bg-inherit border-r border-gray-200 dark:border-gray-600 px-4 py-3 flex items-center ${
-                          serviceIdx % 2 === 0
-                            ? 'bg-white dark:bg-gray-800'
-                            : 'bg-gray-50 dark:bg-gray-750'
-                        }`}>
+                        {/* Left Zone: Service Name (Sticky) - SOLID BACKGROUND */}
+                        <div className={`w-48 flex-shrink-0 sticky left-0 z-10 border-r border-gray-200 dark:border-gray-600 px-4 py-3 flex items-center ${rowBgClass}`}>
                           <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap">
                             {service.service_name}
                           </span>
@@ -536,12 +533,8 @@ export const StaffTracker: React.FC = () => {
                           })}
                         </div>
 
-                        {/* Right Zone: Service Total (Sticky) */}
-                        <div className={`w-24 flex-shrink-0 sticky right-0 z-10 bg-inherit border-l border-gray-200 dark:border-gray-600 px-3 py-3 flex items-center ${
-                          serviceIdx % 2 === 0
-                            ? 'bg-white dark:bg-gray-800'
-                            : 'bg-gray-50 dark:bg-gray-750'
-                        }`}>
+                        {/* Right Zone: Service Total (Sticky) - SOLID BACKGROUND */}
+                        <div className={`w-24 flex-shrink-0 sticky right-0 z-10 border-l border-gray-200 dark:border-gray-600 px-3 py-3 flex items-center ${rowBgClass}`}>
                           <div className={`w-full px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold ${getStatusColor(serviceTotal, serviceTarget)}`}>
                             {serviceTotal}
                           </div>
@@ -552,7 +545,7 @@ export const StaffTracker: React.FC = () => {
 
                   {/* Monthly Totals Row */}
                   <div className="flex bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500">
-                    {/* Left Zone: Row Label (Sticky) */}
+                    {/* Left Zone: Row Label (Sticky) - SOLID BACKGROUND */}
                     <div className="w-48 flex-shrink-0 sticky left-0 z-10 bg-gray-200 dark:bg-gray-600 border-r border-gray-300 dark:border-gray-500 px-4 py-3 flex items-center">
                       <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider whitespace-nowrap">
                         Daily Total
@@ -577,7 +570,7 @@ export const StaffTracker: React.FC = () => {
                       })}
                     </div>
 
-                    {/* Right Zone: Overall Total (Sticky) */}
+                    {/* Right Zone: Overall Total (Sticky) - SOLID BACKGROUND */}
                     <div className="w-24 flex-shrink-0 sticky right-0 z-10 bg-gray-200 dark:bg-gray-600 border-l border-gray-300 dark:border-gray-500 px-3 py-3 flex items-center">
                       <div className="w-full px-2 py-2 bg-blue-600 dark:bg-blue-700 border border-blue-700 dark:border-blue-800 rounded-md text-center text-sm font-bold text-white">
                         {overallTotal}
