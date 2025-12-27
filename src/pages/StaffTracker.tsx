@@ -413,51 +413,42 @@ export const StaffTracker: React.FC = () => {
                 </h4>
               </div>
 
-              {/* Unified Scrollable Container - Headers and Data Together */}
-              <div 
-                ref={scrollContainerRef}
-                className="overflow-x-auto"
-              >
-                {/* Day Headers Row */}
-                <div className="px-6 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 sticky top-0 z-10">
-                  <div className="flex items-center gap-4">
-                    {/* Service Name Column Header - Sticky Left */}
-                    <div className="w-32 flex-shrink-0 sticky left-0 z-20 bg-gray-100 dark:bg-gray-700 pr-4">
-                      <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                        Service
-                      </span>
-                    </div>
+              {/* Three-Zone Table Layout */}
+              <div className="overflow-hidden">
+                {/* Header Row */}
+                <div className="flex bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                  {/* Left Zone: Service Names (Sticky) */}
+                  <div className="w-32 flex-shrink-0 sticky left-0 z-20 bg-gray-100 dark:bg-gray-700 border-r border-gray-200 dark:border-gray-600 px-4 py-3">
+                    <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                      Service
+                    </span>
+                  </div>
 
-                    {/* Day Headers */}
-                    <div className="flex gap-0">
-                      {dailyEntries.map((entry) => {
-                        const tooltipText = entry.isBankHoliday 
-                          ? `Public Holiday – ${entry.bankHolidayTitle}`
-                          : entry.isOnLeave 
-                          ? `Annual Leave`
-                          : '';
-                        
-                        const headerBgClass = getCellBackgroundClass(entry);
-                        
-                        return (
-                          <div key={entry.day} className={`flex-shrink-0 w-16 text-center px-1 ${headerBgClass} rounded-t-md`}>
-                            <div className="px-2 py-2 text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                              <div>{entry.day}</div>
-                              <div className="text-xs font-normal">{getDayName(entry.day)}</div>
-                              {entry.isBankHoliday && <div className="text-xs">🔴</div>}
-                              {entry.isOnLeave && <div className="text-xs">🟢</div>}
-                            </div>
+                  {/* Middle Zone: Scrollable Date Grid */}
+                  <div 
+                    ref={scrollContainerRef}
+                    className="flex-1 overflow-x-auto"
+                    style={{ scrollBehavior: 'smooth' }}
+                  >
+                    <div className="flex">
+                      {dailyEntries.map((entry) => (
+                        <div key={entry.day} className={`flex-shrink-0 w-16 text-center px-1 py-3 border-r border-gray-200 dark:border-gray-600 ${getCellBackgroundClass(entry)}`}>
+                          <div className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                            <div>{entry.day}</div>
+                            <div className="text-xs font-normal">{getDayName(entry.day)}</div>
+                            {entry.isBankHoliday && <div className="text-xs">🔴</div>}
+                            {entry.isOnLeave && <div className="text-xs">🟢</div>}
                           </div>
-                        );
-                      })}
+                        </div>
+                      ))}
                     </div>
+                  </div>
 
-                    {/* Annual Header - Sticky Right */}
-                    <div className="w-24 flex-shrink-0 sticky right-0 z-20 bg-gray-100 dark:bg-gray-700 pl-4 text-center">
-                      <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                        Total
-                      </span>
-                    </div>
+                  {/* Right Zone: Total Column (Sticky) */}
+                  <div className="w-24 flex-shrink-0 sticky right-0 z-20 bg-gray-100 dark:bg-gray-700 border-l border-gray-200 dark:border-gray-600 px-3 py-3">
+                    <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                      Total
+                    </span>
                   </div>
                 </div>
 
@@ -470,91 +461,93 @@ export const StaffTracker: React.FC = () => {
                     return (
                       <div
                         key={`${currentStaff?.staff_id}-${service.service_id}`}
-                        className={`px-6 py-2 flex items-center gap-4 ${
+                        className="flex"
+                      >
+                        {/* Left Zone: Service Name (Sticky) */}
+                        <div className={`w-32 flex-shrink-0 sticky left-0 z-10 bg-inherit border-r border-gray-200 dark:border-gray-600 px-4 py-3 ${
                           serviceIdx % 2 === 0
                             ? 'bg-white dark:bg-gray-800'
                             : 'bg-gray-50 dark:bg-gray-750'
-                        } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
-                      >
-                        {/* Service Name - Sticky Left */}
-                        <div className="w-32 flex-shrink-0 sticky left-0 z-10 pr-4 bg-inherit">
+                        }`}>
                           <span className="text-sm font-semibold text-gray-900 dark:text-white">
                             {service.service_name}
                           </span>
                         </div>
 
-                        {/* Daily Inputs */}
-                        <div className="flex gap-0">
-                          {dailyEntries.map((entry) => {
-                            const tooltipText = entry.isBankHoliday 
-                              ? `Public Holiday – ${entry.bankHolidayTitle}`
-                              : entry.isOnLeave 
-                              ? `Annual Leave`
-                              : '';
-                            
-                            const inputKey = getInputKey(serviceIdx, entry.day);
-                            const isActive = activeCell?.service === serviceIdx && activeCell?.day === entry.day;
-                            const cellBgClass = getCellBackgroundClass(entry);
-                            
-                            return (
-                              <div key={entry.day} className={`flex-shrink-0 w-16 px-1 ${cellBgClass}`}>
-                                <input
-                                  ref={(el) => {
-                                    if (el) {
-                                      inputRefs.current.set(inputKey, el);
-                                    } else {
-                                      inputRefs.current.delete(inputKey);
-                                    }
-                                  }}
-                                  type="number"
-                                  inputMode="numeric"
-                                  pattern="[0-9]*"
-                                  min="0"
-                                  step="1"
-                                  value={entry.services[service.service_name] ?? 0}
-                                  onFocus={(e) => {
-                                    if (!isTeamSelected) {
-                                      e.currentTarget.select();
-                                      setActiveCell({ service: serviceIdx, day: entry.day });
-                                    }
-                                  }}
-                                  onChange={(e) => {
-                                    if (!isTeamSelected) {
-                                      const cleaned = e.target.value.replace(/^0+(?=\d)/, "");
-                                      handleEntryChange(entry.day, service.service_name, cleaned);
-                                    }
-                                  }}
-                                  onBlur={(e) => {
-                                    if (!isTeamSelected && e.target.value === "") {
-                                      handleEntryChange(entry.day, service.service_name, "0");
-                                    }
-                                    setActiveCell(null);
-                                  }}
-                                  onKeyDown={(e) => {
-                                    if (!isTeamSelected) {
-                                      handleKeyNavigation(e, serviceIdx, entry.day);
-                                    }
-                                  }}
-                                  title={tooltipText}
-                                  disabled={isTeamSelected}
-                                  className={`w-full px-2 py-2 text-center border rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                                    isTeamSelected 
-                                      ? 'bg-gray-100 dark:bg-gray-600 border-gray-300 dark:border-gray-500 text-gray-700 dark:text-gray-300 cursor-not-allowed opacity-75'
-                                      : isActive ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 dark:border-blue-600' :
-                                      cellBgClass === 'bg-red-200 dark:bg-red-800/50' ? 'bg-red-200 dark:bg-red-800/50 border-red-300 dark:border-red-700 text-gray-900 dark:text-white' :
-                                      cellBgClass === 'bg-gray-200 dark:bg-gray-600' ? 'bg-gray-200 dark:bg-gray-600 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white' :
-                                      cellBgClass === 'bg-red-100 dark:bg-red-800/30' ? 'bg-red-100 dark:bg-red-800/30 border-red-200 dark:border-red-700 text-gray-900 dark:text-white' :
-                                      'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white'
-                                  }`}
-                                  placeholder="0"
-                                />
-                              </div>
-                            );
-                          })}
+                        {/* Middle Zone: Scrollable Daily Inputs */}
+                        <div 
+                          className="flex-1 overflow-x-auto"
+                          style={{ scrollBehavior: 'smooth' }}
+                        >
+                          <div className="flex">
+                            {dailyEntries.map((entry) => {
+                              const inputKey = getInputKey(serviceIdx, entry.day);
+                              const isActive = activeCell?.service === serviceIdx && activeCell?.day === entry.day;
+                              const cellBgClass = getCellBackgroundClass(entry);
+                              
+                              return (
+                                <div key={entry.day} className={`flex-shrink-0 w-16 px-1 py-2 border-r border-gray-200 dark:border-gray-600 ${cellBgClass}`}>
+                                  <input
+                                    ref={(el) => {
+                                      if (el) {
+                                        inputRefs.current.set(inputKey, el);
+                                      } else {
+                                        inputRefs.current.delete(inputKey);
+                                      }
+                                    }}
+                                    type="number"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    min="0"
+                                    step="1"
+                                    value={entry.services[service.service_name] ?? 0}
+                                    onFocus={(e) => {
+                                      if (!isTeamSelected) {
+                                        e.currentTarget.select();
+                                        setActiveCell({ service: serviceIdx, day: entry.day });
+                                      }
+                                    }}
+                                    onChange={(e) => {
+                                      if (!isTeamSelected) {
+                                        const cleaned = e.target.value.replace(/^0+(?=\d)/, "");
+                                        handleEntryChange(entry.day, service.service_name, cleaned);
+                                      }
+                                    }}
+                                    onBlur={(e) => {
+                                      if (!isTeamSelected && e.target.value === "") {
+                                        handleEntryChange(entry.day, service.service_name, "0");
+                                      }
+                                      setActiveCell(null);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (!isTeamSelected) {
+                                        handleKeyNavigation(e, serviceIdx, entry.day);
+                                      }
+                                    }}
+                                    disabled={isTeamSelected}
+                                    className={`w-full px-2 py-2 text-center border rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                                      isTeamSelected 
+                                        ? 'bg-gray-100 dark:bg-gray-600 border-gray-300 dark:border-gray-500 text-gray-700 dark:text-gray-300 cursor-not-allowed opacity-75'
+                                        : isActive ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 dark:border-blue-600' :
+                                        cellBgClass === 'bg-red-200 dark:bg-red-800/50' ? 'bg-red-200 dark:bg-red-800/50 border-red-300 dark:border-red-700 text-gray-900 dark:text-white' :
+                                        cellBgClass === 'bg-gray-200 dark:bg-gray-600' ? 'bg-gray-200 dark:bg-gray-600 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white' :
+                                        cellBgClass === 'bg-red-100 dark:bg-red-800/30' ? 'bg-red-100 dark:bg-red-800/30 border-red-200 dark:border-red-700 text-gray-900 dark:text-white' :
+                                        'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white'
+                                    }`}
+                                    placeholder="0"
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
 
-                        {/* Service Total - Sticky Right */}
-                        <div className="w-24 flex-shrink-0 sticky right-0 z-10 pl-4 bg-inherit">
+                        {/* Right Zone: Service Total (Sticky) */}
+                        <div className={`w-24 flex-shrink-0 sticky right-0 z-10 bg-inherit border-l border-gray-200 dark:border-gray-600 px-3 py-3 ${
+                          serviceIdx % 2 === 0
+                            ? 'bg-white dark:bg-gray-800'
+                            : 'bg-gray-50 dark:bg-gray-750'
+                        }`}>
                           <div className={`px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold ${getStatusColor(serviceTotal, serviceTarget)}`}>
                             {serviceTotal}
                           </div>
@@ -564,34 +557,39 @@ export const StaffTracker: React.FC = () => {
                   })}
 
                   {/* Monthly Totals Row */}
-                  <div className="px-6 py-2 bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500 flex items-center gap-4">
-                    {/* Row Label - Sticky Left */}
-                    <div className="w-32 flex-shrink-0 sticky left-0 z-10 pr-4 bg-gray-200 dark:bg-gray-600">
+                  <div className="flex bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500">
+                    {/* Left Zone: Row Label (Sticky) */}
+                    <div className="w-32 flex-shrink-0 sticky left-0 z-10 bg-gray-200 dark:bg-gray-600 border-r border-gray-300 dark:border-gray-500 px-4 py-3">
                       <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
                         Daily Total
                       </span>
                     </div>
 
-                    {/* Daily Totals */}
-                    <div className="flex gap-0">
-                      {dailyEntries.map((entry) => {
-                        const dayTotal = services.reduce((sum, service) => 
-                          sum + (entry.services[service.service_name] || 0), 0
-                        );
-                        const cellBgClass = getCellBackgroundClass(entry);
-                        
-                        return (
-                          <div key={entry.day} className={`flex-shrink-0 w-16 px-1 ${cellBgClass}`}>
-                            <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
-                              {dayTotal}
+                    {/* Middle Zone: Scrollable Daily Totals */}
+                    <div 
+                      className="flex-1 overflow-x-auto"
+                      style={{ scrollBehavior: 'smooth' }}
+                    >
+                      <div className="flex">
+                        {dailyEntries.map((entry) => {
+                          const dayTotal = services.reduce((sum, service) => 
+                            sum + (entry.services[service.service_name] || 0), 0
+                          );
+                          const cellBgClass = getCellBackgroundClass(entry);
+                          
+                          return (
+                            <div key={entry.day} className={`flex-shrink-0 w-16 px-1 py-2 border-r border-gray-300 dark:border-gray-500 ${cellBgClass}`}>
+                              <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
+                                {dayTotal}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
 
-                    {/* Overall Total - Sticky Right */}
-                    <div className="w-24 flex-shrink-0 sticky right-0 z-10 pl-4 bg-gray-200 dark:bg-gray-600">
+                    {/* Right Zone: Overall Total (Sticky) */}
+                    <div className="w-24 flex-shrink-0 sticky right-0 z-10 bg-gray-200 dark:bg-gray-600 border-l border-gray-300 dark:border-gray-500 px-3 py-3">
                       <div className="px-2 py-2 bg-blue-600 dark:bg-blue-700 border border-blue-700 dark:border-blue-800 rounded-md text-center text-sm font-bold text-white">
                         {overallTotal}
                       </div>
