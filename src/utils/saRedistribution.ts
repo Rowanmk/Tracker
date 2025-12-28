@@ -1,3 +1,4 @@
+import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
 import type { FinancialYear } from './financialYear';
 
@@ -41,17 +42,55 @@ export function isCurrentOrFutureMonth(
 }
 
 /**
+ * Fetch SA distribution rules from the database
+ */
+export async function getSADistributionRules(): Promise<SADistributionRule[]> {
+  const { data, error } = await supabase
+    .from('sa_distribution_rules')
+    .select('*');
+
+  if (error) throw error;
+
+  return data || [];
+}
+
+/**
+ * Fetch period-bounded actuals for a staff member in a financial year
+ */
+export async function getSAPeriodBoundedActuals(
+  staffId: number,
+  financialYear: FinancialYear
+): Promise<Record<number, number>> {
+  const { data, error } = await supabase
+    .from('activities')
+    .select('month, actual_value')
+    .eq('staff_id', staffId)
+    .gte('year', financialYear.start)
+    .lte('year', financialYear.end);
+
+  if (error) throw error;
+
+  const actuals: Record<number, number> = {};
+  (data || []).forEach(row => {
+    const month = row.month;
+    actuals[month] = (actuals[month] || 0) + (row.actual_value || 0);
+  });
+
+  return actuals;
+}
+
+/**
  * MAIN PURE FUNCTION
  */
 export function calculateAllSAMonths({
   annualTarget,
-  actualDeliveredToDate,
+  actualsByPeriod,
   currentMonth,
   overrides,
   distributionRules,
 }: {
   annualTarget: number;
-  actualDeliveredToDate: number;
+  actualsByPeriod: Record<number, number>;
   currentMonth: number;
   overrides: Record<number, number>;
   distributionRules: SADistributionRule[];
@@ -67,6 +106,12 @@ export function calculateAllSAMonths({
 
   if (annualTarget <= 0) return result;
 
+  // Calculate actuals delivered to date
+  let carriedActuals = 0;
+  for (let m = 1; m < currentMonth; m++) {
+    carriedActuals += actualsByPeriod[m] || 0;
+  }
+
   // Apply overrides first
   Object.entries(overrides).forEach(([m, v]) => {
     result[Number(m)] = v;
@@ -78,8 +123,6 @@ export function calculateAllSAMonths({
     { endMonth: 11, cumulativePct: 90 },
     { endMonth: 1, cumulativePct: 100 },
   ];
-
-  let carriedActuals = actualDeliveredToDate;
 
   for (const checkpoint of checkpoints) {
     const cumulativeTarget = Math.round(
