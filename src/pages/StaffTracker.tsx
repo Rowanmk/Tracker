@@ -404,6 +404,59 @@ export const StaffTracker: React.FC = () => {
           <div className="text-center py-4">Loading...</div>
         ) : (
           <div className="space-y-6">
+            {/* SECTION: Monthly Progress Charts - Repositioned Above Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {services.map((service) => {
+                const serviceTotal = serviceTotals[service.service_name];
+                const serviceTarget = targets[service.service_name] || 0;
+                const percentage = serviceTarget > 0 ? (serviceTotal / serviceTarget) * 100 : 0;
+                const statusColor = getStatusColor(serviceTotal, serviceTarget);
+                
+                return (
+                  <div key={service.service_id} className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200 overflow-hidden">
+                    <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-6 py-4">
+                      <h4 className="text-lg font-bold text-white">
+                        {service.service_name}
+                      </h4>
+                    </div>
+
+                    <div className="px-6 py-6 space-y-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Progress</span>
+                        <span className={`text-2xl font-bold ${statusColor}`}>{Math.round(percentage)}%</span>
+                      </div>
+
+                      <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-3 overflow-hidden">
+                        <div
+                          className={`h-3 rounded-full transition-all duration-500 ease-in-out ${
+                            serviceTotal >= serviceTarget ? 'bg-green-500' :
+                            serviceTotal >= serviceTarget * 0.5 ? 'bg-yellow-500' : 'bg-red-500'
+                          }`}
+                          style={{ width: `${Math.min(percentage, 100)}%` }}
+                        />
+                      </div>
+
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 dark:text-gray-400">Delivered</span>
+                        <span className="font-bold text-gray-900 dark:text-white">{serviceTotal}</span>
+                      </div>
+
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 dark:text-gray-400">Target</span>
+                        <span className="font-bold text-gray-900 dark:text-white">{serviceTarget}</span>
+                      </div>
+
+                      <div className="pt-2 border-t border-gray-200 dark:border-gray-600">
+                        <div className={`text-sm font-medium ${statusColor}`}>
+                          {serviceTotal >= serviceTarget ? '✓ On Track' : '⚠ Behind Target'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
             {/* Card-based layout matching Targets Control */}
             <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden">
               {/* Staff Member Header */}
@@ -581,8 +634,8 @@ export const StaffTracker: React.FC = () => {
               </div>
             </div>
 
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Summary Cards - Run Rate and Working Days Hidden from View */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
                 <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Monthly Progress</h3>
                 <div className="space-y-3">
@@ -617,7 +670,7 @@ export const StaffTracker: React.FC = () => {
               </div>
 
               <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Run Rate Status</h3>
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Overall Status</h3>
                 <div className="space-y-4">
                   <div className="text-center">
                     <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">{overallTotal}</div>
@@ -635,26 +688,6 @@ export const StaffTracker: React.FC = () => {
                         ? '✓ On Track' : '⚠ Behind'}
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">Status</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Working Days</h3>
-                <div className="space-y-4">
-                  <div className="text-center">
-                    <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">{daysWorked}</div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">Days Worked</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-gray-600 dark:text-gray-300">{teamWorkingDays}</div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">Total Working Days</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                      {teamWorkingDays - daysWorked}
-                    </div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">Days Remaining</div>
                   </div>
                 </div>
               </div>
