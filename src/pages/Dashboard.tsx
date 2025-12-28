@@ -3,7 +3,7 @@ import { TeamProgressTile } from "../components/TeamProgressTile";
 import { EmployeeProgressChart } from "../components/EmployeeProgressChart";
 import { RunRateTile } from "../components/RunRateTile";
 import { StaffPerformanceBar } from "../components/StaffPerformanceBar";
-import { ServicePerformanceTiles } from "../components/ServicePerformanceTiles";
+// import { ServicePerformanceTiles } from "../components/ServicePerformanceTiles";
 import { useDate } from "../context/DateContext";
 import { useAuth } from "../context/AuthContext";
 import { useServices } from "../hooks/useServices";
@@ -345,7 +345,8 @@ export const Dashboard: React.FC = () => {
         />
       </div>
 
-      <div className="mb-6 animate-slide-up">
+      {/* SERVICE PERFORMANCE TILES REMOVED - COMMENTED OUT */}
+      {/* <div className="mb-6 animate-slide-up">
         <ServicePerformanceTiles
           services={services}
           staffPerformance={staffPerformance}
@@ -356,7 +357,7 @@ export const Dashboard: React.FC = () => {
           month={selectedMonth}
           financialYear={derivedFinancialYear}
         />
-      </div>
+      </div> */}
 
       <div className="mb-6 animate-slide-up">
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6">
