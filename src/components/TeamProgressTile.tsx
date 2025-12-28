@@ -172,53 +172,6 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     );
   };
 
-  const renderTotalRow = () => {
-    const trueTotalTarget = Object.values(serviceTargets).reduce((s, v) => s + v, 0);
-    const percentage = trueTotalTarget > 0 ? (totalDelivered / trueTotalTarget) * 100 : 0;
-    const barColor = getBarColor(totalDelivered, trueTotalTarget);
-    const totalLabel = dashboardMode === "team" ? "Team Total" : "My Total";
-
-    // Calculate today's expected percentage for the marker
-    const todayExpectedPercentage = workingDays > 0 ? (workingDaysUpToToday / workingDays) * 100 : 0;
-
-    return (
-      <div className="space-y-3 pt-6 border-t border-gray-200 dark:border-gray-600 animate-fade-in">
-        <div className="flex justify-between items-center">
-          <span className="font-bold text-lg text-gray-900 dark:text-white transition-all duration-300 ease-in-out">{totalLabel}</span>
-          <div className="flex items-center space-x-3">
-            <span className="font-bold text-lg text-gray-900 dark:text-white transition-all duration-300 ease-in-out">{totalDelivered} / {trueTotalTarget}</span>
-            <span className="text-sm text-gray-600 dark:text-gray-400 transition-all duration-300 ease-in-out">({Math.round(percentage)}%)</span>
-          </div>
-        </div>
-        
-        <div className="relative flex items-center">
-          <div className="flex-1 relative">
-            <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-10 overflow-hidden shadow-inner">
-              <div
-                className="h-10 rounded-full transition-all duration-500 ease-in-out shadow-md"
-                style={{ 
-                  width: `${Math.min(percentage, 100)}%`,
-                  backgroundColor: barColor
-                }}
-                title={`${totalLabel}: ${totalDelivered}/${trueTotalTarget} (${Math.round(percentage)}%)`}
-              />
-              {/* Today Progress Marker */}
-              <div
-                className="absolute top-0 h-10 w-0.5 bg-[#001B47] transition-all duration-300 ease-in-out"
-                style={{ left: `${Math.min(todayExpectedPercentage, 100)}%` }}
-                title={`Expected by today: ${Math.round(todayExpectedPercentage)}%`}
-              />
-            </div>
-          </div>
-          {/* Ahead/Behind Badge positioned to the right of the today marker */}
-          <div className="ml-3 flex items-center" style={{ minWidth: '40px' }}>
-            {getAheadBehindBadge(totalDelivered, trueTotalTarget)}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   const progressTitle = dashboardMode === "team" ? "Team Progress" : `${currentStaff?.name || "My"} Progress`;
 
   return (
@@ -230,7 +183,6 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
       <div className="flex-1 flex flex-col justify-end p-4 pb-6">
         <div className="space-y-6 flex-1 flex flex-col justify-center">
           {services.map(service => renderServiceRow(service.service_id, service.service_name))}
-          {renderTotalRow()}
         </div>
       </div>
     </div>
