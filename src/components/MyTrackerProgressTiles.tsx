@@ -34,6 +34,7 @@ export const MyTrackerProgressTiles: React.FC<MyTrackerProgressTilesProps> = ({
   const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(false);
 
+  // In team mode, use all staff. In individual mode, filter to current staff only.
   const effectiveStaffPerformance =
     dashboardMode === "individual" && currentStaff
       ? staffPerformance.filter(s => s.staff_id === currentStaff.staff_id)
@@ -46,11 +47,13 @@ export const MyTrackerProgressTiles: React.FC<MyTrackerProgressTilesProps> = ({
         const targetMap: Record<number, number> = {};
 
         if (dashboardMode === "individual" && currentStaff) {
+          // Individual mode: load targets only for current staff
           const { perService } = await loadTargets(month, financialYear, currentStaff.staff_id);
           Object.entries(perService).forEach(([serviceId, value]) => {
             targetMap[parseInt(serviceId)] = value;
           });
         } else {
+          // Team mode: aggregate targets from all staff in effectiveStaffPerformance
           for (const staff of effectiveStaffPerformance) {
             const { perService } = await loadTargets(month, financialYear, staff.staff_id);
             Object.entries(perService).forEach(([serviceId, value]) => {
@@ -143,7 +146,7 @@ export const MyTrackerProgressTiles: React.FC<MyTrackerProgressTilesProps> = ({
     );
   }
 
-  // Calculate totals for each service
+  // Calculate totals for each service by aggregating across all effective staff
   const serviceTotals: Record<string, number> = {};
   services.forEach(service => {
     serviceTotals[service.service_name] = effectiveStaffPerformance.reduce(
