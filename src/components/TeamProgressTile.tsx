@@ -135,7 +135,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     const todayExpectedPercentage = workingDays > 0 ? (workingDaysUpToToday / workingDays) * 100 : 0;
 
     return (
-      <div key={serviceId} className="space-y-3 animate-fade-in">
+      <div key={serviceId} className="space-y-2 animate-fade-in">
         <div className="flex justify-between items-center">
           <span className="font-bold text-gray-900 dark:text-white transition-all duration-300 ease-in-out">{serviceName}</span>
           <div className="flex items-center space-x-2">
@@ -176,12 +176,12 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
-      <div className="tile-header px-4 py-2">
+      <div className="tile-header px-4 py-1.5">
         {progressTitle}
       </div>
 
-      <div className="flex-1 flex flex-col justify-end p-4 pb-6">
-        <div className="space-y-6 flex-1 flex flex-col justify-center">
+      <div className="flex-1 flex flex-col justify-end p-3 pb-4">
+        <div className="space-y-4 flex-1 flex flex-col justify-center">
           {services.map(service => renderServiceRow(service.service_id, service.service_name))}
         </div>
       </div>

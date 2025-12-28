@@ -74,7 +74,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   if (loading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
-        <div className="tile-header px-4 py-2">Employee Progress Chart</div>
+        <div className="tile-header px-4 py-1.5">Employee Progress Chart</div>
         <div className="flex-1 flex items-center justify-center text-gray-500">Loading…</div>
       </div>
     );
@@ -96,7 +96,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
     if (!currentStaffData) {
       return (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
-          <div className="tile-header px-4 py-2">Employee Progress Chart</div>
+          <div className="tile-header px-4 py-1.5">Employee Progress Chart</div>
           <div className="flex-1 flex items-center justify-center text-gray-500">No data available</div>
         </div>
       );
@@ -128,11 +128,11 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
 
     return (
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
-        <div className="tile-header px-4 py-2">
+        <div className="tile-header px-4 py-1.5">
           Employee Progress Chart
         </div>
 
-        <div className="flex-1 flex flex-col justify-end p-4 pb-6">
+        <div className="flex-1 flex flex-col justify-end p-3 pb-4">
           <svg
             viewBox={`0 0 ${CHART_WIDTH} ${VIEWBOX_HEIGHT}`}
             preserveAspectRatio="none"
@@ -243,11 +243,11 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
-      <div className="tile-header px-4 py-2">
+      <div className="tile-header px-4 py-1.5">
         Employee Progress Chart
       </div>
 
-      <div className="flex-1 flex flex-col justify-end p-4 pb-6">
+      <div className="flex-1 flex flex-col justify-end p-3 pb-4">
         <svg
           viewBox={`0 0 ${CHART_WIDTH} ${VIEWBOX_HEIGHT}`}
           preserveAspectRatio="none"
