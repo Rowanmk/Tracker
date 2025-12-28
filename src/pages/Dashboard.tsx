@@ -3,6 +3,7 @@ import { TeamProgressTile } from "../components/TeamProgressTile";
 import { EmployeeProgressChart } from "../components/EmployeeProgressChart";
 import { RunRateTile } from "../components/RunRateTile";
 import { StaffPerformanceBar } from "../components/StaffPerformanceBar";
+import { ServicePerformanceTiles } from "../components/ServicePerformanceTiles";
 import { useDate } from "../context/DateContext";
 import { useAuth } from "../context/AuthContext";
 import { useServices } from "../hooks/useServices";
@@ -334,6 +335,19 @@ export const Dashboard: React.FC = () => {
 
       <div className="mb-6 animate-slide-up">
         <StaffPerformanceBar
+          staffPerformance={staffPerformance}
+          dashboardMode={dashboardMode}
+          currentStaff={currentIndividualStaff}
+          workingDays={teamWorkingDays}
+          workingDaysUpToToday={workingDaysUpToToday}
+          month={selectedMonth}
+          financialYear={derivedFinancialYear}
+        />
+      </div>
+
+      <div className="mb-6 animate-slide-up">
+        <ServicePerformanceTiles
+          services={services}
           staffPerformance={staffPerformance}
           dashboardMode={dashboardMode}
           currentStaff={currentIndividualStaff}
