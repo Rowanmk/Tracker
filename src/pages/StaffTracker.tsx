@@ -364,7 +364,7 @@ export const StaffTracker: React.FC = () => {
 
   return (
     <div>
-      <h2 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-6">
+      <h2 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-3">
         My Tracker
       </h2>
 
@@ -404,7 +404,7 @@ export const StaffTracker: React.FC = () => {
           <div className="text-center py-4">Loading...</div>
         ) : (
           <div className="space-y-6">
-            {/* SECTION: Monthly Progress Charts - Repositioned Above Grid */}
+            {/* SECTION: Monthly Progress Tiles - Compressed Height */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
               {services.map((service) => {
                 const serviceTotal = serviceTotals[service.service_name];
@@ -414,21 +414,21 @@ export const StaffTracker: React.FC = () => {
                 
                 return (
                   <div key={service.service_id} className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200 overflow-hidden">
-                    <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-6 py-4">
-                      <h4 className="text-lg font-bold text-white">
+                    <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-4 py-3">
+                      <h4 className="text-base font-bold text-white">
                         {service.service_name}
                       </h4>
                     </div>
 
-                    <div className="px-6 py-6 space-y-4">
+                    <div className="px-4 py-3 space-y-2">
                       <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Progress</span>
-                        <span className={`text-2xl font-bold ${statusColor}`}>{Math.round(percentage)}%</span>
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Progress</span>
+                        <span className={`text-xl font-bold ${statusColor}`}>{Math.round(percentage)}%</span>
                       </div>
 
-                      <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-3 overflow-hidden">
+                      <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2 overflow-hidden">
                         <div
-                          className={`h-3 rounded-full transition-all duration-500 ease-in-out ${
+                          className={`h-2 rounded-full transition-all duration-500 ease-in-out ${
                             serviceTotal >= serviceTarget ? 'bg-green-500' :
                             serviceTotal >= serviceTarget * 0.5 ? 'bg-yellow-500' : 'bg-red-500'
                           }`}
@@ -436,18 +436,18 @@ export const StaffTracker: React.FC = () => {
                         />
                       </div>
 
-                      <div className="flex justify-between text-sm">
+                      <div className="flex justify-between text-xs">
                         <span className="text-gray-600 dark:text-gray-400">Delivered</span>
                         <span className="font-bold text-gray-900 dark:text-white">{serviceTotal}</span>
                       </div>
 
-                      <div className="flex justify-between text-sm">
+                      <div className="flex justify-between text-xs">
                         <span className="text-gray-600 dark:text-gray-400">Target</span>
                         <span className="font-bold text-gray-900 dark:text-white">{serviceTarget}</span>
                       </div>
 
-                      <div className="pt-2 border-t border-gray-200 dark:border-gray-600">
-                        <div className={`text-sm font-medium ${statusColor}`}>
+                      <div className="pt-1 border-t border-gray-200 dark:border-gray-600">
+                        <div className={`text-xs font-medium ${statusColor}`}>
                           {serviceTotal >= serviceTarget ? '✓ On Track' : '⚠ Behind Target'}
                         </div>
                       </div>
@@ -458,21 +458,21 @@ export const StaffTracker: React.FC = () => {
 
               {/* TOTAL TILE */}
               <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200 overflow-hidden">
-                <div className="bg-gradient-to-r from-purple-600 to-purple-700 dark:from-purple-700 dark:to-purple-800 px-6 py-4">
-                  <h4 className="text-lg font-bold text-white">
+                <div className="bg-gradient-to-r from-purple-600 to-purple-700 dark:from-purple-700 dark:to-purple-800 px-4 py-3">
+                  <h4 className="text-base font-bold text-white">
                     Total
                   </h4>
                 </div>
 
-                <div className="px-6 py-6 space-y-4">
+                <div className="px-4 py-3 space-y-2">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Progress</span>
-                    <span className={`text-2xl font-bold ${getStatusColor(overallTotal, overallTarget)}`}>{Math.round(overallTarget > 0 ? (overallTotal / overallTarget) * 100 : 0)}%</span>
+                    <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Progress</span>
+                    <span className={`text-xl font-bold ${getStatusColor(overallTotal, overallTarget)}`}>{Math.round(overallTarget > 0 ? (overallTotal / overallTarget) * 100 : 0)}%</span>
                   </div>
 
-                  <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-3 overflow-hidden">
+                  <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2 overflow-hidden">
                     <div
-                      className={`h-3 rounded-full transition-all duration-500 ease-in-out ${
+                      className={`h-2 rounded-full transition-all duration-500 ease-in-out ${
                         overallTotal >= overallTarget ? 'bg-green-500' :
                         overallTotal >= overallTarget * 0.5 ? 'bg-yellow-500' : 'bg-red-500'
                       }`}
@@ -480,18 +480,18 @@ export const StaffTracker: React.FC = () => {
                     />
                   </div>
 
-                  <div className="flex justify-between text-sm">
+                  <div className="flex justify-between text-xs">
                     <span className="text-gray-600 dark:text-gray-400">Delivered</span>
                     <span className="font-bold text-gray-900 dark:text-white">{overallTotal}</span>
                   </div>
 
-                  <div className="flex justify-between text-sm">
+                  <div className="flex justify-between text-xs">
                     <span className="text-gray-600 dark:text-gray-400">Target</span>
                     <span className="font-bold text-gray-900 dark:text-white">{overallTarget}</span>
                   </div>
 
-                  <div className="pt-2 border-t border-gray-200 dark:border-gray-600">
-                    <div className={`text-sm font-medium ${getStatusColor(overallTotal, overallTarget)}`}>
+                  <div className="pt-1 border-t border-gray-200 dark:border-gray-600">
+                    <div className={`text-xs font-medium ${getStatusColor(overallTotal, overallTarget)}`}>
                       {overallTotal >= overallTarget ? '✓ On Track' : '⚠ Behind Target'}
                     </div>
                   </div>
