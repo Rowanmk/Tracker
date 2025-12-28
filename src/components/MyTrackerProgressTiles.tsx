@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { loadTargets } from '../utils/loadTargets';
+import React from 'react';
 import type { FinancialYear } from '../utils/financialYear';
 
 interface MyTrackerProgressTilesProps {
@@ -7,76 +6,21 @@ interface MyTrackerProgressTilesProps {
     service_id: number;
     service_name: string;
   }>;
-  staffPerformance: Array<{
-    staff_id: number;
-    name: string;
-    services: { [key: string]: number };
-    total: number;
-  }>;
+  serviceTotals: { [key: string]: number };
+  targets: { [key: string]: number };
   dashboardMode?: "team" | "individual";
-  currentStaff?: { staff_id: number; name: string } | null;
   workingDays: number;
   workingDaysUpToToday: number;
-  month: number;
-  financialYear: FinancialYear;
 }
 
 export const MyTrackerProgressTiles: React.FC<MyTrackerProgressTilesProps> = ({
   services,
-  staffPerformance,
+  serviceTotals,
+  targets,
   dashboardMode = "team",
-  currentStaff,
   workingDays,
   workingDaysUpToToday,
-  month,
-  financialYear,
 }) => {
-  const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
-  const [loading, setLoading] = useState(false);
-
-  // In team mode, use all staff. In individual mode, filter to current staff only.
-  const effectiveStaffPerformance =
-    dashboardMode === "individual" && currentStaff
-      ? staffPerformance.filter(s => s.staff_id === currentStaff.staff_id)
-      : staffPerformance;
-
-  useEffect(() => {
-    const fetchServiceTargets = async () => {
-      setLoading(true);
-      try {
-        const targetMap: Record<number, number> = {};
-
-        if (dashboardMode === "individual" && currentStaff) {
-          // Individual mode: load targets only for current staff
-          const { perService } = await loadTargets(month, financialYear, currentStaff.staff_id);
-          Object.entries(perService).forEach(([serviceId, value]) => {
-            targetMap[parseInt(serviceId)] = value;
-          });
-        } else {
-          // Team mode: aggregate targets from all staff in effectiveStaffPerformance
-          for (const staff of effectiveStaffPerformance) {
-            const { perService } = await loadTargets(month, financialYear, staff.staff_id);
-            Object.entries(perService).forEach(([serviceId, value]) => {
-              const sid = parseInt(serviceId);
-              targetMap[sid] = (targetMap[sid] || 0) + value;
-            });
-          }
-        }
-
-        setServiceTargets(targetMap);
-      } catch (error) {
-        console.error('Error fetching service targets:', error);
-        setServiceTargets({});
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (effectiveStaffPerformance.length > 0) {
-      fetchServiceTargets();
-    }
-  }, [dashboardMode, currentStaff?.staff_id, month, financialYear, effectiveStaffPerformance.length]);
-
   const getStatusBadge = (delivered: number, target: number) => {
     if (target === 0) return { text: 'No Target', color: 'text-gray-600 dark:text-gray-400' };
     const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
@@ -132,31 +76,9 @@ export const MyTrackerProgressTiles: React.FC<MyTrackerProgressTilesProps> = ({
     );
   };
 
-  if (loading) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        {[1, 2, 3, 4].map(i => (
-          <div key={i} className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 animate-pulse">
-            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
-            <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2"></div>
-            <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  // Calculate totals for each service by aggregating across all effective staff
-  const serviceTotals: Record<string, number> = {};
-  services.forEach(service => {
-    serviceTotals[service.service_name] = effectiveStaffPerformance.reduce(
-      (sum, staff) => sum + (staff.services[service.service_name] || 0),
-      0
-    );
-  });
-
+  // Calculate totals from passed-in serviceTotals (source of truth from grid)
   const overallTotal = Object.values(serviceTotals).reduce((sum, val) => sum + val, 0);
-  const overallTarget = Object.values(serviceTargets).reduce((sum, val) => sum + val, 0);
+  const overallTarget = Object.values(targets).reduce((sum, val) => sum + val, 0);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
@@ -165,7 +87,7 @@ export const MyTrackerProgressTiles: React.FC<MyTrackerProgressTilesProps> = ({
           {renderTile(
             service.service_name,
             serviceTotals[service.service_name] || 0,
-            serviceTargets[service.service_id] || 0
+            targets[service.service_name] || 0
           )}
         </div>
       ))}

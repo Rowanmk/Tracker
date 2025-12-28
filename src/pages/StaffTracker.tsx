@@ -27,6 +27,7 @@ export const StaffTracker: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeCell, setActiveCell] = useState<{ service: number; day: number } | null>(null);
   const [staffPerformance, setStaffPerformance] = useState<any[]>([]);
+  const [serviceTotals, setServiceTotals] = useState<{ [key: string]: number }>({});
 
   const { currentStaff, allStaff, selectedStaffId } = useAuth();
   const { services } = useServices();
@@ -186,6 +187,15 @@ export const StaffTracker: React.FC = () => {
       });
 
       setStaffPerformance(perfData);
+
+      // Calculate service totals from entries (source of truth)
+      const totals: { [key: string]: number } = {};
+      services.forEach(service => {
+        totals[service.service_name] = entries.reduce(
+          (sum, entry) => sum + entry.services[service.service_name], 0
+        );
+      });
+      setServiceTotals(totals);
     } else {
       // Individual mode: fetch only current staff activities
       const { data: activities } = await supabase
@@ -223,6 +233,15 @@ export const StaffTracker: React.FC = () => {
         }, {} as Record<string, number>),
         total: entries.reduce((sum, entry) => sum + Object.values(entry.services).reduce((s, v) => s + v, 0), 0),
       }]);
+
+      // Calculate service totals from entries (source of truth)
+      const totals: { [key: string]: number } = {};
+      services.forEach(service => {
+        totals[service.service_name] = entries.reduce(
+          (sum, entry) => sum + entry.services[service.service_name], 0
+        );
+      });
+      setServiceTotals(totals);
     }
 
     setDailyEntries(entries);
@@ -364,8 +383,8 @@ export const StaffTracker: React.FC = () => {
     return 'bg-white dark:bg-gray-700';
   };
 
-  const serviceTotals = getServiceTotals();
-  const overallTotal = Object.values(serviceTotals).reduce((sum, total) => sum + total, 0);
+  const calculatedServiceTotals = getServiceTotals();
+  const overallTotal = Object.values(calculatedServiceTotals).reduce((sum, total) => sum + total, 0);
   const overallTarget = Object.values(targets).reduce((sum, target) => sum + target, 0);
 
   const daysWorked = Math.min(workingDaysUpToToday, teamWorkingDays);
@@ -440,13 +459,11 @@ export const StaffTracker: React.FC = () => {
       {!loading && !leaveHolidayLoading && (
         <MyTrackerProgressTiles
           services={services}
-          staffPerformance={staffPerformance}
+          serviceTotals={calculatedServiceTotals}
+          targets={targets}
           dashboardMode={isTeamSelected ? "team" : "individual"}
-          currentStaff={isTeamSelected ? null : currentStaff ? { staff_id: currentStaff.staff_id, name: currentStaff.name } : null}
           workingDays={teamWorkingDays}
           workingDaysUpToToday={workingDaysUpToToday}
-          month={selectedMonth}
-          financialYear={selectedFinancialYear}
         />
       )}
 
@@ -505,7 +522,7 @@ export const StaffTracker: React.FC = () => {
                 {/* Service Rows - All children of single scroll container */}
                 <div className="divide-y divide-gray-200 dark:divide-gray-700 min-w-min">
                   {services.map((service, serviceIdx) => {
-                    const serviceTotal = serviceTotals[service.service_name];
+                    const serviceTotal = calculatedServiceTotals[service.service_name];
                     const serviceTarget = targets[service.service_name] || 0;
                     const rowBgClass = serviceIdx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-750';
                     
@@ -638,7 +655,7 @@ export const StaffTracker: React.FC = () => {
                 <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Monthly Progress</h3>
                 <div className="space-y-3">
                   {services.map(service => {
-                    const total = serviceTotals[service.service_name];
+                    const total = calculatedServiceTotals[service.service_name];
                     const target = targets[service.service_name] || 0;
                     const percentage = target > 0 ? (total / target) * 100 : 0;
                     const statusColor = getStatusColor(total, target);
