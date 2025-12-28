@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { useWorkingDays } from '../hooks/useWorkingDays';
 import { useStaffLeaveAndHolidays } from '../hooks/useStaffLeaveAndHolidays';
+import { MyTrackerProgressTiles } from '../components/MyTrackerProgressTiles';
 import { supabase } from '../supabase/client';
 import { loadTargets } from '../utils/loadTargets';
 
@@ -25,6 +26,7 @@ export const StaffTracker: React.FC = () => {
   const [targets, setTargets] = useState<{ [key: string]: number }>({});
   const [loading, setLoading] = useState(true);
   const [activeCell, setActiveCell] = useState<{ service: number; day: number } | null>(null);
+  const [staffPerformance, setStaffPerformance] = useState<any[]>([]);
 
   const { currentStaff, allStaff, selectedStaffId } = useAuth();
   const { services } = useServices();
@@ -161,6 +163,29 @@ export const StaffTracker: React.FC = () => {
           entry.services[service.service_name] = serviceActivities[entry.day] || 0;
         });
       });
+
+      // Build staff performance for tiles
+      const perfData = allStaff.map(staff => {
+        const staffActivities = allActivities?.filter(a => a.staff_id === staff.staff_id) || [];
+        const serviceMap: Record<string, number> = {};
+        services.forEach(s => serviceMap[s.service_name] = 0);
+        
+        staffActivities.forEach(activity => {
+          const service = services.find(s => s.service_id === activity.service_id);
+          if (service) {
+            serviceMap[service.service_name] += activity.delivered_count;
+          }
+        });
+
+        return {
+          staff_id: staff.staff_id,
+          name: staff.name,
+          services: serviceMap,
+          total: Object.values(serviceMap).reduce((s, v) => s + v, 0),
+        };
+      });
+
+      setStaffPerformance(perfData);
     } else {
       // Individual mode: fetch only current staff activities
       const { data: activities } = await supabase
@@ -186,6 +211,18 @@ export const StaffTracker: React.FC = () => {
           entry.services[service.service_name] = serviceActivities[entry.day] || 0;
         });
       });
+
+      setStaffPerformance([{
+        staff_id: currentStaff.staff_id,
+        name: currentStaff.name,
+        services: entries.reduce((acc, entry) => {
+          services.forEach(service => {
+            acc[service.service_name] = (acc[service.service_name] || 0) + entry.services[service.service_name];
+          });
+          return acc;
+        }, {} as Record<string, number>),
+        total: entries.reduce((sum, entry) => sum + Object.values(entry.services).reduce((s, v) => s + v, 0), 0),
+      }]);
     }
 
     setDailyEntries(entries);
@@ -399,116 +436,25 @@ export const StaffTracker: React.FC = () => {
         </div>
       </div>
 
+      {/* FOUR COMPACT PROGRESS TILES - POSITIONED DIRECTLY BELOW STATUS BAR */}
+      {!loading && !leaveHolidayLoading && (
+        <MyTrackerProgressTiles
+          services={services}
+          staffPerformance={staffPerformance}
+          dashboardMode={isTeamSelected ? "team" : "individual"}
+          currentStaff={isTeamSelected ? null : currentStaff ? { staff_id: currentStaff.staff_id, name: currentStaff.name } : null}
+          workingDays={teamWorkingDays}
+          workingDaysUpToToday={workingDaysUpToToday}
+          month={selectedMonth}
+          financialYear={selectedFinancialYear}
+        />
+      )}
+
       <div className="mt-6">
         {loading || leaveHolidayLoading ? (
           <div className="text-center py-4">Loading...</div>
         ) : (
           <div className="space-y-6">
-            {/* SERVICE PERFORMANCE TILES - REINSTATED */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {services.map(service => {
-                const delivered = serviceTotals[service.service_name] || 0;
-                const target = targets[service.service_name] || 0;
-                const percentage = target > 0 ? (delivered / target) * 100 : 0;
-                const expectedSoFar = teamWorkingDays > 0 ? (target / teamWorkingDays) * workingDaysUpToToday : 0;
-                const variance = delivered - expectedSoFar;
-
-                const getTileColor = (delivered: number, target: number) => {
-                  if (target === 0) return 'bg-gray-100 dark:bg-gray-700';
-                  const percentage = (delivered / target) * 100;
-                  if (percentage >= 100) return 'bg-green-100 dark:bg-green-900/30';
-                  if (percentage >= 75) return 'bg-yellow-100 dark:bg-yellow-900/30';
-                  return 'bg-red-100 dark:bg-red-900/30';
-                };
-
-                const getTileTextColor = (delivered: number, target: number) => {
-                  if (target === 0) return 'text-gray-700 dark:text-gray-300';
-                  const percentage = (delivered / target) * 100;
-                  if (percentage >= 100) return 'text-green-700 dark:text-green-300';
-                  if (percentage >= 75) return 'text-yellow-700 dark:text-yellow-300';
-                  return 'text-red-700 dark:text-red-300';
-                };
-
-                return (
-                  <div
-                    key={service.service_id}
-                    className={`p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 transition-all duration-300 ease-in-out ${getTileColor(delivered, target)}`}
-                  >
-                    <div className="flex justify-between items-start mb-3">
-                      <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-                        {service.service_name}
-                      </h3>
-                      <span className={`text-xs font-bold px-2 py-1 rounded ${getTileTextColor(delivered, target)}`}>
-                        {Math.round(percentage)}%
-                      </span>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-700 dark:text-gray-300">Delivered:</span>
-                        <span className="font-bold text-gray-900 dark:text-white">{delivered}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-700 dark:text-gray-300">Target:</span>
-                        <span className="font-bold text-gray-900 dark:text-white">{target}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-700 dark:text-gray-300">Expected:</span>
-                        <span className="font-bold text-gray-900 dark:text-white">{Math.round(expectedSoFar)}</span>
-                      </div>
-
-                      <div className="pt-2 border-t border-gray-300 dark:border-gray-600">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-700 dark:text-gray-300">Variance:</span>
-                          <span className={`font-bold ${variance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                            {variance >= 0 ? '+' : ''}{Math.round(variance)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 w-full bg-gray-300 dark:bg-gray-600 rounded-full h-2 overflow-hidden">
-                      <div
-                        className={`h-full transition-all duration-300 ease-in-out ${
-                          percentage >= 100 ? 'bg-green-500' :
-                          percentage >= 75 ? 'bg-yellow-500' :
-                          'bg-red-500'
-                        }`}
-                        style={{ width: `${Math.min(percentage, 100)}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* TOTAL PROGRESS TILE - REINSTATED */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Total Progress</h3>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Overall Delivered</span>
-                  <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">{overallTotal}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Overall Target</span>
-                  <span className="text-2xl font-bold text-gray-900 dark:text-white">{overallTarget}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Expected by Now</span>
-                  <span className="text-2xl font-bold text-gray-600 dark:text-gray-400">{expectedByNow}</span>
-                </div>
-                <div className="pt-4 border-t border-gray-200 dark:border-gray-600">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Achievement</span>
-                    <span className={`text-2xl font-bold ${getStatusColor(overallTotal, overallTarget)}`}>
-                      {overallTarget > 0 ? Math.round((overallTotal / overallTarget) * 100) : 0}%
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
             {/* Card-based layout matching Targets Control */}
             <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden">
               {/* Staff Member Header */}
