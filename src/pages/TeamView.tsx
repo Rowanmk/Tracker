@@ -424,130 +424,6 @@ export const TeamView: React.FC = () => {
         </div>
       )}
 
-      {/* SECTION 2: INDIVIDUAL PERFORMANCE TRENDS - SINGLE CHART */}
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
-        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-          Individual Performance Trends{displayData ? ` – ${displayData.name}` : ''}
-        </h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
-          Monthly % of Target Achieved with 3-month rolling average
-        </p>
-
-        {displayData && (
-          <div className="space-y-4">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Current 3-month avg: <span className="font-bold text-gray-900 dark:text-white">{currentRolling.toFixed(1)}%</span> • 
-                  Momentum: <span className={`font-bold ${
-                    momentum === 'Improving' ? 'text-green-600 dark:text-green-400' : 
-                    momentum === 'Declining' ? 'text-red-600 dark:text-red-400' : 
-                    'text-gray-600 dark:text-gray-400'
-                  }`}>{momentum}</span>
-                </p>
-              </div>
-            </div>
-
-            <div className="h-80 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-              <svg viewBox="0 0 800 250" className="w-full h-full">
-                {/* Grid lines */}
-                {[0, 25, 50, 75, 100, 125, 150].map(y => (
-                  <line
-                    key={`grid-${y}`}
-                    x1="40"
-                    y1={250 - (y / 150) * 200}
-                    x2="780"
-                    y2={250 - (y / 150) * 200}
-                    stroke="#E5E7EB"
-                    strokeWidth="1"
-                    opacity="0.3"
-                  />
-                ))}
-
-                {/* Y-axis labels */}
-                {[0, 50, 100, 150].map(y => (
-                  <text
-                    key={`label-${y}`}
-                    x="35"
-                    y={250 - (y / 150) * 200 + 4}
-                    textAnchor="end"
-                    className="text-xs fill-gray-600 dark:fill-gray-400"
-                  >
-                    {y}%
-                  </text>
-                ))}
-
-                {/* Actual performance line */}
-                <polyline
-                  points={displayData.percentages
-                    .map((p, i) => {
-                      const x = 40 + (i / (displayData.percentages.length - 1 || 1)) * 740;
-                      const y = 250 - (p / 150) * 200;
-                      return `${x},${y}`;
-                    })
-                    .join(' ')}
-                  fill="none"
-                  stroke="#3B82F6"
-                  strokeWidth="2"
-                />
-
-                {/* Rolling average line */}
-                <polyline
-                  points={displayData.rollingAvg
-                    .map((p, i) => {
-                      const x = 40 + (i / (displayData.rollingAvg.length - 1 || 1)) * 740;
-                      const y = 250 - (p / 150) * 200;
-                      return `${x},${y}`;
-                    })
-                    .join(' ')}
-                  fill="none"
-                  stroke="#10B981"
-                  strokeWidth="2"
-                  strokeDasharray="5,5"
-                />
-
-                {/* 100% target line */}
-                <line
-                  x1="40"
-                  y1={250 - (100 / 150) * 200}
-                  x2="780"
-                  y2={250 - (100 / 150) * 200}
-                  stroke="#EF4444"
-                  strokeWidth="2"
-                  strokeDasharray="3,3"
-                />
-
-                {/* Data points */}
-                {displayData.percentages.map((p, i) => (
-                  <circle
-                    key={`point-${i}`}
-                    cx={40 + (i / (displayData.percentages.length - 1 || 1)) * 740}
-                    cy={250 - (p / 150) * 200}
-                    r="3"
-                    fill="#3B82F6"
-                  />
-                ))}
-              </svg>
-            </div>
-
-            <div className="flex gap-6 text-xs">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-0.5 bg-blue-500"></div>
-                <span className="text-gray-600 dark:text-gray-400">Actual Performance</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-0.5 bg-green-500" style={{ backgroundImage: 'repeating-linear-gradient(90deg, #10B981 0, #10B981 5px, transparent 5px, transparent 10px)' }}></div>
-                <span className="text-gray-600 dark:text-gray-400">3-Month Rolling Avg</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-0.5 bg-red-500" style={{ backgroundImage: 'repeating-linear-gradient(90deg, #EF4444 0, #EF4444 3px, transparent 3px, transparent 6px)' }}></div>
-                <span className="text-gray-600 dark:text-gray-400">100% Target</span>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* SECTION 3: CONSISTENCY & PLANNING QUALITY */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
@@ -866,6 +742,130 @@ export const TeamView: React.FC = () => {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* SECTION 2: INDIVIDUAL PERFORMANCE TRENDS - MOVED TO BOTTOM */}
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
+        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+          Individual Performance Trends{displayData ? ` – ${displayData.name}` : ''}
+        </h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+          Monthly % of Target Achieved with 3-month rolling average
+        </p>
+
+        {displayData && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Current 3-month avg: <span className="font-bold text-gray-900 dark:text-white">{currentRolling.toFixed(1)}%</span> • 
+                  Momentum: <span className={`font-bold ${
+                    momentum === 'Improving' ? 'text-green-600 dark:text-green-400' : 
+                    momentum === 'Declining' ? 'text-red-600 dark:text-red-400' : 
+                    'text-gray-600 dark:text-gray-400'
+                  }`}>{momentum}</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="h-80 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+              <svg viewBox="0 0 800 250" className="w-full h-full">
+                {/* Grid lines */}
+                {[0, 25, 50, 75, 100, 125, 150].map(y => (
+                  <line
+                    key={`grid-${y}`}
+                    x1="40"
+                    y1={250 - (y / 150) * 200}
+                    x2="780"
+                    y2={250 - (y / 150) * 200}
+                    stroke="#E5E7EB"
+                    strokeWidth="1"
+                    opacity="0.3"
+                  />
+                ))}
+
+                {/* Y-axis labels */}
+                {[0, 50, 100, 150].map(y => (
+                  <text
+                    key={`label-${y}`}
+                    x="35"
+                    y={250 - (y / 150) * 200 + 4}
+                    textAnchor="end"
+                    className="text-xs fill-gray-600 dark:fill-gray-400"
+                  >
+                    {y}%
+                  </text>
+                ))}
+
+                {/* Actual performance line */}
+                <polyline
+                  points={displayData.percentages
+                    .map((p, i) => {
+                      const x = 40 + (i / (displayData.percentages.length - 1 || 1)) * 740;
+                      const y = 250 - (p / 150) * 200;
+                      return `${x},${y}`;
+                    })
+                    .join(' ')}
+                  fill="none"
+                  stroke="#3B82F6"
+                  strokeWidth="2"
+                />
+
+                {/* Rolling average line */}
+                <polyline
+                  points={displayData.rollingAvg
+                    .map((p, i) => {
+                      const x = 40 + (i / (displayData.rollingAvg.length - 1 || 1)) * 740;
+                      const y = 250 - (p / 150) * 200;
+                      return `${x},${y}`;
+                    })
+                    .join(' ')}
+                  fill="none"
+                  stroke="#10B981"
+                  strokeWidth="2"
+                  strokeDasharray="5,5"
+                />
+
+                {/* 100% target line */}
+                <line
+                  x1="40"
+                  y1={250 - (100 / 150) * 200}
+                  x2="780"
+                  y2={250 - (100 / 150) * 200}
+                  stroke="#EF4444"
+                  strokeWidth="2"
+                  strokeDasharray="3,3"
+                />
+
+                {/* Data points */}
+                {displayData.percentages.map((p, i) => (
+                  <circle
+                    key={`point-${i}`}
+                    cx={40 + (i / (displayData.percentages.length - 1 || 1)) * 740}
+                    cy={250 - (p / 150) * 200}
+                    r="3"
+                    fill="#3B82F6"
+                  />
+                ))}
+              </svg>
+            </div>
+
+            <div className="flex gap-6 text-xs">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-0.5 bg-blue-500"></div>
+                <span className="text-gray-600 dark:text-gray-400">Actual Performance</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-0.5 bg-green-500" style={{ backgroundImage: 'repeating-linear-gradient(90deg, #10B981 0, #10B981 5px, transparent 5px, transparent 10px)' }}></div>
+                <span className="text-gray-600 dark:text-gray-400">3-Month Rolling Avg</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-0.5 bg-red-500" style={{ backgroundImage: 'repeating-linear-gradient(90deg, #EF4444 0, #EF4444 3px, transparent 3px, transparent 6px)' }}></div>
+                <span className="text-gray-600 dark:text-gray-400">100% Target</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
