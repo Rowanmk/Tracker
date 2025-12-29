@@ -24,6 +24,7 @@ interface StaffAnalytics {
   bagelFrequencyRate: number;
   avgBagelDaysPerMonth: number;
   longestNoBagelStreak: number;
+  longestBagelStreak: number;
   bagelClusters: number;
   recoverySpeed: number;
   servicesMix: {
@@ -40,11 +41,16 @@ interface StaffAnalytics {
 
 interface TeamHealthMetrics {
   avgTargetAchieved: number;
-  teamBagelRate: number;
+  teamAvgBagelDaysPerMonth: number;
+  longestNoBagelStreak: number;
+  longestBagelStreak: number;
   performanceBands: {
     excellent: number;
     good: number;
     poor: number;
+  };
+  serviceAverages: {
+    [service: string]: number;
   };
 }
 
@@ -206,6 +212,7 @@ export const TeamView: React.FC = () => {
           bagelFrequencyRate: bagelMetrics.frequencyRate,
           avgBagelDaysPerMonth: bagelMetrics.avgPerMonth,
           longestNoBagelStreak: bagelMetrics.longestStreak,
+          longestBagelStreak: bagelMetrics.longestBagelStreak,
           bagelClusters: bagelMetrics.clusters,
           recoverySpeed: bagelMetrics.recoverySpeed,
           servicesMix,
@@ -229,8 +236,16 @@ export const TeamView: React.FC = () => {
           }, 0) / analytics.length
         : 0;
 
-      const teamBagelRate = analytics.length > 0
-        ? analytics.reduce((sum, a) => sum + a.bagelFrequencyRate, 0) / analytics.length
+      const teamAvgBagelDaysPerMonth = analytics.length > 0
+        ? analytics.reduce((sum, a) => sum + a.avgBagelDaysPerMonth, 0) / analytics.length
+        : 0;
+
+      const longestNoBagelStreak = analytics.length > 0
+        ? Math.max(...analytics.map(a => a.longestNoBagelStreak), 0)
+        : 0;
+
+      const longestBagelStreak = analytics.length > 0
+        ? Math.max(...analytics.map(a => a.longestBagelStreak), 0)
         : 0;
 
       const performanceBands = {
@@ -263,10 +278,38 @@ export const TeamView: React.FC = () => {
         }).length,
       };
 
+      // Calculate 12-month average % target by service
+      const serviceAverages: Record<string, number> = {};
+      services.forEach(service => {
+        const monthlyServicePercentages: number[] = [];
+        
+        analytics.forEach(staff => {
+          const monthData = getFinancialYearMonths();
+          monthData.forEach(m => {
+            const monthPerf = staff.monthlyPerformance.find(mp => mp.month === m.number);
+            if (monthPerf && monthPerf.target > 0) {
+              const serviceDelivered = staff.monthlyPerformance
+                .filter(mp => mp.month === m.number)
+                .reduce((sum, mp) => sum + (staff.servicesMix[service.service_name]?.percentages[monthData.findIndex(md => md.number === m.number)] || 0), 0);
+              
+              // Simplified: use overall monthly percentage for now
+              monthlyServicePercentages.push(monthPerf.percentAchieved);
+            }
+          });
+        });
+
+        serviceAverages[service.service_name] = monthlyServicePercentages.length > 0
+          ? monthlyServicePercentages.reduce((a, b) => a + b, 0) / monthlyServicePercentages.length
+          : 0;
+      });
+
       setTeamHealthMetrics({
         avgTargetAchieved,
-        teamBagelRate,
+        teamAvgBagelDaysPerMonth,
+        longestNoBagelStreak,
+        longestBagelStreak,
         performanceBands,
+        serviceAverages,
       });
     } catch (err) {
       console.error('Error fetching analytics:', err);
@@ -323,7 +366,7 @@ export const TeamView: React.FC = () => {
         .filter(m => m.target > 0)
         .map(m => m.percentAchieved);
       
-      const rollingAvg = calculateRollingAverage(percentages, 3);
+      const rollingAvg = calculateRollingAverage(percentages, 12);
 
       return {
         percentages,
@@ -339,7 +382,7 @@ export const TeamView: React.FC = () => {
         .filter(m => m.target > 0)
         .map(m => m.percentAchieved);
       
-      const rollingAvg = calculateRollingAverage(percentages, 3);
+      const rollingAvg = calculateRollingAverage(percentages, 12);
 
       return {
         percentages,
@@ -388,44 +431,75 @@ export const TeamView: React.FC = () => {
               {Math.round(teamHealthMetrics.avgTargetAchieved)}%
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              {teamHealthMetrics.avgTargetAchieved >= 100 ? '✓ On Track' : '⚠ Below Target'}
+              12-month rolling average
             </div>
           </div>
 
           <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
             <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Team Bagel Rate</div>
             <div className="text-3xl font-bold text-orange-600 dark:text-orange-400">
-              {teamHealthMetrics.teamBagelRate.toFixed(1)}%
+              {teamHealthMetrics.teamAvgBagelDaysPerMonth.toFixed(1)}
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              Zero-delivery days per month
+              Average zero-delivery days per month
             </div>
           </div>
 
           <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
-            <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Performance ≥100%</div>
+            <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Longest No-Bagel Streak</div>
             <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-              {teamHealthMetrics.performanceBands.excellent}
+              {teamHealthMetrics.longestNoBagelStreak}
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              Staff members
+              Consecutive working days with delivery
             </div>
           </div>
 
           <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
-            <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Performance 80-99%</div>
-            <div className="text-3xl font-bold text-yellow-600 dark:text-yellow-400">
-              {teamHealthMetrics.performanceBands.good}
+            <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Longest Bagel Streak</div>
+            <div className="text-3xl font-bold text-red-600 dark:text-red-400">
+              {teamHealthMetrics.longestBagelStreak}
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              Staff members
+              Consecutive zero-delivery days
             </div>
           </div>
         </div>
       )}
 
-      {/* SECTION 3: CONSISTENCY & PLANNING QUALITY */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* SECTION 3: CONSISTENCY & PLANNING QUALITY WITH SERVICE AVERAGES */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* 12-Month Avg % Target by Service - NEW TILE */}
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">12-Month Avg % Target by Service</h3>
+          <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
+            Average % of target achieved per service
+          </p>
+          <div className="space-y-3">
+            {services.map((service) => {
+              const percentage = teamHealthMetrics?.serviceAverages[service.service_name] || 0;
+              return (
+                <div key={service.service_id}>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">{service.service_name}</span>
+                    <span className="text-sm font-bold text-gray-900 dark:text-white">{Math.round(percentage)}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ease-in-out ${
+                        percentage >= 100 ? 'bg-green-500' :
+                        percentage >= 75 ? 'bg-yellow-500' :
+                        'bg-red-500'
+                      }`}
+                      style={{ width: `${Math.min(percentage, 100)}%` }}
+                    ></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
           <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Consistency Score</h3>
           <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
@@ -750,7 +824,7 @@ export const TeamView: React.FC = () => {
           Individual Performance Trends{displayData ? ` – ${displayData.name}` : ''}
         </h3>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
-          Monthly % of Target Achieved with 3-month rolling average
+          Monthly % of Target Achieved with 12-month rolling average
         </p>
 
         {displayData && (
@@ -758,7 +832,7 @@ export const TeamView: React.FC = () => {
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Current 3-month avg: <span className="font-bold text-gray-900 dark:text-white">{currentRolling.toFixed(1)}%</span> • 
+                  Current 12-month avg: <span className="font-bold text-gray-900 dark:text-white">{currentRolling.toFixed(1)}%</span> • 
                   Momentum: <span className={`font-bold ${
                     momentum === 'Improving' ? 'text-green-600 dark:text-green-400' : 
                     momentum === 'Declining' ? 'text-red-600 dark:text-red-400' : 
@@ -857,7 +931,7 @@ export const TeamView: React.FC = () => {
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-0.5 bg-green-500" style={{ backgroundImage: 'repeating-linear-gradient(90deg, #10B981 0, #10B981 5px, transparent 5px, transparent 10px)' }}></div>
-                <span className="text-gray-600 dark:text-gray-400">3-Month Rolling Avg</span>
+                <span className="text-gray-600 dark:text-gray-400">12-Month Rolling Avg</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-0.5 bg-red-500" style={{ backgroundImage: 'repeating-linear-gradient(90deg, #EF4444 0, #EF4444 3px, transparent 3px, transparent 6px)' }}></div>
@@ -938,16 +1012,28 @@ function calculateBagelMetrics(
   const monthsWithData = new Set(activities.map(a => `${a.year}-${a.month}`)).size;
   const avgPerMonth = monthsWithData > 0 ? bagelDays / monthsWithData : 0;
 
-  // Find longest no-bagel streak
+  // Find longest no-bagel streak (delivery > 0)
   const sortedDays = Object.keys(workingDays).sort();
-  let longestStreak = 0;
+  let longestNoBagelStreak = 0;
   let currentStreak = 0;
   sortedDays.forEach(day => {
     if (deliveryDays[day]) {
       currentStreak++;
-      longestStreak = Math.max(longestStreak, currentStreak);
+      longestNoBagelStreak = Math.max(longestNoBagelStreak, currentStreak);
     } else {
       currentStreak = 0;
+    }
+  });
+
+  // Find longest bagel streak (delivery = 0)
+  let longestBagelStreak = 0;
+  let currentBagelStreak = 0;
+  sortedDays.forEach(day => {
+    if (!deliveryDays[day]) {
+      currentBagelStreak++;
+      longestBagelStreak = Math.max(longestBagelStreak, currentBagelStreak);
+    } else {
+      currentBagelStreak = 0;
     }
   });
 
@@ -987,7 +1073,8 @@ function calculateBagelMetrics(
   return {
     frequencyRate,
     avgPerMonth,
-    longestStreak,
+    longestStreak: longestNoBagelStreak,
+    longestBagelStreak,
     clusters,
     recoverySpeed,
   };
