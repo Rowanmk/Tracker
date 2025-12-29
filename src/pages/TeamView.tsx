@@ -50,7 +50,7 @@ interface TeamHealthMetrics {
 
 export const TeamView: React.FC = () => {
   const { selectedMonth, selectedFinancialYear } = useDate();
-  const { allStaff, loading: authLoading } = useAuth();
+  const { allStaff, currentStaff, selectedStaffId, loading: authLoading } = useAuth();
   const { services, loading: servicesLoading } = useServices();
   const { teamWorkingDays } = useWorkingDays({
     financialYear: selectedFinancialYear,
@@ -61,7 +61,9 @@ export const TeamView: React.FC = () => {
   const [teamHealthMetrics, setTeamHealthMetrics] = useState<TeamHealthMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedStaffForChart, setSelectedStaffForChart] = useState<number | null>(null);
+
+  // Determine if Team is selected
+  const isTeamSelected = selectedStaffId === "team" || !selectedStaffId;
 
   const fetchAnalyticsData = async () => {
     if (allStaff.length === 0 || services.length === 0) {
@@ -294,6 +296,64 @@ export const TeamView: React.FC = () => {
     return diff > 0 ? 'Improving' : 'Declining';
   };
 
+  // Get data for selected staff or team
+  const getDisplayData = (): { percentages: number[]; rollingAvg: number[]; name: string } | null => {
+    if (isTeamSelected) {
+      // Aggregate all staff data for team view
+      const monthData = getFinancialYearMonths();
+      const teamMonthlyPerformance: MonthlyPerformance[] = monthData.map(m => {
+        const monthDelivered = staffAnalytics.reduce((sum, staff) => {
+          const perf = staff.monthlyPerformance.find(mp => mp.month === m.number);
+          return sum + (perf?.delivered || 0);
+        }, 0);
+        const monthTarget = staffAnalytics.reduce((sum, staff) => {
+          const perf = staff.monthlyPerformance.find(mp => mp.month === m.number);
+          return sum + (perf?.target || 0);
+        }, 0);
+        return {
+          month: m.number,
+          year: m.number >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end,
+          delivered: monthDelivered,
+          target: monthTarget,
+          percentAchieved: monthTarget > 0 ? (monthDelivered / monthTarget) * 100 : 0,
+        };
+      });
+
+      const percentages = teamMonthlyPerformance
+        .filter(m => m.target > 0)
+        .map(m => m.percentAchieved);
+      
+      const rollingAvg = calculateRollingAverage(percentages, 3);
+
+      return {
+        percentages,
+        rollingAvg,
+        name: 'Team',
+      };
+    } else {
+      // Individual staff view
+      const selectedStaff = staffAnalytics.find(s => s.staff_id === currentStaff?.staff_id);
+      if (!selectedStaff) return null;
+
+      const percentages = selectedStaff.monthlyPerformance
+        .filter(m => m.target > 0)
+        .map(m => m.percentAchieved);
+      
+      const rollingAvg = calculateRollingAverage(percentages, 3);
+
+      return {
+        percentages,
+        rollingAvg,
+        name: selectedStaff.name,
+      };
+    }
+  };
+
+  const displayData = getDisplayData();
+  const currentRolling = displayData?.rollingAvg[displayData.rollingAvg.length - 1] || 0;
+  const previousRolling = displayData?.rollingAvg[Math.max(0, (displayData?.rollingAvg.length || 1) - 4)] || currentRolling;
+  const momentum = getMomentumLabel(currentRolling, previousRolling);
+
   if (loading || authLoading || servicesLoading) {
     return <div className="py-6 text-center text-gray-500">Loading analytics...</div>;
   }
@@ -364,149 +424,128 @@ export const TeamView: React.FC = () => {
         </div>
       )}
 
-      {/* SECTION 2: INDIVIDUAL PERFORMANCE TRENDS */}
+      {/* SECTION 2: INDIVIDUAL PERFORMANCE TRENDS - SINGLE CHART */}
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
-        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6">
-          Individual Performance Trends
+        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+          Individual Performance Trends{displayData ? ` – ${displayData.name}` : ''}
         </h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
           Monthly % of Target Achieved with 3-month rolling average
         </p>
 
-        <div className="space-y-8">
-          {staffAnalytics.map((staff) => {
-            const percentages = staff.monthlyPerformance
-              .filter(m => m.target > 0)
-              .map(m => m.percentAchieved);
-            
-            const rollingAvg = calculateRollingAverage(percentages, 3);
-            const currentRolling = rollingAvg[rollingAvg.length - 1] || 0;
-            const previousRolling = rollingAvg[Math.max(0, rollingAvg.length - 4)] || currentRolling;
-            const momentum = getMomentumLabel(currentRolling, previousRolling);
-
-            return (
-              <div key={staff.staff_id} className="border-b border-gray-200 dark:border-gray-700 pb-6 last:border-b-0">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white">{staff.name}</h4>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Current 3-month avg: <span className="font-bold">{currentRolling.toFixed(1)}%</span> • 
-                      Momentum: <span className={`font-bold ${
-                        momentum === 'Improving' ? 'text-green-600' : 
-                        momentum === 'Declining' ? 'text-red-600' : 
-                        'text-gray-600'
-                      }`}>{momentum}</span>
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setSelectedStaffForChart(selectedStaffForChart === staff.staff_id ? null : staff.staff_id)}
-                    className="px-3 py-1 text-sm bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/50"
-                  >
-                    {selectedStaffForChart === staff.staff_id ? 'Hide' : 'Show'} Chart
-                  </button>
-                </div>
-
-                {selectedStaffForChart === staff.staff_id && (
-                  <div className="mt-4 h-64 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                    <svg viewBox="0 0 800 200" className="w-full h-full">
-                      {/* Grid lines */}
-                      {[0, 25, 50, 75, 100, 125, 150].map(y => (
-                        <line
-                          key={`grid-${y}`}
-                          x1="40"
-                          y1={200 - (y / 150) * 160}
-                          x2="780"
-                          y2={200 - (y / 150) * 160}
-                          stroke="#E5E7EB"
-                          strokeWidth="1"
-                          opacity="0.3"
-                        />
-                      ))}
-
-                      {/* Y-axis labels */}
-                      {[0, 50, 100, 150].map(y => (
-                        <text
-                          key={`label-${y}`}
-                          x="35"
-                          y={200 - (y / 150) * 160 + 4}
-                          textAnchor="end"
-                          className="text-xs fill-gray-600 dark:fill-gray-400"
-                        >
-                          {y}%
-                        </text>
-                      ))}
-
-                      {/* Actual performance line */}
-                      <polyline
-                        points={percentages
-                          .map((p, i) => {
-                            const x = 40 + (i / (percentages.length - 1 || 1)) * 740;
-                            const y = 200 - (p / 150) * 160;
-                            return `${x},${y}`;
-                          })
-                          .join(' ')}
-                        fill="none"
-                        stroke="#3B82F6"
-                        strokeWidth="2"
-                      />
-
-                      {/* Rolling average line */}
-                      <polyline
-                        points={rollingAvg
-                          .map((p, i) => {
-                            const x = 40 + (i / (rollingAvg.length - 1 || 1)) * 740;
-                            const y = 200 - (p / 150) * 160;
-                            return `${x},${y}`;
-                          })
-                          .join(' ')}
-                        fill="none"
-                        stroke="#10B981"
-                        strokeWidth="2"
-                        strokeDasharray="5,5"
-                      />
-
-                      {/* 100% target line */}
-                      <line
-                        x1="40"
-                        y1={200 - (100 / 150) * 160}
-                        x2="780"
-                        y2={200 - (100 / 150) * 160}
-                        stroke="#EF4444"
-                        strokeWidth="2"
-                        strokeDasharray="3,3"
-                      />
-
-                      {/* Data points */}
-                      {percentages.map((p, i) => (
-                        <circle
-                          key={`point-${i}`}
-                          cx={40 + (i / (percentages.length - 1 || 1)) * 740}
-                          cy={200 - (p / 150) * 160}
-                          r="3"
-                          fill="#3B82F6"
-                        />
-                      ))}
-                    </svg>
-                    <div className="flex gap-6 mt-4 text-xs">
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-0.5 bg-blue-500"></div>
-                        <span>Actual Performance</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-0.5 bg-green-500" style={{ backgroundImage: 'repeating-linear-gradient(90deg, #10B981 0, #10B981 5px, transparent 5px, transparent 10px)' }}></div>
-                        <span>3-Month Rolling Avg</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-0.5 bg-red-500" style={{ backgroundImage: 'repeating-linear-gradient(90deg, #EF4444 0, #EF4444 3px, transparent 3px, transparent 6px)' }}></div>
-                        <span>100% Target</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
+        {displayData && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Current 3-month avg: <span className="font-bold text-gray-900 dark:text-white">{currentRolling.toFixed(1)}%</span> • 
+                  Momentum: <span className={`font-bold ${
+                    momentum === 'Improving' ? 'text-green-600 dark:text-green-400' : 
+                    momentum === 'Declining' ? 'text-red-600 dark:text-red-400' : 
+                    'text-gray-600 dark:text-gray-400'
+                  }`}>{momentum}</span>
+                </p>
               </div>
-            );
-          })}
-        </div>
+            </div>
+
+            <div className="h-80 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+              <svg viewBox="0 0 800 250" className="w-full h-full">
+                {/* Grid lines */}
+                {[0, 25, 50, 75, 100, 125, 150].map(y => (
+                  <line
+                    key={`grid-${y}`}
+                    x1="40"
+                    y1={250 - (y / 150) * 200}
+                    x2="780"
+                    y2={250 - (y / 150) * 200}
+                    stroke="#E5E7EB"
+                    strokeWidth="1"
+                    opacity="0.3"
+                  />
+                ))}
+
+                {/* Y-axis labels */}
+                {[0, 50, 100, 150].map(y => (
+                  <text
+                    key={`label-${y}`}
+                    x="35"
+                    y={250 - (y / 150) * 200 + 4}
+                    textAnchor="end"
+                    className="text-xs fill-gray-600 dark:fill-gray-400"
+                  >
+                    {y}%
+                  </text>
+                ))}
+
+                {/* Actual performance line */}
+                <polyline
+                  points={displayData.percentages
+                    .map((p, i) => {
+                      const x = 40 + (i / (displayData.percentages.length - 1 || 1)) * 740;
+                      const y = 250 - (p / 150) * 200;
+                      return `${x},${y}`;
+                    })
+                    .join(' ')}
+                  fill="none"
+                  stroke="#3B82F6"
+                  strokeWidth="2"
+                />
+
+                {/* Rolling average line */}
+                <polyline
+                  points={displayData.rollingAvg
+                    .map((p, i) => {
+                      const x = 40 + (i / (displayData.rollingAvg.length - 1 || 1)) * 740;
+                      const y = 250 - (p / 150) * 200;
+                      return `${x},${y}`;
+                    })
+                    .join(' ')}
+                  fill="none"
+                  stroke="#10B981"
+                  strokeWidth="2"
+                  strokeDasharray="5,5"
+                />
+
+                {/* 100% target line */}
+                <line
+                  x1="40"
+                  y1={250 - (100 / 150) * 200}
+                  x2="780"
+                  y2={250 - (100 / 150) * 200}
+                  stroke="#EF4444"
+                  strokeWidth="2"
+                  strokeDasharray="3,3"
+                />
+
+                {/* Data points */}
+                {displayData.percentages.map((p, i) => (
+                  <circle
+                    key={`point-${i}`}
+                    cx={40 + (i / (displayData.percentages.length - 1 || 1)) * 740}
+                    cy={250 - (p / 150) * 200}
+                    r="3"
+                    fill="#3B82F6"
+                  />
+                ))}
+              </svg>
+            </div>
+
+            <div className="flex gap-6 text-xs">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-0.5 bg-blue-500"></div>
+                <span className="text-gray-600 dark:text-gray-400">Actual Performance</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-0.5 bg-green-500" style={{ backgroundImage: 'repeating-linear-gradient(90deg, #10B981 0, #10B981 5px, transparent 5px, transparent 10px)' }}></div>
+                <span className="text-gray-600 dark:text-gray-400">3-Month Rolling Avg</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-0.5 bg-red-500" style={{ backgroundImage: 'repeating-linear-gradient(90deg, #EF4444 0, #EF4444 3px, transparent 3px, transparent 6px)' }}></div>
+                <span className="text-gray-600 dark:text-gray-400">100% Target</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* SECTION 3: CONSISTENCY & PLANNING QUALITY */}
