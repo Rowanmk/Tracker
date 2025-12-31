@@ -3,8 +3,9 @@ import { useDate } from '../context/DateContext';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
-import { getFinancialYearMonths } from '../utils/financialYear';
+import { getFinancialYearMonths, getFinancialYears } from '../utils/financialYear';
 import { unparse } from 'papaparse';
+import type { FinancialYear } from '../utils/financialYear';
 
 interface TargetData {
   staff_id: number;
@@ -31,19 +32,35 @@ interface LocalInputState {
 }
 
 export const TargetsControl: React.FC = () => {
-  const { selectedMonth, selectedYear, derivedFinancialYear } = useDate();
+  const { selectedMonth, selectedYear } = useDate();
   const { allStaff, loading: authLoading, error: authError } = useAuth();
   const { services, loading: servicesLoading, error: servicesError } = useServices();
+
+  const [selectedFinancialYear, setSelectedFinancialYear] = useState<FinancialYear>(() => {
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    if (month >= 4) {
+      return { label: `${year}/${(year + 1).toString().slice(-2)}`, start: year, end: year + 1 };
+    } else {
+      return { label: `${year - 1}/${year.toString().slice(-2)}`, start: year - 1, end: year };
+    }
+  });
 
   const [targetData, setTargetData] = useState<TargetData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [localInputState, setLocalInputState] = useState<LocalInputState>({});
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollPositionRef = useRef<number>(0);
 
-  const fetchTargets = async () => {
+  const fetchTargets = async (fy: FinancialYear) => {
     if (!allStaff.length || !services.length) {
       setLoading(false);
       return;
@@ -61,7 +78,7 @@ export const TargetsControl: React.FC = () => {
             .from('monthlytargets')
             .select('month, service_id, target_value')
             .eq('staff_id', staff.staff_id)
-            .in('year', [derivedFinancialYear.start, derivedFinancialYear.end]);
+            .in('year', [fy.start, fy.end]);
 
           if (dbErr) {
             console.error('Error fetching monthlytargets:', dbErr);
@@ -86,6 +103,7 @@ export const TargetsControl: React.FC = () => {
 
       setTargetData(data);
       setLocalInputState({});
+      setHasUnsavedChanges(false);
       inputRefs.current.clear();
     } catch (err) {
       console.error('Error fetching targets:', err);
@@ -96,9 +114,23 @@ export const TargetsControl: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchTargets();
+    fetchTargets(selectedFinancialYear);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [derivedFinancialYear, allStaff.length, services.length]);
+  }, [selectedFinancialYear, allStaff.length, services.length]);
+
+  // Save scroll position before any state change that might cause re-render
+  const saveScrollPosition = () => {
+    if (scrollContainerRef.current) {
+      scrollPositionRef.current = scrollContainerRef.current.scrollLeft;
+    }
+  };
+
+  // Restore scroll position after render
+  useEffect(() => {
+    if (scrollContainerRef.current && scrollPositionRef.current > 0) {
+      scrollContainerRef.current.scrollLeft = scrollPositionRef.current;
+    }
+  }, [targetData, localInputState]);
 
   const getInputKey = (staffId: number, month: number, serviceName: string): string => {
     return `${staffId}-${month}-${serviceName}`;
@@ -110,11 +142,13 @@ export const TargetsControl: React.FC = () => {
     serviceName: string,
     value: string
   ) => {
+    saveScrollPosition();
     const key = getInputKey(staffId, month, serviceName);
     setLocalInputState(prev => ({
       ...prev,
       [key]: value
     }));
+    setHasUnsavedChanges(true);
   };
 
   const handleInputBlur = (
@@ -140,6 +174,7 @@ export const TargetsControl: React.FC = () => {
       }
     }
 
+    saveScrollPosition();
     setTargetData((prev) =>
       prev.map((staff) =>
         staff.staff_id === staffId
@@ -241,7 +276,7 @@ export const TargetsControl: React.FC = () => {
       targetData.forEach((staff) => {
         Object.entries(staff.targets).forEach(([monthStr, monthTargets]) => {
           const month = Number(monthStr);
-          const year = month >= 4 ? derivedFinancialYear.start : derivedFinancialYear.end;
+          const year = month >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
 
           Object.entries(monthTargets).forEach(([serviceName, value]) => {
             const service = services.find((s) => s.service_name === serviceName);
@@ -261,7 +296,7 @@ export const TargetsControl: React.FC = () => {
       await supabase
         .from('monthlytargets')
         .delete()
-        .in('year', [derivedFinancialYear.start, derivedFinancialYear.end]);
+        .in('year', [selectedFinancialYear.start, selectedFinancialYear.end]);
 
       const { error: insertError } = await supabase
         .from('monthlytargets')
@@ -269,6 +304,7 @@ export const TargetsControl: React.FC = () => {
 
       if (insertError) throw insertError;
 
+      setHasUnsavedChanges(false);
       setSaveMessage('✅ Targets saved successfully');
       setTimeout(() => setSaveMessage(null), 3000);
     } catch (err) {
@@ -283,7 +319,7 @@ export const TargetsControl: React.FC = () => {
     targetData.forEach((staff) => {
       Object.entries(staff.targets).forEach(([monthStr, monthTargets]) => {
         const month = Number(monthStr);
-        const year = month >= 4 ? derivedFinancialYear.start : derivedFinancialYear.end;
+        const year = month >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
 
         Object.entries(monthTargets).forEach(([serviceName, value]) => {
           const service = services.find((s) => s.service_name === serviceName);
@@ -307,12 +343,50 @@ export const TargetsControl: React.FC = () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `targets_${derivedFinancialYear.label}.csv`;
+    a.download = `targets_${selectedFinancialYear.label}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
 
+  const handleFinancialYearChange = (fy: FinancialYear) => {
+    if (hasUnsavedChanges) {
+      setPendingAction(() => () => {
+        setSelectedFinancialYear(fy);
+      });
+      setShowConfirmDialog(true);
+    } else {
+      setSelectedFinancialYear(fy);
+    }
+  };
+
+  const confirmNavigation = () => {
+    setShowConfirmDialog(false);
+    if (pendingAction) {
+      pendingAction();
+      setPendingAction(null);
+    }
+  };
+
+  const cancelNavigation = () => {
+    setShowConfirmDialog(false);
+    setPendingAction(null);
+  };
+
+  // Prevent page navigation if unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
   const monthData = getFinancialYearMonths();
+  const financialYears = getFinancialYears();
 
   if (loading || authLoading || servicesLoading) {
     return (
@@ -379,7 +453,7 @@ export const TargetsControl: React.FC = () => {
           Targets Control
         </h2>
         <p className="text-gray-600 dark:text-gray-400">
-          Set monthly targets for {derivedFinancialYear.label}
+          Set monthly targets for {selectedFinancialYear.label}
         </p>
       </div>
 
@@ -395,10 +469,34 @@ export const TargetsControl: React.FC = () => {
         </div>
       )}
 
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-          Monthly Targets by Staff Member
-        </h3>
+      {hasUnsavedChanges && (
+        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+          <p className="text-yellow-800 dark:text-yellow-200">⚠️ You have unsaved changes. Remember to save before leaving.</p>
+        </div>
+      )}
+
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Financial Year
+          </label>
+          <select
+            value={`${selectedFinancialYear.start}-${selectedFinancialYear.end}`}
+            onChange={(e) => {
+              const [start, end] = e.target.value.split('-').map(Number);
+              const fy = financialYears.find(f => f.start === start && f.end === end);
+              if (fy) handleFinancialYearChange(fy);
+            }}
+            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          >
+            {financialYears.map((fy) => (
+              <option key={`${fy.start}-${fy.end}`} value={`${fy.start}-${fy.end}`}>
+                {fy.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="flex gap-3">
           <button
             onClick={handleExportCSV}
@@ -408,7 +506,8 @@ export const TargetsControl: React.FC = () => {
           </button>
           <button
             onClick={handleSaveTargets}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm font-medium"
+            disabled={!hasUnsavedChanges}
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             💾 Save Targets
           </button>
@@ -418,7 +517,7 @@ export const TargetsControl: React.FC = () => {
       <div className="space-y-3">
         {targetData.map((staff) => (
           <div
-            key={`${staff.staff_id}-${JSON.stringify(staff.targets)}`}
+            key={staff.staff_id}
             className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden"
           >
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-6 py-4">
@@ -427,134 +526,140 @@ export const TargetsControl: React.FC = () => {
               </h4>
             </div>
 
-            <div className="px-6 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-              <div className="flex items-center gap-4">
-                <div className="w-32 flex-shrink-0">
-                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                    Service
-                  </span>
-                </div>
+            <div 
+              ref={scrollContainerRef}
+              className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800"
+              style={{ scrollBehavior: 'smooth' }}
+            >
+              <div className="px-6 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 min-w-min">
+                <div className="flex items-center gap-4">
+                  <div className="w-32 flex-shrink-0">
+                    <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                      Service
+                    </span>
+                  </div>
 
-                <div className="flex-1 flex gap-0">
-                  {monthData.map((m) => (
-                    <div key={m.number} className="flex-1 text-center px-1">
-                      <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
-                        {m.name}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                  <div className="flex gap-0">
+                    {monthData.map((m) => (
+                      <div key={m.number} className="w-16 text-center px-1">
+                        <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
+                          {m.name}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
 
-                <div className="w-24 flex-shrink-0 text-center">
-                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                    Total
-                  </span>
+                  <div className="w-24 flex-shrink-0 text-center">
+                    <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                      Total
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="divide-y divide-gray-200 dark:divide-gray-700">
-              {services.map((service, serviceIdx) => {
-                const annualTotal = calculateAnnualTotal(staff.staff_id, service.service_name);
-                
-                return (
-                  <div
-                    key={`${staff.staff_id}-${service.service_id}`}
-                    className={`px-6 py-2 flex items-center gap-4 ${
-                      serviceIdx % 2 === 0
-                        ? 'bg-white dark:bg-gray-800'
-                        : 'bg-gray-50 dark:bg-gray-750'
-                    } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
-                  >
-                    <div className="w-32 flex-shrink-0">
-                      <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                        {service.service_name}
-                      </span>
-                    </div>
-
-                    <div className="flex-1 flex gap-0">
-                      {monthData.map((m) => {
-                        const inputKey = getInputKey(staff.staff_id, m.number, service.service_name);
-                        return (
-                          <div key={m.number} className="flex-1 px-1">
-                            <input
-                              ref={(el) => {
-                                if (el) {
-                                  inputRefs.current.set(inputKey, el);
-                                } else {
-                                  inputRefs.current.delete(inputKey);
-                                }
-                              }}
-                              type="number"
-                              min="0"
-                              value={getInputValue(staff.staff_id, m.number, service.service_name)}
-                              onFocus={(e) => {
-                                e.currentTarget.select();
-                              }}
-                              onChange={(e) =>
-                                handleInputChange(
-                                  staff.staff_id,
-                                  m.number,
-                                  service.service_name,
-                                  e.target.value
-                                )
-                              }
-                              onBlur={(e) =>
-                                handleInputBlur(
-                                  staff.staff_id,
-                                  m.number,
-                                  service.service_name,
-                                  e.target.value
-                                )
-                              }
-                              onKeyDown={(e) =>
-                                handleKeyDown(
-                                  e,
-                                  staff.staff_id,
-                                  m.number,
-                                  service.service_name,
-                                  e.currentTarget.value
-                                )
-                              }
-                              className="w-full px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="w-24 flex-shrink-0">
-                      <div className="px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
-                        {annualTotal}
+              <div className="divide-y divide-gray-200 dark:divide-gray-700 min-w-min">
+                {services.map((service, serviceIdx) => {
+                  const annualTotal = calculateAnnualTotal(staff.staff_id, service.service_name);
+                  
+                  return (
+                    <div
+                      key={service.service_id}
+                      className={`px-6 py-2 flex items-center gap-4 ${
+                        serviceIdx % 2 === 0
+                          ? 'bg-white dark:bg-gray-800'
+                          : 'bg-gray-50 dark:bg-gray-750'
+                      } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
+                    >
+                      <div className="w-32 flex-shrink-0">
+                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {service.service_name}
+                        </span>
                       </div>
-                    </div>
-                  </div>
-                );
-              })}
 
-              <div className="px-6 py-2 bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500 flex items-center gap-4">
-                <div className="w-32 flex-shrink-0">
-                  <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
-                    Monthly Total
-                  </span>
-                </div>
+                      <div className="flex gap-0">
+                        {monthData.map((m) => {
+                          const inputKey = getInputKey(staff.staff_id, m.number, service.service_name);
+                          return (
+                            <div key={m.number} className="w-16 px-1">
+                              <input
+                                ref={(el) => {
+                                  if (el) {
+                                    inputRefs.current.set(inputKey, el);
+                                  } else {
+                                    inputRefs.current.delete(inputKey);
+                                  }
+                                }}
+                                type="number"
+                                min="0"
+                                value={getInputValue(staff.staff_id, m.number, service.service_name)}
+                                onFocus={(e) => {
+                                  e.currentTarget.select();
+                                }}
+                                onChange={(e) =>
+                                  handleInputChange(
+                                    staff.staff_id,
+                                    m.number,
+                                    service.service_name,
+                                    e.target.value
+                                  )
+                                }
+                                onBlur={(e) =>
+                                  handleInputBlur(
+                                    staff.staff_id,
+                                    m.number,
+                                    service.service_name,
+                                    e.target.value
+                                  )
+                                }
+                                onKeyDown={(e) =>
+                                  handleKeyDown(
+                                    e,
+                                    staff.staff_id,
+                                    m.number,
+                                    service.service_name,
+                                    e.currentTarget.value
+                                  )
+                                }
+                                className="w-full px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
 
-                <div className="flex-1 flex gap-0">
-                  {monthData.map((m) => {
-                    const monthTotal = calculateMonthlyTotal(staff.staff_id, m.number);
-                    return (
-                      <div key={`total-${m.number}`} className="flex-1 px-1">
-                        <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
-                          {monthTotal}
+                      <div className="w-24 flex-shrink-0">
+                        <div className="px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
+                          {annualTotal}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  );
+                })}
 
-                <div className="w-24 flex-shrink-0">
-                  <div className="px-2 py-2 bg-blue-600 dark:bg-blue-700 border border-blue-700 dark:border-blue-800 rounded-md text-center text-sm font-bold text-white">
-                    {monthData.reduce((sum, m) => sum + calculateMonthlyTotal(staff.staff_id, m.number), 0)}
+                <div className="px-6 py-2 bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500 flex items-center gap-4">
+                  <div className="w-32 flex-shrink-0">
+                    <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
+                      Monthly Total
+                    </span>
+                  </div>
+
+                  <div className="flex gap-0">
+                    {monthData.map((m) => {
+                      const monthTotal = calculateMonthlyTotal(staff.staff_id, m.number);
+                      return (
+                        <div key={`total-${m.number}`} className="w-16 px-1">
+                          <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
+                            {monthTotal}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="w-24 flex-shrink-0">
+                    <div className="px-2 py-2 bg-blue-600 dark:bg-blue-700 border border-blue-700 dark:border-blue-800 rounded-md text-center text-sm font-bold text-white">
+                      {monthData.reduce((sum, m) => sum + calculateMonthlyTotal(staff.staff_id, m.number), 0)}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -573,103 +678,144 @@ export const TargetsControl: React.FC = () => {
           </p>
         </div>
 
-        <div className="px-6 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-          <div className="flex items-center gap-4">
-            <div className="w-32 flex-shrink-0">
-              <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                Service
-              </span>
-            </div>
+        <div 
+          className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800"
+          style={{ scrollBehavior: 'smooth' }}
+        >
+          <div className="px-6 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 min-w-min">
+            <div className="flex items-center gap-4">
+              <div className="w-32 flex-shrink-0">
+                <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                  Service
+                </span>
+              </div>
 
-            <div className="flex-1 flex gap-0">
-              {monthData.map((m) => (
-                <div key={m.number} className="flex-1 text-center px-1">
-                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
-                    {m.name}
-                  </span>
-                </div>
-              ))}
-            </div>
+              <div className="flex gap-0">
+                {monthData.map((m) => (
+                  <div key={m.number} className="w-16 text-center px-1">
+                    <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
+                      {m.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
 
-            <div className="w-24 flex-shrink-0 text-center">
-              <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                Total
-              </span>
+              <div className="w-24 flex-shrink-0 text-center">
+                <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                  Total
+                </span>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="divide-y divide-gray-200 dark:divide-gray-700">
-          {services.map((service, serviceIdx) => {
-            const annualTotal = calculateServiceAnnualTotal(service.service_name);
-            
-            return (
-              <div
-                key={`service-total-${service.service_id}`}
-                className={`px-6 py-2 flex items-center gap-4 ${
-                  serviceIdx % 2 === 0
-                    ? 'bg-white dark:bg-gray-800'
-                    : 'bg-gray-50 dark:bg-gray-750'
-                } hover:bg-purple-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
-              >
-                <div className="w-32 flex-shrink-0">
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                    {service.service_name}
-                  </span>
-                </div>
-
-                <div className="flex-1 flex gap-0">
-                  {monthData.map((m) => {
-                    const monthTotal = calculateServiceMonthlyTotal(m.number, service.service_name);
-                    return (
-                      <div key={`${service.service_id}-${m.number}`} className="flex-1 px-1">
-                        <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
-                          {monthTotal}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="w-24 flex-shrink-0">
-                  <div className="px-2 py-2 bg-purple-100 dark:bg-purple-900/30 border border-purple-300 dark:border-purple-700 rounded-md text-center text-sm font-bold text-purple-900 dark:text-purple-200">
-                    {annualTotal}
+          <div className="divide-y divide-gray-200 dark:divide-gray-700 min-w-min">
+            {services.map((service, serviceIdx) => {
+              const annualTotal = calculateServiceAnnualTotal(service.service_name);
+              
+              return (
+                <div
+                  key={`service-total-${service.service_id}`}
+                  className={`px-6 py-2 flex items-center gap-4 ${
+                    serviceIdx % 2 === 0
+                      ? 'bg-white dark:bg-gray-800'
+                      : 'bg-gray-50 dark:bg-gray-750'
+                  } hover:bg-purple-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
+                >
+                  <div className="w-32 flex-shrink-0">
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {service.service_name}
+                    </span>
                   </div>
-                </div>
-              </div>
-            );
-          })}
 
-          <div className="px-6 py-2 bg-purple-200 dark:bg-purple-900/50 border-t-2 border-purple-300 dark:border-purple-700 flex items-center gap-4">
-            <div className="w-32 flex-shrink-0">
-              <span className="text-sm font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider">
-                Grand Total
-              </span>
-            </div>
+                  <div className="flex gap-0">
+                    {monthData.map((m) => {
+                      const monthTotal = calculateServiceMonthlyTotal(m.number, service.service_name);
+                      return (
+                        <div key={`${service.service_id}-${m.number}`} className="w-16 px-1">
+                          <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
+                            {monthTotal}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
 
-            <div className="flex-1 flex gap-0">
-              {monthData.map((m) => {
-                const monthGrandTotal = services.reduce((sum, service) => {
-                  return sum + calculateServiceMonthlyTotal(m.number, service.service_name);
-                }, 0);
-                return (
-                  <div key={`grand-${m.number}`} className="flex-1 px-1">
-                    <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-purple-300 dark:border-purple-700 rounded-md text-center text-sm font-bold text-purple-900 dark:text-purple-200">
-                      {monthGrandTotal}
+                  <div className="w-24 flex-shrink-0">
+                    <div className="px-2 py-2 bg-purple-100 dark:bg-purple-900/30 border border-purple-300 dark:border-purple-700 rounded-md text-center text-sm font-bold text-purple-900 dark:text-purple-200">
+                      {annualTotal}
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              );
+            })}
 
-            <div className="w-24 flex-shrink-0">
-              <div className="px-2 py-2 bg-purple-600 dark:bg-purple-700 border border-purple-700 dark:border-purple-800 rounded-md text-center text-sm font-bold text-white">
-                {services.reduce((sum, service) => sum + calculateServiceAnnualTotal(service.service_name), 0)}
+            <div className="px-6 py-2 bg-purple-200 dark:bg-purple-900/50 border-t-2 border-purple-300 dark:border-purple-700 flex items-center gap-4 min-w-min">
+              <div className="w-32 flex-shrink-0">
+                <span className="text-sm font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider">
+                  Grand Total
+                </span>
+              </div>
+
+              <div className="flex gap-0">
+                {monthData.map((m) => {
+                  const monthGrandTotal = services.reduce((sum, service) => {
+                    return sum + calculateServiceMonthlyTotal(m.number, service.service_name);
+                  }, 0);
+                  return (
+                    <div key={`grand-${m.number}`} className="w-16 px-1">
+                      <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-purple-300 dark:border-purple-700 rounded-md text-center text-sm font-bold text-purple-900 dark:text-purple-200">
+                        {monthGrandTotal}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="w-24 flex-shrink-0">
+                <div className="px-2 py-2 bg-purple-600 dark:bg-purple-700 border border-purple-700 dark:border-purple-800 rounded-md text-center text-sm font-bold text-white">
+                  {services.reduce((sum, service) => sum + calculateServiceAnnualTotal(service.service_name), 0)}
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {showConfirmDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 max-w-sm mx-4">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+              Unsaved Changes
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              You have unsaved target changes. Do you want to save before leaving?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={cancelNavigation}
+                className="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-700 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  handleSaveTargets();
+                  confirmNavigation();
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
+              >
+                Save & Continue
+              </button>
+              <button
+                onClick={confirmNavigation}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium"
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
