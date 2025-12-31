@@ -447,7 +447,7 @@ export const TargetsControl: React.FC = () => {
 
                 <div className="w-24 flex-shrink-0 text-center">
                   <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                    Annual
+                    Total
                   </span>
                 </div>
               </div>
@@ -593,7 +593,7 @@ export const TargetsControl: React.FC = () => {
 
             <div className="w-24 flex-shrink-0 text-center">
               <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                Annual
+                Total
               </span>
             </div>
           </div>
