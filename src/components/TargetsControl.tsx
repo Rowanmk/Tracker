@@ -566,9 +566,9 @@ export const TargetsControl: React.FC = () => {
             >
               {/* HEADER ROW */}
               <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-                {/* Service Column - Fixed Width */}
-                <div className="w-32 flex-shrink-0 px-4 py-3 border-r border-gray-200 dark:border-gray-600">
-                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                {/* Service Column - Fixed Width w-40 */}
+                <div className="w-40 flex-shrink-0 px-4 py-3 border-r border-gray-200 dark:border-gray-600">
+                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                     Service
                   </span>
                 </div>
@@ -586,7 +586,7 @@ export const TargetsControl: React.FC = () => {
 
                 {/* Total Column - Fixed Width */}
                 <div className="w-24 flex-shrink-0 px-3 py-3 text-center border-l border-gray-200 dark:border-gray-600">
-                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                     Total
                   </span>
                 </div>
@@ -606,9 +606,9 @@ export const TargetsControl: React.FC = () => {
                           : 'bg-gray-50 dark:bg-gray-750'
                       } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
                     >
-                      {/* Service Column - Fixed Width */}
-                      <div className="w-32 flex-shrink-0 px-4 py-2 border-r border-gray-200 dark:border-gray-600 flex items-center">
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {/* Service Column - Fixed Width w-40 */}
+                      <div className="w-40 flex-shrink-0 px-4 py-2 border-r border-gray-200 dark:border-gray-600 flex items-center">
+                        <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
                           {service.service_name}
                         </span>
                       </div>
@@ -677,9 +677,9 @@ export const TargetsControl: React.FC = () => {
 
                 {/* MONTHLY TOTALS ROW */}
                 <div className="flex w-full bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500">
-                  {/* Service Column - Fixed Width */}
-                  <div className="w-32 flex-shrink-0 px-4 py-3 border-r border-gray-300 dark:border-gray-500 flex items-center">
-                    <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
+                  {/* Service Column - Fixed Width w-40 */}
+                  <div className="w-40 flex-shrink-0 px-4 py-3 border-r border-gray-300 dark:border-gray-500 flex items-center">
+                    <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
                       Monthly Total
                     </span>
                   </div>
@@ -728,9 +728,9 @@ export const TargetsControl: React.FC = () => {
         >
           {/* HEADER ROW */}
           <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-            {/* Service Column - Fixed Width */}
-            <div className="w-32 flex-shrink-0 px-4 py-3 border-r border-gray-200 dark:border-gray-600">
-              <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+            {/* Service Column - Fixed Width w-40 */}
+            <div className="w-40 flex-shrink-0 px-4 py-3 border-r border-gray-200 dark:border-gray-600">
+              <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                 Service
               </span>
             </div>
@@ -748,7 +748,7 @@ export const TargetsControl: React.FC = () => {
 
             {/* Total Column - Fixed Width */}
             <div className="w-24 flex-shrink-0 px-3 py-3 text-center border-l border-gray-200 dark:border-gray-600">
-              <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+              <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                 Total
               </span>
             </div>
@@ -768,9 +768,9 @@ export const TargetsControl: React.FC = () => {
                       : 'bg-gray-50 dark:bg-gray-750'
                   } hover:bg-purple-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
                 >
-                  {/* Service Column - Fixed Width */}
-                  <div className="w-32 flex-shrink-0 px-4 py-2 border-r border-gray-200 dark:border-gray-600 flex items-center">
-                    <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                  {/* Service Column - Fixed Width w-40 */}
+                  <div className="w-40 flex-shrink-0 px-4 py-2 border-r border-gray-200 dark:border-gray-600 flex items-center">
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
                       {service.service_name}
                     </span>
                   </div>
@@ -801,9 +801,9 @@ export const TargetsControl: React.FC = () => {
 
             {/* GRAND TOTAL ROW */}
             <div className="flex w-full bg-purple-200 dark:bg-purple-900/50 border-t-2 border-purple-300 dark:border-purple-700">
-              {/* Service Column - Fixed Width */}
-              <div className="w-32 flex-shrink-0 px-4 py-3 border-r border-purple-300 dark:border-purple-700 flex items-center">
-                <span className="text-sm font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider">
+              {/* Service Column - Fixed Width w-40 */}
+              <div className="w-40 flex-shrink-0 px-4 py-3 border-r border-purple-300 dark:border-purple-700 flex items-center">
+                <span className="text-sm font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
                   Grand Total
                 </span>
               </div>
