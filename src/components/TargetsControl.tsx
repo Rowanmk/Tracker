@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
 import { getFinancialYearMonths, getFinancialYears } from '../utils/financialYear';
+import { loadTargets, saveTargets, isTargetInFinancialYear } from '../utils/loadTargets';
 import { unparse } from 'papaparse';
 import type { FinancialYear } from '../utils/financialYear';
 
@@ -76,7 +77,7 @@ export const TargetsControl: React.FC = () => {
         allStaff.map(async (staff) => {
           const { data: dbTargets, error: dbErr } = await supabase
             .from('monthlytargets')
-            .select('month, service_id, target_value')
+            .select('month, service_id, target_value, year')
             .eq('staff_id', staff.staff_id)
             .in('year', [fy.start, fy.end]);
 
@@ -90,7 +91,16 @@ export const TargetsControl: React.FC = () => {
             services.forEach((s) => (targets[m.number][s.service_name] = 0));
           });
 
+          // CRITICAL: Only apply targets that belong to this financial year
           dbTargets?.forEach((t) => {
+            // Validate month-year pairing
+            if (!isTargetInFinancialYear(t.month, t.year, fy)) {
+              console.warn(
+                `Skipping target for staff ${staff.staff_id}: month=${t.month}, year=${t.year} not in FY ${fy.label}`
+              );
+              return;
+            }
+
             const service = services.find((s) => s.service_id === t.service_id);
             if (service) {
               targets[t.month][service.service_name] = t.target_value ?? 0;
@@ -271,38 +281,61 @@ export const TargetsControl: React.FC = () => {
     setError(null);
 
     try {
-      const inserts: any[] = [];
-
-      targetData.forEach((staff) => {
-        Object.entries(staff.targets).forEach(([monthStr, monthTargets]) => {
-          const month = Number(monthStr);
-          const year = month >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
-
-          Object.entries(monthTargets).forEach(([serviceName, value]) => {
-            const service = services.find((s) => s.service_name === serviceName);
-            if (service) {
-              inserts.push({
-                staff_id: staff.staff_id,
-                service_id: service.service_id,
-                month,
-                year,
-                target_value: value ?? 0,
-              });
-            }
+      // Save targets for each staff member using the new saveTargets function
+      await Promise.all(
+        targetData.map(async (staff) => {
+          // Collect all service targets for this staff
+          const allServiceTargets: Record<number, number> = {};
+          
+          Object.entries(staff.targets).forEach(([monthStr, monthTargets]) => {
+            const month = Number(monthStr);
+            
+            Object.entries(monthTargets).forEach(([serviceName, value]) => {
+              const service = services.find((s) => s.service_name === serviceName);
+              if (service) {
+                // For each month, save targets individually
+                // This ensures proper month-year pairing
+                allServiceTargets[service.service_id] = value ?? 0;
+              }
+            });
           });
-        });
-      });
 
-      await supabase
-        .from('monthlytargets')
-        .delete()
-        .in('year', [selectedFinancialYear.start, selectedFinancialYear.end]);
+          // Delete all existing targets for this staff in this financial year
+          await supabase
+            .from('monthlytargets')
+            .delete()
+            .eq('staff_id', staff.staff_id)
+            .in('year', [selectedFinancialYear.start, selectedFinancialYear.end]);
 
-      const { error: insertError } = await supabase
-        .from('monthlytargets')
-        .insert(inserts);
+          // Insert targets month by month with correct year pairing
+          const inserts: any[] = [];
+          Object.entries(staff.targets).forEach(([monthStr, monthTargets]) => {
+            const month = Number(monthStr);
+            const year = month >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
 
-      if (insertError) throw insertError;
+            Object.entries(monthTargets).forEach(([serviceName, value]) => {
+              const service = services.find((s) => s.service_name === serviceName);
+              if (service) {
+                inserts.push({
+                  staff_id: staff.staff_id,
+                  service_id: service.service_id,
+                  month,
+                  year, // CRITICAL: Correct year for this month
+                  target_value: value ?? 0,
+                });
+              }
+            });
+          });
+
+          if (inserts.length > 0) {
+            const { error: insertError } = await supabase
+              .from('monthlytargets')
+              .insert(inserts);
+
+            if (insertError) throw insertError;
+          }
+        })
+      );
 
       setHasUnsavedChanges(false);
       setSaveMessage('✅ Targets saved successfully');
