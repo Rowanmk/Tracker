@@ -1,4 +1,4 @@
-import React, { createContext, useContext, ReactNode, useState, useEffect } from 'react';
+import React, { createContext, useContext, ReactNode, useState, useMemo } from 'react';
 import { FinancialYear, getFinancialYearFromMonth } from '../utils/financialYear';
 
 interface DateContextType {
@@ -6,49 +6,35 @@ interface DateContextType {
   selectedYear: number;
   setSelectedMonth: (month: number) => void;
   setSelectedYear: (year: number) => void;
-  derivedFinancialYear: FinancialYear;
-  selectedFinancialYear: FinancialYear;
-  setSelectedFinancialYear: (fy: FinancialYear) => void;
-}
-
-interface DateProviderProps {
-  children: ReactNode;
+  financialYear: FinancialYear;
 }
 
 const DateContext = createContext<DateContextType>({} as DateContextType);
 
-export const DateProvider: React.FC<DateProviderProps> = ({ children }) => {
+export const DateProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const today = new Date();
-  const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
-  const [derivedFinancialYear, setDerivedFinancialYear] = useState<FinancialYear>(
-    getFinancialYearFromMonth(today.getMonth() + 1, today.getFullYear())
-  );
-  const [selectedFinancialYear, setSelectedFinancialYear] = useState<FinancialYear>(
-    getFinancialYearFromMonth(today.getMonth() + 1, today.getFullYear())
-  );
 
-  // Recalculate derived FY whenever month or year changes
-  useEffect(() => {
-    const newFY = getFinancialYearFromMonth(selectedMonth, selectedYear);
-    setDerivedFinancialYear(newFY);
-  }, [selectedMonth, selectedYear]);
+  const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(today.getFullYear());
 
-  const value: DateContextType = {
-    selectedMonth,
-    selectedYear,
-    setSelectedMonth,
-    setSelectedYear,
-    derivedFinancialYear,
-    selectedFinancialYear,
-    setSelectedFinancialYear,
-  };
+  const financialYear = useMemo(
+    () => getFinancialYearFromMonth(selectedMonth, selectedYear),
+    [selectedMonth, selectedYear]
+  );
 
   return (
-    <DateContext.Provider value={value}>
+    <DateContext.Provider
+      value={{
+        selectedMonth,
+        selectedYear,
+        setSelectedMonth,
+        setSelectedYear,
+        financialYear,
+      }}
+    >
       {children}
     </DateContext.Provider>
   );
 };
 
-export const useDate = (): DateContextType => useContext(DateContext);
+export const useDate = () => useContext(DateContext);

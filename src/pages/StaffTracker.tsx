@@ -21,7 +21,7 @@ interface DailyEntry {
 }
 
 export const StaffTracker: React.FC = () => {
-  const { selectedMonth, selectedFinancialYear, setSelectedMonth, setSelectedFinancialYear } = useDate();
+  const { selectedMonth, selectedYear, setSelectedMonth, setSelectedYear, financialYear } = useDate();
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
   const [targets, setTargets] = useState<{ [key: string]: number }>({});
   const [loading, setLoading] = useState(true);
@@ -32,7 +32,7 @@ export const StaffTracker: React.FC = () => {
   const { currentStaff, allStaff, selectedStaffId } = useAuth();
   const { services } = useServices();
   
-  const year = selectedMonth >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
+  const year = selectedYear;
   const { teamWorkingDays, workingDaysUpToToday } = useWorkingDays({
     financialYear: selectedFinancialYear,
     month: selectedMonth,
@@ -398,19 +398,19 @@ export const StaffTracker: React.FC = () => {
     return months[monthNum - 1];
   };
 
-  const getMonthsForFinancialYear = () => {
-    const months = [];
-    for (let m = 4; m <= 12; m++) {
-      months.push({ value: m, label: `${getMonthName(m)} ${selectedFinancialYear.start}` });
-    }
-    for (let m = 1; m <= 3; m++) {
-      months.push({ value: m, label: `${getMonthName(m)} ${selectedFinancialYear.end}` });
-    }
-    return months;
-  };
+const getMonthsForFinancialYear = () => {
+  return Array.from({ length: 12 }, (_, i) => {
+    const date = new Date(financialYear.start, 3 + i, 1); // Apr → Mar
+    return {
+      value: date.getMonth() + 1,
+      label: `${date.toLocaleString('default', { month: 'long' })} ${date.getFullYear()}`,
+    };
+  });
+};
 
   const handleMonthChange = (newMonth: number) => {
     setSelectedMonth(newMonth);
+    setSelectedYear(newMonth >= 4 ? financialYear.start : financialYear.end);
     setTimeout(() => {
       window.dispatchEvent(new Event('activity-updated'));
     }, 0);

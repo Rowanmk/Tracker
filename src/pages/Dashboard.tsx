@@ -25,7 +25,7 @@ interface StaffPerformance {
 
 export const Dashboard: React.FC = () => {
   const { viewMode } = useDashboardView();
-  const { selectedMonth, selectedYear, derivedFinancialYear } = useDate();
+  const { selectedMonth, selectedYear, financialYear } = useDate();
   const [staffPerformance, setStaffPerformance] = useState<StaffPerformance[]>([]);
   const [dailyActivities, setDailyActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +56,7 @@ export const Dashboard: React.FC = () => {
     workingDaysUpToToday,
     showFallbackWarning: workingDaysWarning,
   } = useWorkingDays({
-    financialYear: derivedFinancialYear,
+    financialYear: financialYear,
     month: selectedMonth,
   });
 
@@ -71,8 +71,8 @@ export const Dashboard: React.FC = () => {
 
     try {
       const { startDate, endDate } = {
-        startDate: new Date(derivedFinancialYear.start, 3, 1),
-        endDate: new Date(derivedFinancialYear.end, 2, 31),
+        startDate: new Date(FinancialYear.start, 3, 1),
+        endDate: new Date(FinancialYear.end, 2, 31),
       };
 
       const { data: activities, error: activitiesError } = await supabase
@@ -137,7 +137,7 @@ export const Dashboard: React.FC = () => {
 
           const total = Object.values(serviceData).reduce((sum, val) => sum + val, 0);
 
-          const { totalTarget } = await loadTargets(selectedMonth, derivedFinancialYear, staff.staff_id);
+          const { totalTarget } = await loadTargets(selectedMonth, financialYear, staff.staff_id);
 
           const achieved_percent = totalTarget > 0 ? (total / totalTarget) * 100 : 0;
 
@@ -165,7 +165,7 @@ export const Dashboard: React.FC = () => {
             0
           );
 
-          const { totalTarget: prevMonthTarget } = await loadTargets(previousMonth, derivedFinancialYear, staff.staff_id);
+          const { totalTarget: prevMonthTarget } = await loadTargets(previousMonth, financialYear, staff.staff_id);
           const previousMonthRatio =
             prevMonthTarget > 0 ? prevMonthTotal / prevMonthTarget : 0;
 
@@ -196,7 +196,7 @@ export const Dashboard: React.FC = () => {
 
       let teamTotalTarget = 0;
       for (const staff of allStaff) {
-        const { totalTarget: staffTarget } = await loadTargets(selectedMonth, derivedFinancialYear, staff.staff_id);
+        const { totalTarget: staffTarget } = await loadTargets(selectedMonth, financialYear, staff.staff_id);
         teamTotalTarget += staffTarget;
       }
       setTeamTarget(teamTotalTarget);
@@ -215,7 +215,7 @@ export const Dashboard: React.FC = () => {
   }, [
     selectedMonth,
     selectedYear,
-    derivedFinancialYear,
+    financialYear,
     allStaff.length,
     services.length,
     authLoading,
@@ -232,7 +232,7 @@ export const Dashboard: React.FC = () => {
   }, [
     selectedMonth,
     selectedYear,
-    derivedFinancialYear,
+    financialYear,
     allStaff.length,
     services.length,
     sortMode,
@@ -341,7 +341,7 @@ export const Dashboard: React.FC = () => {
           workingDays={teamWorkingDays}
           workingDaysUpToToday={workingDaysUpToToday}
           month={selectedMonth}
-          financialYear={derivedFinancialYear}
+          financialYear={financialYear}
         />
       </div>
 
@@ -355,7 +355,7 @@ export const Dashboard: React.FC = () => {
           workingDays={teamWorkingDays}
           workingDaysUpToToday={workingDaysUpToToday}
           month={selectedMonth}
-          financialYear={derivedFinancialYear}
+          financialYear={financialYear}
         />
       </div> */}
 
@@ -389,7 +389,7 @@ export const Dashboard: React.FC = () => {
               workingDays={teamWorkingDays}
               workingDaysUpToToday={workingDaysUpToToday}
               month={selectedMonth}
-              financialYear={derivedFinancialYear}
+              financialYear={financialYear}
             />
           </div>
           <div className="min-w-full lg:min-w-0">
@@ -402,7 +402,7 @@ export const Dashboard: React.FC = () => {
               workingDays={teamWorkingDays}
               workingDaysUpToToday={workingDaysUpToToday}
               month={selectedMonth}
-              financialYear={derivedFinancialYear}
+              financialYear={financialYear}
             />
           </div>
           <div className="min-w-full lg:min-w-0">
@@ -412,7 +412,7 @@ export const Dashboard: React.FC = () => {
               totalActual={totalActual}
               dailyActivities={dailyActivities}
               month={selectedMonth}
-              financialYear={derivedFinancialYear}
+              financialYear={financialYear}
               dashboardMode={dashboardMode}
               currentStaff={currentIndividualStaff}
               viewMode={viewMode}
