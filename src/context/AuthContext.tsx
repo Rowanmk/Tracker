@@ -182,7 +182,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const onStaffChange = (staffIdOrTeam: number | "team") => {
     if (staffIdOrTeam === "team") {
       setSelectedStaffId("team");
-      // Keep currentStaff as is for reference, but mode is team
     } else {
       const selectedStaff = allStaff.find(s => s.staff_id === staffIdOrTeam);
       if (selectedStaff) {
