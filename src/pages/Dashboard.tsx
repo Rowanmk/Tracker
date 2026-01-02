@@ -3,7 +3,6 @@ import { TeamProgressTile } from "../components/TeamProgressTile";
 import { EmployeeProgressChart } from "../components/EmployeeProgressChart";
 import { RunRateTile } from "../components/RunRateTile";
 import { StaffPerformanceBar } from "../components/StaffPerformanceBar";
-// import { ServicePerformanceTiles } from "../components/ServicePerformanceTiles";
 import { useDate } from "../context/DateContext";
 import { useAuth } from "../context/AuthContext";
 import { useServices } from "../hooks/useServices";
@@ -71,8 +70,8 @@ export const Dashboard: React.FC = () => {
 
     try {
       const { startDate, endDate } = {
-        startDate: new Date(FinancialYear.start, 3, 1),
-        endDate: new Date(FinancialYear.end, 2, 31),
+        startDate: new Date(financialYear.start, 3, 1),
+        endDate: new Date(financialYear.end, 2, 31),
       };
 
       const { data: activities, error: activitiesError } = await supabase
@@ -344,20 +343,6 @@ export const Dashboard: React.FC = () => {
           financialYear={financialYear}
         />
       </div>
-
-      {/* SERVICE PERFORMANCE TILES REMOVED - COMMENTED OUT */}
-      {/* <div className="mb-6 animate-slide-up">
-        <ServicePerformanceTiles
-          services={services}
-          staffPerformance={staffPerformance}
-          dashboardMode={dashboardMode}
-          currentStaff={currentIndividualStaff}
-          workingDays={teamWorkingDays}
-          workingDaysUpToToday={workingDaysUpToToday}
-          month={selectedMonth}
-          financialYear={financialYear}
-        />
-      </div> */}
 
       <div className="mb-6 animate-slide-up">
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6">

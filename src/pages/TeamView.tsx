@@ -35,8 +35,8 @@ interface StaffAnalytics {
 }
 
 interface TeamHealthMetrics {
-  avgTargetAchieved: number; // rolling 12m, volume-weighted
-  teamBagelRate: number;     // rolling 12m, bagel ÷ working
+  avgTargetAchieved: number;
+  teamBagelRate: number;
   longestNoBagelStreak: number;
   longestBagelStreak: number;
 }
@@ -46,7 +46,7 @@ interface TeamHealthMetrics {
 ========================= */
 
 export const TeamView: React.FC = () => {
-  const { selectedFinancialYear } = useDate();
+  const { financialYear } = useDate();
   const { allStaff, loading: authLoading } = useAuth();
   const { services, loading: servicesLoading } = useServices();
 
@@ -74,11 +74,16 @@ export const TeamView: React.FC = () => {
       const rollingStartIso = rollingStart.toISOString().slice(0, 10);
       const rollingEndIso = rollingEnd.toISOString().slice(0, 10);
 
-      const bankHolidays = await getUkBankHolidaySet(
-        rollingStart,
-        rollingEnd,
-        'england-and-wales'
-      );
+      let bankHolidays: Set<string> = new Set();
+      try {
+        bankHolidays = await getUkBankHolidaySet(
+          rollingStart,
+          rollingEnd,
+          'england-and-wales'
+        );
+      } catch (e) {
+        console.warn('Failed to fetch bank holidays, continuing without them:', e);
+      }
 
       /* =========================================================
          STAFF-LEVEL ANALYTICS (used for tables & charts)
@@ -119,7 +124,7 @@ export const TeamView: React.FC = () => {
           const monthlyData: Record<number, { delivered: number; target: number; year: number }> = {};
 
           months.forEach(m => {
-            const year = m.number >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
+            const year = m.number >= 4 ? financialYear.start : financialYear.end;
             monthlyData[m.number] = { delivered: 0, target: 0, year };
           });
 

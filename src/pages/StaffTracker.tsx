@@ -34,7 +34,7 @@ export const StaffTracker: React.FC = () => {
   
   const year = selectedYear;
   const { teamWorkingDays, workingDaysUpToToday } = useWorkingDays({
-    financialYear: selectedFinancialYear,
+    financialYear: financialYear,
     month: selectedMonth,
   });
 
@@ -255,7 +255,7 @@ export const StaffTracker: React.FC = () => {
       });
 
       for (const staff of allStaff) {
-        const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, staff.staff_id);
+        const { perService } = await loadTargets(selectedMonth, financialYear, staff.staff_id);
         services.forEach(service => {
           teamTargets[service.service_name] = (teamTargets[service.service_name] || 0) + (perService[service.service_id] || 0);
         });
@@ -264,7 +264,7 @@ export const StaffTracker: React.FC = () => {
       setTargets(teamTargets);
     } else {
       // Individual mode: load targets for current staff
-      const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, currentStaff.staff_id);
+      const { perService } = await loadTargets(selectedMonth, financialYear, currentStaff.staff_id);
 
       const targetsMapByName: { [key: string]: number } = {};
       services.forEach(service => {
@@ -281,13 +281,13 @@ export const StaffTracker: React.FC = () => {
     if (!leaveHolidayLoading) {
       fetchData();
     }
-  }, [currentStaff?.staff_id, services.length, selectedMonth, selectedFinancialYear, leaveHolidayLoading, isTeamSelected]);
+  }, [currentStaff?.staff_id, services.length, selectedMonth, financialYear, leaveHolidayLoading, isTeamSelected]);
 
   useEffect(() => {
     const handler = () => fetchData();
     window.addEventListener('activity-updated', handler);
     return () => window.removeEventListener('activity-updated', handler);
-  }, [currentStaff?.staff_id, services.length, selectedMonth, selectedFinancialYear, isTeamSelected]);
+  }, [currentStaff?.staff_id, services.length, selectedMonth, financialYear, isTeamSelected]);
 
   const handleEntryChange = async (day: number, serviceName: string, value: string) => {
     if (!currentStaff || isTeamSelected) return; // Don't allow edits in team mode
@@ -398,15 +398,15 @@ export const StaffTracker: React.FC = () => {
     return months[monthNum - 1];
   };
 
-const getMonthsForFinancialYear = () => {
-  return Array.from({ length: 12 }, (_, i) => {
-    const date = new Date(financialYear.start, 3 + i, 1); // Apr → Mar
-    return {
-      value: date.getMonth() + 1,
-      label: `${date.toLocaleString('default', { month: 'long' })} ${date.getFullYear()}`,
-    };
-  });
-};
+  const getMonthsForFinancialYear = () => {
+    return Array.from({ length: 12 }, (_, i) => {
+      const date = new Date(financialYear.start, 3 + i, 1); // Apr → Mar
+      return {
+        value: date.getMonth() + 1,
+        label: `${date.toLocaleString('default', { month: 'long' })} ${date.getFullYear()}`,
+      };
+    });
+  };
 
   const handleMonthChange = (newMonth: number) => {
     setSelectedMonth(newMonth);
