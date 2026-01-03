@@ -3,8 +3,11 @@ import { useDate } from '../context/DateContext';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
+import {
+  getLast12CompletedMonthsWindow,
+  monthYearPairsBetween,
+} from '../utils/rollingWindow';
 import { getFinancialYearMonths } from '../utils/financialYear';
-import { getLast12CompletedMonthsWindow, monthYearPairsBetween } from '../utils/rollingWindow';
 import { getUkBankHolidaySet } from '../utils/bankHolidays';
 
 /* =========================
@@ -39,6 +42,17 @@ interface TeamHealthMetrics {
   teamBagelRate: number;
   longestNoBagelStreak: number;
   longestBagelStreak: number;
+  avgBagelDays: number;
+  consistencyScore: number;
+  targetAccuracy: number;
+  overDeliveryIndex: number;
+  recoverySpeed: number;
+}
+
+interface RollingPoint {
+  year: number;
+  month: number;
+  percent: number;
 }
 
 /* =========================
@@ -51,7 +65,9 @@ export const TeamView: React.FC = () => {
   const { services, loading: servicesLoading } = useServices();
 
   const [staffAnalytics, setStaffAnalytics] = useState<StaffAnalytics[]>([]);
-  const [teamHealthMetrics, setTeamHealthMetrics] = useState<TeamHealthMetrics | null>(null);
+  const [teamHealthMetrics, setTeamHealthMetrics] =
+    useState<TeamHealthMetrics | null>(null);
+  const [rollingChartData, setRollingChartData] = useState<RollingPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,8 +85,10 @@ export const TeamView: React.FC = () => {
     setError(null);
 
     try {
-      /* ---- Rolling 12-month window (completed months only) ---- */
-      const { start: rollingStart, end: rollingEnd } = getLast12CompletedMonthsWindow();
+      /* ---- Rolling 12 completed months ---- */
+      const { start: rollingStart, end: rollingEnd } =
+        getLast12CompletedMonthsWindow();
+
       const rollingStartIso = rollingStart.toISOString().slice(0, 10);
       const rollingEndIso = rollingEnd.toISOString().slice(0, 10);
 
@@ -81,37 +99,30 @@ export const TeamView: React.FC = () => {
           rollingEnd,
           'england-and-wales'
         );
-      } catch (e) {
-        console.warn('Failed to fetch bank holidays, continuing without them:', e);
+      } catch {
+        bankHolidays = new Set();
       }
 
-      /* =========================================================
-         STAFF-LEVEL ANALYTICS (used for tables & charts)
-         NOTE: Monthly visuals remain FY-based by design
-      ========================================================= */
+      /* =========================
+         STAFF-LEVEL ANALYTICS
+      ========================= */
 
       const staffResults = await Promise.all(
         allStaff.map(async (staff) => {
-          // --- Activities (rolling window) ---
           const { data: activities } = await supabase
             .from('dailyactivity')
-            .select('date, month, year, service_id, delivered_count')
+            .select('date, month, year, delivered_count')
             .eq('staff_id', staff.staff_id)
             .gte('date', rollingStartIso)
             .lte('date', rollingEndIso);
 
-          // --- Targets (rolling window, filtered later) ---
-          const startYear = rollingStart.getFullYear();
-          const endYear = rollingEnd.getFullYear();
-
           const { data: targets } = await supabase
             .from('monthlytargets')
-            .select('month, year, service_id, target_value')
+            .select('month, year, target_value')
             .eq('staff_id', staff.staff_id)
-            .gte('year', startYear)
-            .lte('year', endYear);
+            .gte('year', rollingStart.getFullYear())
+            .lte('year', rollingEnd.getFullYear());
 
-          // --- Leave (rolling window) ---
           const { data: staffLeave } = await supabase
             .from('staff_leave')
             .select('start_date, end_date')
@@ -119,60 +130,74 @@ export const TeamView: React.FC = () => {
             .gte('end_date', rollingStartIso)
             .lte('start_date', rollingEndIso);
 
-          /* ---------- FY-based monthly performance (visuals only) ---------- */
           const months = getFinancialYearMonths();
-          const monthlyData: Record<number, { delivered: number; target: number; year: number }> = {};
+          const monthlyData: Record<
+            number,
+            { delivered: number; target: number; year: number }
+          > = {};
 
-          months.forEach(m => {
+          months.forEach((m) => {
             const year = m.number >= 4 ? financialYear.start : financialYear.end;
             monthlyData[m.number] = { delivered: 0, target: 0, year };
           });
 
-          (activities || []).forEach(a => {
+          (activities || []).forEach((a) => {
             if (monthlyData[a.month]) {
               monthlyData[a.month].delivered += a.delivered_count;
             }
           });
 
-          (targets || []).forEach(t => {
+          (targets || []).forEach((t) => {
             if (monthlyData[t.month]) {
               monthlyData[t.month].target += t.target_value;
             }
           });
 
-          const monthlyPerformance: MonthlyPerformance[] = months.map(m => {
+          const monthlyPerformance: MonthlyPerformance[] = months.map((m) => {
             const d = monthlyData[m.number];
             return {
               month: m.number,
               year: d.year,
               delivered: d.delivered,
               target: d.target,
-              percentAchieved: d.target > 0 ? (d.delivered / d.target) * 100 : 0,
+              percentAchieved:
+                d.target > 0 ? (d.delivered / d.target) * 100 : 0,
             };
           });
 
-          /* ---------- Consistency & accuracy ---------- */
-          const percentages = monthlyPerformance.filter(m => m.target > 0).map(m => m.percentAchieved);
+          const percentages = monthlyPerformance
+            .filter((m) => m.target > 0)
+            .map((m) => m.percentAchieved);
+
           const consistencyScore =
             percentages.length > 1
-              ? 100 - Math.min(100, (stdDev(percentages) / mean(percentages)) * 100)
+              ? 100 -
+                Math.min(
+                  100,
+                  (stdDev(percentages) / mean(percentages)) * 100
+                )
               : 100;
 
           const accurateMonths = monthlyPerformance.filter(
-            m => m.target > 0 && Math.abs(m.percentAchieved - 100) <= 10
+            (m) =>
+              m.target > 0 && Math.abs(m.percentAchieved - 100) <= 10
           ).length;
 
           const targetAccuracy =
-            monthlyPerformance.filter(m => m.target > 0).length > 0
-              ? (accurateMonths / monthlyPerformance.filter(m => m.target > 0).length) * 100
+            monthlyPerformance.filter((m) => m.target > 0).length > 0
+              ? (accurateMonths /
+                  monthlyPerformance.filter((m) => m.target > 0).length) *
+                100
               : 0;
 
           const overDeliveryIndex =
-            monthlyPerformance.filter(m => m.percentAchieved > 120).length /
-            Math.max(1, monthlyPerformance.filter(m => m.target > 0).length) *
+            (monthlyPerformance.filter((m) => m.percentAchieved > 120).length /
+              Math.max(
+                1,
+                monthlyPerformance.filter((m) => m.target > 0).length
+              )) *
             100;
 
-          /* ---------- Bagel metrics (rolling window, definitive) ---------- */
           const bagel = calculateBagelMetricsWindowed(
             activities || [],
             staffLeave || [],
@@ -200,23 +225,43 @@ export const TeamView: React.FC = () => {
 
       setStaffAnalytics(staffResults);
 
-      /* =========================================================
-         TEAM HEADLINE METRICS (rolling 12 completed months ONLY)
-      ========================================================= */
+      /* =========================
+         TEAM AGGREGATES
+      ========================= */
 
-      // --- Delivered (volume-weighted) ---
+      const teamConsistency =
+  staffResults.reduce(
+    (s: number, a: StaffAnalytics) => s + a.consistencyScore,
+    0
+  ) / staffResults.length;
+
+const teamTargetAccuracy =
+  staffResults.reduce(
+    (s: number, a: StaffAnalytics) => s + a.targetAccuracy,
+    0
+  ) / staffResults.length;
+
+const teamOverDelivery =
+  staffResults.reduce(
+    (s: number, a: StaffAnalytics) => s + a.overDeliveryIndex,
+    0
+  ) / staffResults.length;
+
+const avgBagelDays =
+  staffResults.reduce(
+    (s: number, a: StaffAnalytics) => s + a.avgBagelDaysPerMonth,
+    0
+  ) / staffResults.length;
+
+      /* =========================
+         TEAM DELIVERY + TARGETS
+      ========================= */
+
       const { data: teamActivities } = await supabase
         .from('dailyactivity')
-        .select('staff_id, date, delivered_count')
+        .select('date, delivered_count')
         .gte('date', rollingStartIso)
         .lte('date', rollingEndIso);
-
-      const teamDeliveredTotal =
-        (teamActivities || []).reduce((s, r) => s + (r.delivered_count || 0), 0);
-
-      // --- Targets (filtered by rolling months) ---
-      const rollingPairs = monthYearPairsBetween(rollingStart, rollingEnd);
-      const pairSet = new Set(rollingPairs.map(p => `${p.year}-${p.month}`));
 
       const { data: teamTargets } = await supabase
         .from('monthlytargets')
@@ -224,35 +269,88 @@ export const TeamView: React.FC = () => {
         .gte('year', rollingStart.getFullYear())
         .lte('year', rollingEnd.getFullYear());
 
-      const teamTargetTotal =
+      const rollingPairs = monthYearPairsBetween(rollingStart, rollingEnd);
+      const pairSet = new Set(rollingPairs.map((p) => `${p.year}-${p.month}`));
+
+      const deliveredTotal =
+        (teamActivities || []).reduce(
+          (s, r) => s + (r.delivered_count || 0),
+          0
+        );
+
+      const targetTotal =
         (teamTargets || [])
-          .filter(t => pairSet.has(`${t.year}-${t.month}`))
+          .filter((t) => pairSet.has(`${t.year}-${t.month}`))
           .reduce((s, t) => s + (t.target_value || 0), 0);
 
       const avgTargetAchieved =
-        teamTargetTotal > 0 ? (teamDeliveredTotal / teamTargetTotal) * 100 : 0;
+        targetTotal > 0 ? (deliveredTotal / targetTotal) * 100 : 0;
 
-      // --- Bagel aggregation (weighted by working days) ---
-      let teamBagelDays = 0;
-      let teamWorkingDays = 0;
-      let teamLongestNoBagel = 0;
-      let teamLongestBagel = 0;
+      /* =========================
+         ROLLING 12-MONTH CHART
+      ========================= */
 
-      staffResults.forEach(s => {
-        teamBagelDays += s.avgBagelDaysPerMonth * 12;
-        teamWorkingDays += (s.avgBagelDaysPerMonth * 12) / (s.bagelFrequencyRate / 100 || 1);
-        teamLongestNoBagel = Math.max(teamLongestNoBagel, s.longestNoBagelStreak);
-        teamLongestBagel = Math.max(teamLongestBagel, s.longestBagelStreak);
+      const monthlyDelivered = new Map<string, number>();
+      const monthlyTarget = new Map<string, number>();
+
+      (teamActivities || []).forEach((a) => {
+        const d = new Date(a.date);
+        const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+        monthlyDelivered.set(
+          key,
+          (monthlyDelivered.get(key) || 0) + a.delivered_count
+        );
       });
 
-      const teamBagelRate =
-        teamWorkingDays > 0 ? (teamBagelDays / teamWorkingDays) * 100 : 0;
+      (teamTargets || [])
+        .filter((t) => pairSet.has(`${t.year}-${t.month}`))
+        .forEach((t) => {
+          const key = `${t.year}-${t.month}`;
+          monthlyTarget.set(
+            key,
+            (monthlyTarget.get(key) || 0) + t.target_value
+          );
+        });
+
+      const rollingData: RollingPoint[] = rollingPairs.map((end, idx) => {
+        const window = rollingPairs.slice(Math.max(0, idx - 11), idx + 1);
+
+        let delivered = 0;
+        let target = 0;
+
+        window.forEach((p) => {
+          const key = `${p.year}-${p.month}`;
+          delivered += monthlyDelivered.get(key) || 0;
+          target += monthlyTarget.get(key) || 0;
+        });
+
+        return {
+          year: end.year,
+          month: end.month,
+          percent: target > 0 ? (delivered / target) * 100 : 0,
+        };
+      });
+
+      setRollingChartData(rollingData);
+
+      /* =========================
+         FINAL TEAM METRICS
+      ========================= */
 
       setTeamHealthMetrics({
         avgTargetAchieved,
-        teamBagelRate,
-        longestNoBagelStreak: teamLongestNoBagel,
-        longestBagelStreak: teamLongestBagel,
+        teamBagelRate: avgBagelDays * 12 > 0 ? avgBagelDays : 0,
+        longestNoBagelStreak: Math.max(
+          ...staffResults.map((s) => s.longestNoBagelStreak)
+        ),
+        longestBagelStreak: Math.max(
+          ...staffResults.map((s) => s.longestBagelStreak)
+        ),
+        avgBagelDays,
+        consistencyScore: teamConsistency,
+        targetAccuracy: teamTargetAccuracy,
+        overDeliveryIndex: teamOverDelivery,
+        recoverySpeed: 0,
       });
     } catch (e) {
       console.error(e);
@@ -281,19 +379,32 @@ export const TeamView: React.FC = () => {
   return (
     <div className="space-y-6">
       {teamHealthMetrics && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Metric label="Team Avg % Target" value={`${Math.round(teamHealthMetrics.avgTargetAchieved)}%`} />
-          <Metric label="Team Bagel Rate" value={`${teamHealthMetrics.teamBagelRate.toFixed(1)}%`} />
-          <Metric label="Longest No-Bagel Streak" value={`${teamHealthMetrics.longestNoBagelStreak} days`} />
-          <Metric label="Longest Bagel Streak" value={`${teamHealthMetrics.longestBagelStreak} days`} />
-        </div>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Metric label="Team Avg % Target" value={`${Math.round(teamHealthMetrics.avgTargetAchieved)}%`} />
+            <Metric label="Avg Bagel Days (12m)" value={teamHealthMetrics.avgBagelDays.toFixed(1)} />
+            <Metric label="Longest No-Bagel Streak" value={`${teamHealthMetrics.longestNoBagelStreak} days`} />
+            <Metric label="Longest Bagel Streak" value={`${teamHealthMetrics.longestBagelStreak} days`} />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Metric label="Consistency Score" value={`${Math.round(teamHealthMetrics.consistencyScore)}%`} />
+            <Metric label="Target Accuracy" value={`${Math.round(teamHealthMetrics.targetAccuracy)}%`} />
+            <Metric label="Over-Delivery Index" value={`${Math.round(teamHealthMetrics.overDeliveryIndex)}%`} />
+            <Metric label="Avg Recovery Speed" value="—" />
+          </div>
+        </>
+      )}
+
+      {rollingChartData.length > 0 && (
+        <Rolling12MonthPerformanceChart data={rollingChartData} />
       )}
     </div>
   );
 };
 
 /* =========================
-   Small helpers
+   Components & helpers
 ========================= */
 
 const Metric = ({ label, value }: { label: string; value: string }) => (
@@ -303,15 +414,96 @@ const Metric = ({ label, value }: { label: string; value: string }) => (
   </div>
 );
 
-const mean = (a: number[]) => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0);
+const mean = (a: number[]) =>
+  a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0;
 
 const stdDev = (a: number[]) => {
   const m = mean(a);
-  return Math.sqrt(mean(a.map(v => (v - m) ** 2)));
+  return Math.sqrt(mean(a.map((v) => (v - m) ** 2)));
 };
 
 /* =========================
-   Bagel logic (authoritative)
+   Rolling Chart
+========================= */
+
+const Rolling12MonthPerformanceChart = ({
+  data,
+}: {
+  data: RollingPoint[];
+}) => {
+  const VIEWBOX_HEIGHT = 260;
+  const BASELINE_Y = 220;
+  const TOP_MARGIN = 20;
+  const BAR_AREA_HEIGHT = BASELINE_Y - TOP_MARGIN;
+
+  const BAR_WIDTH = 28;
+  const GAP = 14;
+  const CHART_WIDTH = data.length * (BAR_WIDTH + GAP) + 60;
+
+  const getBarColor = (v: number) =>
+    v >= 100 ? '#008A00' : v >= 90 ? '#FF8A2A' : '#FF3B30';
+
+  return (
+    <div className="bg-white rounded-xl border p-6">
+      <h3 className="text-lg font-semibold mb-4">
+        Rolling 12-Month % of Target Achieved
+      </h3>
+
+      <svg viewBox={`0 0 ${CHART_WIDTH} ${VIEWBOX_HEIGHT}`} className="w-full h-64">
+        <line x1={40} y1={BASELINE_Y} x2={40} y2={TOP_MARGIN} stroke="#9CA3AF" />
+        <line x1={40} y1={BASELINE_Y} x2={CHART_WIDTH - 10} y2={BASELINE_Y} stroke="#001B47" strokeWidth="2" />
+
+        <line
+          x1={40}
+          x2={CHART_WIDTH - 10}
+          y1={BASELINE_Y - BAR_AREA_HEIGHT}
+          y2={BASELINE_Y - BAR_AREA_HEIGHT}
+          stroke="#6B7280"
+          strokeDasharray="6,4"
+        />
+
+        {data.map((d, i) => {
+          const x = 40 + i * (BAR_WIDTH + GAP) + GAP;
+          const h = Math.min(d.percent, 120) / 100 * BAR_AREA_HEIGHT;
+
+          return (
+            <g key={`${d.year}-${d.month}`}>
+              <rect
+                x={x}
+                y={BASELINE_Y - h}
+                width={BAR_WIDTH}
+                height={h}
+                rx={4}
+                fill={getBarColor(d.percent)}
+              />
+              <text
+                x={x + BAR_WIDTH / 2}
+                y={BASELINE_Y - h - 6}
+                textAnchor="middle"
+                className="text-xs font-bold fill-gray-700"
+              >
+                {Math.round(d.percent)}%
+              </text>
+              <text
+                x={x + BAR_WIDTH / 2}
+                y={BASELINE_Y + 14}
+                textAnchor="middle"
+                className="text-xs fill-gray-600"
+              >
+                {new Date(d.year, d.month - 1).toLocaleString('en-GB', {
+                  month: 'short',
+                })}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+};
+
+/* =========================
+   Bagel logic
 ========================= */
 
 function calculateBagelMetricsWindowed(
@@ -324,12 +516,12 @@ function calculateBagelMetricsWindowed(
   const working: string[] = [];
   const delivered = new Set<string>();
 
-  const leaveRanges = (staffLeave || []).map(l => ({
+  const leaveRanges = (staffLeave || []).map((l) => ({
     s: new Date(l.start_date),
     e: new Date(l.end_date),
   }));
 
-  const onLeave = (d: Date) => leaveRanges.some(r => d >= r.s && d <= r.e);
+  const onLeave = (d: Date) => leaveRanges.some((r) => d >= r.s && d <= r.e);
 
   const d = new Date(start);
   while (d <= end) {
@@ -341,7 +533,7 @@ function calculateBagelMetricsWindowed(
     d.setDate(d.getDate() + 1);
   }
 
-  (activities || []).forEach(a => {
+  (activities || []).forEach((a) => {
     if (a.delivered_count > 0) delivered.add(a.date);
   });
 
@@ -351,7 +543,7 @@ function calculateBagelMetricsWindowed(
   let nb = 0;
   let b = 0;
 
-  working.forEach(day => {
+  working.forEach((day) => {
     if (delivered.has(day)) {
       nb++;
       b = 0;
