@@ -83,7 +83,11 @@ export const StaffTracker: React.FC = () => {
       .eq('year', year)
       .in('staff_id', isTeamSelected ? allStaff.map(s => s.staff_id) : [currentStaff.staff_id]);
 
-    activities?.forEach(a => {
+    activities?.forEach((a: {
+  day: number;
+  service_id: number;
+  delivered_count: number;
+}) => {
       const service = services.find(s => s.service_id === a.service_id);
       if (!service) return;
       const entry = entries.find(e => e.day === a.day);
