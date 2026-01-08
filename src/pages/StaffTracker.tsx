@@ -18,13 +18,19 @@ interface DailyEntry {
   services: { [key: string]: number };
 }
 
+interface ActivityRow {
+  day: number;
+  service_id: number;
+  delivered_count: number;
+}
+
 export const StaffTracker: React.FC = () => {
   const { selectedMonth, selectedYear, setSelectedMonth, setSelectedYear, financialYear } = useDate();
   const { currentStaff, allStaff, selectedStaffId } = useAuth();
   const { services } = useServices();
 
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
-  const [targets, setTargets] = useState<{ [key: string]: number }>({});
+  const [targets, setTargets] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [activeCell, setActiveCell] = useState<{ service: number; day: number } | null>(null);
 
@@ -48,6 +54,18 @@ export const StaffTracker: React.FC = () => {
 
   const getInputKey = (serviceIdx: number, day: number) => `${serviceIdx}-${day}`;
 
+  const getDayName = (day: number) => {
+    const date = new Date(year, selectedMonth - 1, day);
+    return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
+  };
+
+  const getCellBackgroundClass = (entry: DailyEntry) => {
+    if (entry.isBankHoliday) return 'bg-red-200 dark:bg-red-800/50';
+    if (entry.isOnLeave) return 'bg-gray-200 dark:bg-gray-600';
+    if (entry.isWeekend) return 'bg-red-100 dark:bg-red-800/30';
+    return 'bg-white dark:bg-gray-700';
+  };
+
   const fetchData = async () => {
     if (!currentStaff || services.length === 0) return;
 
@@ -57,19 +75,17 @@ export const StaffTracker: React.FC = () => {
 
     const entries: DailyEntry[] = Array.from({ length: daysInMonth }, (_, i) => {
       const day = i + 1;
-      const date = new Date(year, selectedMonth - 1, day);
-      const dateStr = `${year}-${selectedMonth.toString().padStart(2, '0')}-${day
+      const date = `${year}-${selectedMonth.toString().padStart(2, '0')}-${day
         .toString()
         .padStart(2, '0')}`;
 
-      const isWeekend = [0, 6].includes(date.getDay());
-      const bankHoliday = isDateBankHoliday(dateStr);
+      const bankHoliday = isDateBankHoliday(date);
 
       return {
-        date: dateStr,
+        date,
         day,
-        isWeekend,
-        isOnLeave: isDateOnLeave(dateStr),
+        isWeekend: [0, 6].includes(new Date(year, selectedMonth - 1, day).getDay()),
+        isOnLeave: isDateOnLeave(date),
         isBankHoliday: !!bankHoliday,
         bankHolidayTitle: bankHoliday?.title,
         services: Object.fromEntries(services.map(s => [s.service_name, 0])),
@@ -83,11 +99,7 @@ export const StaffTracker: React.FC = () => {
       .eq('year', year)
       .in('staff_id', isTeamSelected ? allStaff.map(s => s.staff_id) : [currentStaff.staff_id]);
 
-    activities?.forEach((a: {
-  day: number;
-  service_id: number;
-  delivered_count: number;
-}) => {
+    activities?.forEach((a: ActivityRow) => {
       const service = services.find(s => s.service_id === a.service_id);
       if (!service) return;
       const entry = entries.find(e => e.day === a.day);
@@ -97,7 +109,7 @@ export const StaffTracker: React.FC = () => {
     setDailyEntries(entries);
 
     if (isTeamSelected) {
-      const totals: any = {};
+      const totals: Record<string, number> = {};
       services.forEach(s => (totals[s.service_name] = 0));
 
       for (const staff of allStaff) {
@@ -161,19 +173,21 @@ export const StaffTracker: React.FC = () => {
     );
   };
 
+  const serviceTotals = Object.fromEntries(
+    services.map(s => [
+      s.service_name,
+      dailyEntries.reduce((sum, e) => sum + e.services[s.service_name], 0),
+    ])
+  );
+
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-4">My Tracker</h2>
+      <h2 className="text-2xl lg:text-3xl font-bold mb-3">My Tracker</h2>
 
       {!loading && !leaveHolidayLoading && (
         <MyTrackerProgressTiles
           services={services}
-          serviceTotals={Object.fromEntries(
-            services.map(s => [
-              s.service_name,
-              dailyEntries.reduce((sum, e) => sum + e.services[s.service_name], 0),
-            ])
-          )}
+          serviceTotals={serviceTotals}
           targets={targets}
           dashboardMode={isTeamSelected ? 'team' : 'individual'}
           workingDays={teamWorkingDays}
@@ -181,16 +195,36 @@ export const StaffTracker: React.FC = () => {
         />
       )}
 
-      <div className="overflow-x-auto mt-6">
+      <div className="mt-6 overflow-x-auto">
+        {/* Header */}
+        <div className="flex bg-gray-100 dark:bg-gray-700 border-b">
+          <div className="w-48 sticky left-0 z-20 px-4 py-3 font-bold">Service</div>
+          {dailyEntries.map(entry => (
+            <div
+              key={entry.day}
+              className={`w-16 text-center px-1 py-2 border-r ${getCellBackgroundClass(entry)}`}
+              title={entry.bankHolidayTitle}
+            >
+              <div className="font-bold">{entry.day}</div>
+              <div className="text-xs">{getDayName(entry.day)}</div>
+              {entry.isBankHoliday && <div className="text-xs">🔴</div>}
+              {entry.isOnLeave && <div className="text-xs">🟢</div>}
+            </div>
+          ))}
+          <div className="w-24 sticky right-0 z-20 px-3 py-3 font-bold">Total</div>
+        </div>
+
+        {/* Rows */}
         {services.map((service, sIdx) => (
           <div key={service.service_id} className="flex border-b">
-            <div className="w-48 sticky left-0 bg-white font-semibold px-3 py-2">
+            <div className="w-48 sticky left-0 px-4 py-3 font-semibold bg-white dark:bg-gray-800">
               {service.service_name}
             </div>
+
             {dailyEntries.map(entry => {
               const key = getInputKey(sIdx, entry.day);
               return (
-                <div key={entry.day} className="w-16 px-1 py-1">
+                <div key={entry.day} className={`w-16 px-1 py-2 ${getCellBackgroundClass(entry)}`}>
                   <input
                     ref={el => el && inputRefs.current.set(key, el)}
                     type="number"
@@ -201,11 +235,15 @@ export const StaffTracker: React.FC = () => {
                       handleLocalChange(entry.day, service.service_name, e.target.value)
                     }
                     onBlur={e => handleSave(entry.day, service.service_name, e.target.value)}
-                    className="w-full text-center border rounded"
+                    className="w-full text-center border rounded-md text-sm"
                   />
                 </div>
               );
             })}
+
+            <div className="w-24 sticky right-0 px-3 py-3 bg-white dark:bg-gray-800 font-bold text-center">
+              {serviceTotals[service.service_name]}
+            </div>
           </div>
         ))}
       </div>
