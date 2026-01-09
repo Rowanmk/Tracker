@@ -65,6 +65,8 @@ export const StaffTracker: React.FC = () => {
       new Date(year, selectedMonth - 1, day).getDay()
     ];
 
+  const isBlueDay = (e: DailyEntry) => e.isWeekend || e.isBankHoliday;
+
   const fetchData = async () => {
     if (!currentStaff || services.length === 0) return;
     setLoading(true);
@@ -210,28 +212,6 @@ export const StaffTracker: React.FC = () => {
     <div>
       <h2 className="text-2xl lg:text-3xl font-bold mb-3">My Tracker</h2>
 
-      {/* STATUS BAR */}
-      <div className="w-full py-4 bg-[#001B47] rounded-xl flex justify-between items-center px-6 mb-6">
-        <select
-          value={selectedMonth}
-          onChange={e => {
-            const m = Number(e.target.value);
-            setSelectedMonth(m);
-            setSelectedYear(m >= 4 ? financialYear.start : financialYear.end);
-          }}
-          className="bg-white px-3 py-2 rounded-md text-sm font-medium"
-        >
-          {Array.from({ length: 12 }, (_, i) => {
-            const d = new Date(financialYear.start, 3 + i, 1);
-            return (
-              <option key={i} value={d.getMonth() + 1}>
-                {d.toLocaleString('default', { month: 'long' })} {d.getFullYear()}
-              </option>
-            );
-          })}
-        </select>
-      </div>
-
       {!loading && !leaveHolidayLoading && (
         <MyTrackerProgressTiles
           services={services}
@@ -243,7 +223,6 @@ export const StaffTracker: React.FC = () => {
         />
       )}
 
-      {/* TABLE */}
       <div className="mt-6 overflow-x-auto">
         {/* HEADER */}
         <div className="flex bg-gray-100 border-b sticky top-0 z-30">
@@ -254,13 +233,13 @@ export const StaffTracker: React.FC = () => {
           {dailyEntries.map(e => (
             <div
               key={e.day}
-              className="w-16 text-center px-1 py-2 border-r"
+              className={`w-16 text-center px-1 py-2 border-r ${
+                isBlueDay(e) ? 'bg-blue-50' : ''
+              }`}
               title={e.bankHolidayTitle}
             >
               <div className="font-bold">{e.day}</div>
               <div className="text-xs">{getDayName(e.day)}</div>
-              {e.isBankHoliday && <div className="text-xs">🔴</div>}
-              {e.isOnLeave && <div className="text-xs">🟢</div>}
             </div>
           ))}
 
@@ -284,11 +263,21 @@ export const StaffTracker: React.FC = () => {
             {dailyEntries.map(e => {
               const dirty = dirtyCells.has(`${e.day}-${service.service_name}`);
               return (
-                <div key={e.day} className="w-16 px-1 py-2">
+                <div
+                  key={e.day}
+                  className={`w-16 px-1 py-2 ${
+                    isBlueDay(e) ? 'bg-blue-50' : ''
+                  }`}
+                >
                   <input
                     type="number"
                     value={e.services[service.service_name]}
                     disabled={isTeamSelected}
+                    onFocus={ev => {
+                      if (ev.currentTarget.value === '0') {
+                        ev.currentTarget.value = '';
+                      }
+                    }}
                     onChange={ev =>
                       handleLocalChange(e.day, service.service_name, ev.target.value)
                     }
@@ -318,15 +307,20 @@ export const StaffTracker: React.FC = () => {
           </div>
 
           {dailyTotals.map((t, i) => (
-            <div key={i} className="w-16 px-1 py-2">
-              <div className="px-2 py-2 bg-white rounded-md text-center text-sm font-bold">
+            <div
+              key={i}
+              className={`w-16 px-1 py-2 flex items-center justify-center ${
+                isBlueDay(dailyEntries[i]) ? 'bg-blue-50' : ''
+              }`}
+            >
+              <div className="px-2 py-2 bg-white rounded-md text-center text-sm font-bold w-full">
                 {t}
               </div>
             </div>
           ))}
 
-          <div className="w-24 px-3 py-3 sticky right-0 bg-gray-200 z-30">
-            <div className="px-2 py-2 bg-blue-600 text-white rounded-md text-center text-sm font-bold">
+          <div className="w-24 px-3 py-3 sticky right-0 bg-gray-200 z-30 flex items-center justify-center">
+            <div className="px-2 py-2 bg-blue-600 text-white rounded-md text-center text-sm font-bold w-full">
               {grandTotal}
             </div>
           </div>
