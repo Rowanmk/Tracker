@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDate } from '../context/DateContext';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
@@ -69,7 +69,7 @@ export const StaffTracker: React.FC = () => {
     if (e.isBankHoliday) return 'bg-red-200 dark:bg-red-800/40';
     if (e.isOnLeave) return 'bg-gray-200 dark:bg-gray-600';
     if (e.isWeekend) return 'bg-red-100 dark:bg-red-800/20';
-    return 'bg-white dark:bg-gray-700';
+    return 'bg-white dark:bg-gray-800';
   };
 
   const fetchData = async () => {
@@ -131,7 +131,9 @@ export const StaffTracker: React.FC = () => {
         currentStaff.staff_id
       );
       setTargets(
-        Object.fromEntries(services.map(s => [s.service_name, perService[s.service_id] || 0]))
+        Object.fromEntries(
+          services.map(s => [s.service_name, perService[s.service_id] || 0])
+        )
       );
     }
 
@@ -205,64 +207,27 @@ export const StaffTracker: React.FC = () => {
     ])
   );
 
-  const overallTotal = Object.values(serviceTotals).reduce((a, b) => a + b, 0);
-  const overallTarget = Object.values(targets).reduce((a, b) => a + b, 0);
-  const dailyTarget = teamWorkingDays > 0 ? overallTarget / teamWorkingDays : 0;
-  const expectedByNow = Math.round(dailyTarget * Math.min(teamWorkingDays, workingDaysUpToToday));
+  const dailyTotals = dailyEntries.map(e =>
+    services.reduce((sum, s) => sum + e.services[s.service_name], 0)
+  );
+
+  const grandTotal = dailyTotals.reduce((a, b) => a + b, 0);
 
   return (
     <div>
       <h2 className="text-2xl lg:text-3xl font-bold mb-3">My Tracker</h2>
 
-      {/* BLUE STATUS BAR */}
-      <div className="w-full py-4 bg-[#001B47] rounded-xl flex justify-between items-center px-6 mb-6">
-        <select
-          value={selectedMonth}
-          onChange={e => {
-            const m = Number(e.target.value);
-            setSelectedMonth(m);
-            setSelectedYear(m >= 4 ? financialYear.start : financialYear.end);
-          }}
-          className="bg-white px-3 py-2 rounded-md text-sm font-medium"
-        >
-          {Array.from({ length: 12 }, (_, i) => {
-            const d = new Date(financialYear.start, 3 + i, 1);
-            return (
-              <option key={i} value={d.getMonth() + 1}>
-                {d.toLocaleString('default', { month: 'long' })} {d.getFullYear()}
-              </option>
-            );
-          })}
-        </select>
-
-        <div className="text-white text-lg font-semibold">
-          Ahead by {Math.max(0, overallTotal - expectedByNow)} | Delivered: {overallTotal} | Expected: {expectedByNow}
-        </div>
-
-        <div />
-      </div>
-
-      {!loading && !leaveHolidayLoading && (
-        <MyTrackerProgressTiles
-          services={services}
-          serviceTotals={serviceTotals}
-          targets={targets}
-          dashboardMode={isTeamSelected ? 'team' : 'individual'}
-          workingDays={teamWorkingDays}
-          workingDaysUpToToday={workingDaysUpToToday}
-        />
-      )}
-
-      {/* GRID */}
       <div className="mt-6 overflow-x-auto">
-        <div className="flex bg-gray-100 dark:bg-gray-700 border-b">
-          <div className="w-56 sticky left-0 z-20 px-4 py-3 font-bold whitespace-nowrap">
+        {/* HEADER */}
+        <div className="flex bg-gray-100 border-b sticky top-0 z-30">
+          <div className="w-56 px-4 py-3 font-bold sticky left-0 bg-gray-100 z-40">
             Service
           </div>
+
           {dailyEntries.map(e => (
             <div
               key={e.day}
-              className={`w-16 text-center px-1 py-2 border-r ${getCellBg(e)}`}
+              className="w-16 text-center px-1 py-2 border-r"
               title={e.bankHolidayTitle}
             >
               <div className="font-bold">{e.day}</div>
@@ -271,14 +236,21 @@ export const StaffTracker: React.FC = () => {
               {e.isOnLeave && <div className="text-xs">🟢</div>}
             </div>
           ))}
-          <div className="w-24 sticky right-0 z-20 px-3 py-3 font-bold">
+
+          <div className="w-24 px-3 py-3 font-bold text-center sticky right-0 bg-gray-100 z-40">
             Total
           </div>
         </div>
 
-        {services.map(service => (
-          <div key={service.service_id} className="flex border-b">
-            <div className="w-56 sticky left-0 px-4 py-3 font-semibold whitespace-nowrap overflow-hidden text-ellipsis bg-white dark:bg-gray-800">
+        {/* SERVICE ROWS */}
+        {services.map((service, idx) => (
+          <div
+            key={service.service_id}
+            className={`flex border-b ${
+              idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+            }`}
+          >
+            <div className="w-56 px-4 py-3 font-semibold sticky left-0 bg-inherit z-20">
               {service.service_name}
             </div>
 
@@ -296,7 +268,7 @@ export const StaffTracker: React.FC = () => {
                     onBlur={ev =>
                       handleSave(e.day, service.service_name, ev.target.value)
                     }
-                    className={`w-full text-center border rounded-md text-sm ${
+                    className={`w-full px-1 py-1 border rounded-md text-center text-sm ${
                       dirty ? 'border-orange-400 ring-1 ring-orange-300' : ''
                     }`}
                   />
@@ -304,11 +276,34 @@ export const StaffTracker: React.FC = () => {
               );
             })}
 
-            <div className="w-24 sticky right-0 px-3 py-3 bg-white dark:bg-gray-800 font-bold text-center">
-              {serviceTotals[service.service_name]}
+            <div className="w-24 px-3 py-3 font-bold text-center sticky right-0 bg-inherit z-20">
+              <div className="px-2 py-2 bg-gray-100 rounded-md">
+                {serviceTotals[service.service_name]}
+              </div>
             </div>
           </div>
         ))}
+
+        {/* DAILY TOTAL ROW */}
+        <div className="flex bg-gray-200 border-t-2 border-gray-300">
+          <div className="w-56 px-4 py-3 font-bold sticky left-0 bg-gray-200 z-30">
+            Daily Total
+          </div>
+
+          {dailyTotals.map((total, idx) => (
+            <div key={idx} className="w-16 px-1 py-2 border-r">
+              <div className="px-2 py-2 bg-white rounded-md text-center text-sm font-bold">
+                {total}
+              </div>
+            </div>
+          ))}
+
+          <div className="w-24 px-3 py-3 sticky right-0 bg-gray-200 z-30">
+            <div className="px-2 py-2 bg-blue-600 text-white rounded-md text-center text-sm font-bold">
+              {grandTotal}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
