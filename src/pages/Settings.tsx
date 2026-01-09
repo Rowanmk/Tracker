@@ -10,31 +10,46 @@ type Staff = Database['public']['Tables']['staff']['Row'];
 type BankHoliday = Database['public']['Tables']['bank_holidays']['Row'];
 type StaffLeave = Database['public']['Tables']['staff_leave']['Row'];
 
+// Fix: staff_leave rows can include joined staff data
+type StaffLeaveWithStaff = StaffLeave & {
+  staff?: {
+    name: string;
+  };
+};
+
 export const Settings: React.FC = () => {
   const [allUsers, setAllUsers] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newUserName, setNewUserName] = useState('');
   const [newUserRole, setNewUserRole] = useState<'admin' | 'staff'>('staff');
-  const [newUserRegion, setNewUserRegion] = useState<'england-and-wales' | 'scotland' | 'northern-ireland'>('england-and-wales');
+  const [newUserRegion, setNewUserRegion] = useState<
+    'england-and-wales' | 'scotland' | 'northern-ireland'
+  >('england-and-wales');
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [editingUser, setEditingUser] = useState<Staff | null>(null);
   const [editForm, setEditForm] = useState({
     name: '',
     role: 'staff' as 'admin' | 'staff',
-    home_region: 'england-and-wales' as 'england-and-wales' | 'scotland' | 'northern-ireland',
+    home_region: 'england-and-wales' as
+      | 'england-and-wales'
+      | 'scotland'
+      | 'northern-ireland',
   });
   const [activeTab, setActiveTab] = useState<'users' | 'calendar'>('users');
 
   // Calendar tab state
   const [bankHolidays, setBankHolidays] = useState<BankHoliday[]>([]);
-  const [staffLeave, setStaffLeave] = useState<StaffLeave[]>([]);
+  const [staffLeave, setStaffLeave] = useState<StaffLeaveWithStaff[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showHolidayModal, setShowHolidayModal] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [holidayForm, setHolidayForm] = useState({
     title: '',
-    region: 'england-and-wales' as 'england-and-wales' | 'scotland' | 'northern-ireland',
+    region: 'england-and-wales' as
+      | 'england-and-wales'
+      | 'scotland'
+      | 'northern-ireland',
     notes: '',
     bunting: false,
   });
@@ -45,7 +60,9 @@ export const Settings: React.FC = () => {
     end_date: '',
     notes: '',
   });
-  const [selectedRegionFilter, setSelectedRegionFilter] = useState<'all' | 'england-and-wales' | 'scotland' | 'northern-ireland'>('all');
+  const [selectedRegionFilter, setSelectedRegionFilter] = useState<
+    'all' | 'england-and-wales' | 'scotland' | 'northern-ireland'
+  >('all');
 
   // Calendar navigation state
   const [calendarMonth, setCalendarMonth] = useState<number>(new Date().getMonth() + 1);
@@ -57,7 +74,7 @@ export const Settings: React.FC = () => {
 
   const regionLabels = {
     'england-and-wales': 'England & Wales',
-    'scotland': 'Scotland',
+    scotland: 'Scotland',
     'northern-ireland': 'Northern Ireland',
   };
 
@@ -113,12 +130,9 @@ export const Settings: React.FC = () => {
           .order('date'),
         supabase
           .from('staff_leave')
-          .select(`
-            *,
-            staff (name)
-          `)
+          .select('*, staff:staff_id (name)')
           .or(`and(start_date.lte.${endDate},end_date.gte.${startDate})`)
-          .order('start_date')
+          .order('start_date'),
       ]);
 
       if (holidaysResult.error) {
@@ -130,7 +144,7 @@ export const Settings: React.FC = () => {
       if (leaveResult.error) {
         console.error('Error fetching leave:', leaveResult.error);
       } else {
-        setStaffLeave(leaveResult.data || []);
+        setStaffLeave((leaveResult.data as StaffLeaveWithStaff[]) || []);
       }
     } catch (err) {
       console.error('Error fetching calendar data:', err);
@@ -139,7 +153,7 @@ export const Settings: React.FC = () => {
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!newUserName.trim()) return;
 
     setIsAddingUser(true);
@@ -187,11 +201,11 @@ export const Settings: React.FC = () => {
         console.error('Error updating user visibility:', updateError);
         setError('Failed to update user visibility');
       } else {
-        setAllUsers(prev => prev.map(user => 
-          user.staff_id === userId 
-            ? { ...user, is_hidden: !currentHiddenStatus }
-            : user
-        ));
+        setAllUsers(prev =>
+          prev.map(user =>
+            user.staff_id === userId ? { ...user, is_hidden: !currentHiddenStatus } : user
+          )
+        );
       }
     } catch (err) {
       console.error('Error in handleToggleUserVisibility:', err);
@@ -204,7 +218,9 @@ export const Settings: React.FC = () => {
     setEditForm({
       name: user.name,
       role: user.role as 'admin' | 'staff',
-      home_region: (user.home_region as 'england-and-wales' | 'scotland' | 'northern-ireland') || 'england-and-wales',
+      home_region:
+        (user.home_region as 'england-and-wales' | 'scotland' | 'northern-ireland') ||
+        'england-and-wales',
     });
   };
 
@@ -227,11 +243,18 @@ export const Settings: React.FC = () => {
         console.error('Error updating user:', updateError);
         setError('Failed to update user');
       } else {
-        setAllUsers(prev => prev.map(user => 
-          user.staff_id === editingUser.staff_id 
-            ? { ...user, name: editForm.name.trim(), role: editForm.role, home_region: editForm.home_region }
-            : user
-        ));
+        setAllUsers(prev =>
+          prev.map(user =>
+            user.staff_id === editingUser.staff_id
+              ? {
+                  ...user,
+                  name: editForm.name.trim(),
+                  role: editForm.role,
+                  home_region: editForm.home_region,
+                }
+              : user
+          )
+        );
         setEditingUser(null);
         setEditForm({ name: '', role: 'staff', home_region: 'england-and-wales' });
       }
@@ -250,16 +273,14 @@ export const Settings: React.FC = () => {
     if (!selectedDate || !holidayForm.title.trim()) return;
 
     try {
-      const { error } = await supabase
-        .from('bank_holidays')
-        .insert({
-          date: selectedDate,
-          title: holidayForm.title.trim(),
-          region: holidayForm.region,
-          notes: holidayForm.notes.trim() || null,
-          bunting: holidayForm.bunting,
-          source: 'manual',
-        });
+      const { error } = await supabase.from('bank_holidays').insert({
+        date: selectedDate,
+        title: holidayForm.title.trim(),
+        region: holidayForm.region,
+        notes: holidayForm.notes.trim() || null,
+        bunting: holidayForm.bunting,
+        source: 'manual',
+      });
 
       if (error) {
         console.error('Error adding holiday:', error);
@@ -285,22 +306,26 @@ export const Settings: React.FC = () => {
     }
 
     try {
-      const { error } = await supabase
-        .from('staff_leave')
-        .insert({
-          staff_id: leaveForm.staff_id,
-          start_date: leaveForm.start_date,
-          end_date: leaveForm.end_date,
-          type: leaveForm.type,
-          notes: leaveForm.notes.trim() || null,
-        });
+      const { error } = await supabase.from('staff_leave').insert({
+        staff_id: leaveForm.staff_id,
+        start_date: leaveForm.start_date,
+        end_date: leaveForm.end_date,
+        type: leaveForm.type,
+        notes: leaveForm.notes.trim() || null,
+      });
 
       if (error) {
         console.error('Error adding leave:', error);
         setError('Failed to add leave');
       } else {
         setShowLeaveModal(false);
-        setLeaveForm({ staff_id: 0, type: 'Annual Leave', start_date: '', end_date: '', notes: '' });
+        setLeaveForm({
+          staff_id: 0,
+          type: 'Annual Leave',
+          start_date: '',
+          end_date: '',
+          notes: '',
+        });
         setSelectedDate(null);
         fetchCalendarData();
       }
@@ -312,10 +337,7 @@ export const Settings: React.FC = () => {
 
   const handleDeleteHoliday = async (id: number) => {
     try {
-      const { error } = await supabase
-        .from('bank_holidays')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('bank_holidays').delete().eq('id', id);
 
       if (error) {
         console.error('Error deleting holiday:', error);
@@ -331,10 +353,7 @@ export const Settings: React.FC = () => {
 
   const handleDeleteLeave = async (id: number) => {
     try {
-      const { error } = await supabase
-        .from('staff_leave')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('staff_leave').delete().eq('id', id);
 
       if (error) {
         console.error('Error deleting leave:', error);
@@ -351,20 +370,20 @@ export const Settings: React.FC = () => {
   const renderCalendarGrid = () => {
     const daysInMonth = new Date(calendarYear, calendarMonth, 0).getDate();
     const firstDay = new Date(calendarYear, calendarMonth - 1, 1).getDay();
-    
+
     const days = [];
-    
-    // Empty cells for days before the first day of the month
+
     for (let i = 0; i < firstDay; i++) {
       days.push(<div key={`empty-${i}`} className="h-24 border border-gray-200"></div>);
     }
-    
-    // Days of the month
+
     for (let day = 1; day <= daysInMonth; day++) {
-      const date = `${calendarYear}-${calendarMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+      const date = `${calendarYear}-${calendarMonth.toString().padStart(2, '0')}-${day
+        .toString()
+        .padStart(2, '0')}`;
       const dayOfWeek = new Date(calendarYear, calendarMonth - 1, day).getDay();
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-      
+
       const dayHolidays = bankHolidays.filter(h => h.date === date);
       const dayLeave = staffLeave.filter(l => {
         const leaveStart = new Date(l.start_date);
@@ -372,7 +391,7 @@ export const Settings: React.FC = () => {
         const currentDate = new Date(date);
         return currentDate >= leaveStart && currentDate <= leaveEnd;
       });
-      
+
       days.push(
         <div
           key={day}
@@ -397,13 +416,14 @@ export const Settings: React.FC = () => {
         </div>
       );
     }
-    
+
     return days;
   };
 
-  const filteredHolidays = selectedRegionFilter === 'all' 
-    ? bankHolidays 
-    : bankHolidays.filter(h => h.region === selectedRegionFilter);
+  const filteredHolidays =
+    selectedRegionFilter === 'all'
+      ? bankHolidays
+      : bankHolidays.filter(h => h.region === selectedRegionFilter);
 
   if (!isAdmin) {
     return (
@@ -426,14 +446,14 @@ export const Settings: React.FC = () => {
       </div>
 
       {(staffError || error || syncError) && (
-        <div className={`mb-4 p-4 border rounded-md ${
-          error?.includes('Successfully') 
-            ? 'bg-green-50 border-green-200 text-green-800' 
-            : 'bg-red-50 border-red-200 text-red-800'
-        }`}>
-          <p>
-            {error?.includes('Successfully') ? '✅' : '⚠️'} {error || staffError || syncError}
-          </p>
+        <div
+          className={`mb-4 p-4 border rounded-md ${
+            error?.includes('Successfully')
+              ? 'bg-green-50 border-green-200 text-green-800'
+              : 'bg-red-50 border-red-200 text-red-800'
+          }`}
+        >
+          <p>{error?.includes('Successfully') ? '✅' : '⚠️'} {error || staffError || syncError}</p>
         </div>
       )}
 
@@ -508,7 +528,14 @@ export const Settings: React.FC = () => {
                       </label>
                       <select
                         value={newUserRegion}
-                        onChange={(e) => setNewUserRegion(e.target.value as 'england-and-wales' | 'scotland' | 'northern-ireland')}
+                        onChange={(e) =>
+                          setNewUserRegion(
+                            e.target.value as
+                              | 'england-and-wales'
+                              | 'scotland'
+                              | 'northern-ireland'
+                          )
+                        }
                         className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                       >
                         <option value="england-and-wales">England & Wales</option>
@@ -563,19 +590,28 @@ export const Settings: React.FC = () => {
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
                         {visibleUsers.map((user) => (
-                          <tr key={user.staff_id} className="hover:bg-gray-50 cursor-pointer" onClick={() => handleEditUser(user)}>
+                          <tr
+                            key={user.staff_id}
+                            className="hover:bg-gray-50 cursor-pointer"
+                            onClick={() => handleEditUser(user)}
+                          >
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                               {user.name}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
-                              }`}>
+                              <span
+                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                  user.role === 'admin'
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : 'bg-blue-100 text-blue-800'
+                                }`}
+                              >
                                 {user.role}
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {regionLabels[user.home_region as keyof typeof regionLabels] || 'England & Wales'}
+                              {regionLabels[user.home_region as keyof typeof regionLabels] ||
+                                'England & Wales'}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
@@ -641,14 +677,19 @@ export const Settings: React.FC = () => {
                               {user.name}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
-                              }`}>
+                              <span
+                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                  user.role === 'admin'
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : 'bg-blue-100 text-blue-800'
+                                }`}
+                              >
                                 {user.role}
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {regionLabels[user.home_region as keyof typeof regionLabels] || 'England & Wales'}
+                              {regionLabels[user.home_region as keyof typeof regionLabels] ||
+                                'England & Wales'}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
@@ -782,10 +823,10 @@ export const Settings: React.FC = () => {
                       {filteredHolidays.map((holiday) => (
                         <tr key={holiday.id}>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {new Date(holiday.date).toLocaleDateString('en-GB', { 
-                              day: '2-digit', 
-                              month: 'short', 
-                              year: '2-digit' 
+                            {new Date(holiday.date).toLocaleDateString('en-GB', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: '2-digit'
                             })}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
@@ -820,7 +861,7 @@ export const Settings: React.FC = () => {
                   <h3 className="text-lg font-medium text-gray-900 mb-4">
                     Events for {new Date(selectedDate).toLocaleDateString()}
                   </h3>
-                  
+
                   <div className="space-y-4">
                     <div>
                       <h4 className="font-medium text-gray-900 mb-2">Bank Holidays</h4>
