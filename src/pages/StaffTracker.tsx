@@ -65,13 +65,6 @@ export const StaffTracker: React.FC = () => {
       new Date(year, selectedMonth - 1, day).getDay()
     ];
 
-  const getCellBg = (e: DailyEntry) => {
-    if (e.isBankHoliday) return 'bg-red-200 dark:bg-red-800/40';
-    if (e.isOnLeave) return 'bg-gray-200 dark:bg-gray-600';
-    if (e.isWeekend) return 'bg-red-100 dark:bg-red-800/20';
-    return 'bg-white dark:bg-gray-800';
-  };
-
   const fetchData = async () => {
     if (!currentStaff || services.length === 0) return;
     setLoading(true);
@@ -217,6 +210,40 @@ export const StaffTracker: React.FC = () => {
     <div>
       <h2 className="text-2xl lg:text-3xl font-bold mb-3">My Tracker</h2>
 
+      {/* STATUS BAR */}
+      <div className="w-full py-4 bg-[#001B47] rounded-xl flex justify-between items-center px-6 mb-6">
+        <select
+          value={selectedMonth}
+          onChange={e => {
+            const m = Number(e.target.value);
+            setSelectedMonth(m);
+            setSelectedYear(m >= 4 ? financialYear.start : financialYear.end);
+          }}
+          className="bg-white px-3 py-2 rounded-md text-sm font-medium"
+        >
+          {Array.from({ length: 12 }, (_, i) => {
+            const d = new Date(financialYear.start, 3 + i, 1);
+            return (
+              <option key={i} value={d.getMonth() + 1}>
+                {d.toLocaleString('default', { month: 'long' })} {d.getFullYear()}
+              </option>
+            );
+          })}
+        </select>
+      </div>
+
+      {!loading && !leaveHolidayLoading && (
+        <MyTrackerProgressTiles
+          services={services}
+          serviceTotals={serviceTotals}
+          targets={targets}
+          dashboardMode={isTeamSelected ? 'team' : 'individual'}
+          workingDays={teamWorkingDays}
+          workingDaysUpToToday={workingDaysUpToToday}
+        />
+      )}
+
+      {/* TABLE */}
       <div className="mt-6 overflow-x-auto">
         {/* HEADER */}
         <div className="flex bg-gray-100 border-b sticky top-0 z-30">
@@ -257,7 +284,7 @@ export const StaffTracker: React.FC = () => {
             {dailyEntries.map(e => {
               const dirty = dirtyCells.has(`${e.day}-${service.service_name}`);
               return (
-                <div key={e.day} className={`w-16 px-1 py-2 ${getCellBg(e)}`}>
+                <div key={e.day} className="w-16 px-1 py-2">
                   <input
                     type="number"
                     value={e.services[service.service_name]}
@@ -284,16 +311,16 @@ export const StaffTracker: React.FC = () => {
           </div>
         ))}
 
-        {/* DAILY TOTAL ROW */}
+        {/* DAILY TOTAL */}
         <div className="flex bg-gray-200 border-t-2 border-gray-300">
           <div className="w-56 px-4 py-3 font-bold sticky left-0 bg-gray-200 z-30">
             Daily Total
           </div>
 
-          {dailyTotals.map((total, idx) => (
-            <div key={idx} className="w-16 px-1 py-2 border-r">
+          {dailyTotals.map((t, i) => (
+            <div key={i} className="w-16 px-1 py-2">
               <div className="px-2 py-2 bg-white rounded-md text-center text-sm font-bold">
-                {total}
+                {t}
               </div>
             </div>
           ))}
