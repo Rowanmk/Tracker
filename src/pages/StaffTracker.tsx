@@ -22,22 +22,17 @@ interface ActivityRow {
   day: number;
   service_id: number;
   delivered_count: number;
+  staff_id: number;
 }
 
 export const StaffTracker: React.FC = () => {
-  const {
-    selectedMonth,
-    selectedYear,
-    financialYear,
-  } = useDate();
-
+  const { selectedMonth, selectedYear, financialYear } = useDate();
   const { currentStaff, allStaff, selectedStaffId } = useAuth();
   const { services } = useServices();
 
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
   const [targets, setTargets] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
-  const [dirtyCells, setDirtyCells] = useState<Set<string>>(new Set());
 
   const isTeamSelected = selectedStaffId === 'team' || !selectedStaffId;
   const year = selectedYear;
@@ -89,7 +84,7 @@ export const StaffTracker: React.FC = () => {
 
     const { data: activities } = await supabase
       .from('dailyactivity')
-      .select('day, service_id, delivered_count')
+      .select('day, service_id, delivered_count, staff_id')
       .eq('month', selectedMonth)
       .eq('year', year)
       .in(
@@ -107,15 +102,25 @@ export const StaffTracker: React.FC = () => {
     setDailyEntries(entries);
 
     if (isTeamSelected) {
+      const contributingStaffIds = new Set<number>();
+      activities?.forEach(a => {
+        if (a.delivered_count > 0) contributingStaffIds.add(a.staff_id);
+      });
+
+      const contributingStaff = allStaff.filter(s =>
+        contributingStaffIds.has(s.staff_id)
+      );
+
       const totals: Record<string, number> = {};
       services.forEach(s => (totals[s.service_name] = 0));
 
-      for (const staff of allStaff) {
+      for (const staff of contributingStaff) {
         const { perService } = await loadTargets(selectedMonth, financialYear, staff.staff_id);
         services.forEach(s => {
           totals[s.service_name] += perService[s.service_id] || 0;
         });
       }
+
       setTargets(totals);
     } else {
       const { perService } = await loadTargets(
@@ -123,6 +128,7 @@ export const StaffTracker: React.FC = () => {
         financialYear,
         currentStaff.staff_id
       );
+
       setTargets(
         Object.fromEntries(
           services.map(s => [s.service_name, perService[s.service_id] || 0])
@@ -130,7 +136,6 @@ export const StaffTracker: React.FC = () => {
       );
     }
 
-    setDirtyCells(new Set());
     setLoading(false);
   };
 
@@ -173,11 +178,9 @@ export const StaffTracker: React.FC = () => {
         />
       )}
 
-      {/* TABLE TILE */}
       <div className="mt-6 bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
 
-          {/* HEADER */}
           <div className="flex bg-gray-100 border-b sticky top-0 z-30 items-center">
             <div className="w-56 px-4 py-3 font-bold sticky left-0 bg-gray-100 z-40 flex items-center">
               Service
@@ -200,7 +203,6 @@ export const StaffTracker: React.FC = () => {
             </div>
           </div>
 
-          {/* SERVICE ROWS */}
           {services.map((service, idx) => (
             <div
               key={service.service_id}
@@ -212,26 +214,21 @@ export const StaffTracker: React.FC = () => {
                 {service.service_name}
               </div>
 
-              {dailyEntries.map(e => {
-                const dirty = dirtyCells.has(`${e.day}-${service.service_name}`);
-                return (
-                  <div
-                    key={e.day}
-                    className={`w-16 px-1 py-2 flex items-center justify-center ${
-                      isBlueDay(e) ? 'bg-blue-50' : ''
-                    }`}
-                  >
-                    <input
-                      type="number"
-                      value={e.services[service.service_name]}
-                      disabled={isTeamSelected}
-                      className={`w-full px-1 py-1 border rounded-md text-center text-sm ${
-                        dirty ? 'border-orange-400 ring-1 ring-orange-300' : ''
-                      }`}
-                    />
-                  </div>
-                );
-              })}
+              {dailyEntries.map(e => (
+                <div
+                  key={e.day}
+                  className={`w-16 px-1 py-2 flex items-center justify-center ${
+                    isBlueDay(e) ? 'bg-blue-50' : ''
+                  }`}
+                >
+                  <input
+                    type="number"
+                    value={e.services[service.service_name]}
+                    disabled={isTeamSelected}
+                    className="w-full px-1 py-1 border rounded-md text-center text-sm"
+                  />
+                </div>
+              ))}
 
               <div className="w-24 px-3 py-3 sticky right-0 bg-inherit z-20 flex items-center justify-center">
                 <div className="px-2 py-2 bg-gray-100 rounded-md font-bold">
@@ -241,17 +238,13 @@ export const StaffTracker: React.FC = () => {
             </div>
           ))}
 
-          {/* DAILY TOTAL */}
           <div className="flex bg-gray-200 border-t-2 border-gray-300 items-center">
             <div className="w-56 px-4 py-3 font-bold sticky left-0 bg-gray-200 z-30 flex items-center">
               Daily Total
             </div>
 
             {dailyTotals.map((t, i) => (
-              <div
-                key={i}
-                className="w-16 px-1 py-2 flex items-center justify-center"
-              >
+              <div key={i} className="w-16 px-1 py-2 flex items-center justify-center">
                 <div className="px-2 py-2 bg-white rounded-md text-sm font-bold w-full text-center">
                   {t}
                 </div>
