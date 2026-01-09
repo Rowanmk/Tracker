@@ -28,8 +28,6 @@ export const StaffTracker: React.FC = () => {
   const {
     selectedMonth,
     selectedYear,
-    setSelectedMonth,
-    setSelectedYear,
     financialYear,
   } = useDate();
 
@@ -147,54 +145,6 @@ export const StaffTracker: React.FC = () => {
     isTeamSelected,
   ]);
 
-  const markDirty = (day: number, service: string) => {
-    setDirtyCells(prev => new Set(prev).add(`${day}-${service}`));
-  };
-
-  const clearDirty = (day: number, service: string) => {
-    setDirtyCells(prev => {
-      const next = new Set(prev);
-      next.delete(`${day}-${service}`);
-      return next;
-    });
-  };
-
-  const handleLocalChange = (day: number, service: string, val: string) => {
-    markDirty(day, service);
-    const num = Math.max(0, parseInt(val || '0', 10));
-    setDailyEntries(prev =>
-      prev.map(e =>
-        e.day === day
-          ? { ...e, services: { ...e.services, [service]: num } }
-          : e
-      )
-    );
-  };
-
-  const handleSave = async (day: number, serviceName: string, val: string) => {
-    if (!currentStaff || isTeamSelected) return;
-    const service = services.find(s => s.service_name === serviceName);
-    if (!service) return;
-
-    const delivered_count = Math.max(0, parseInt(val || '0', 10));
-    const date = `${year}-${String(selectedMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
-    await supabase.from('dailyactivity').upsert(
-      {
-        staff_id: currentStaff.staff_id,
-        date,
-        day,
-        month: selectedMonth,
-        year,
-        service_id: service.service_id,
-        delivered_count,
-      },
-      { onConflict: 'staff_id,date,service_id' }
-    );
-
-    clearDirty(day, serviceName);
-  };
-
   const serviceTotals = Object.fromEntries(
     services.map(s => [
       s.service_name,
@@ -228,8 +178,8 @@ export const StaffTracker: React.FC = () => {
         <div className="overflow-x-auto">
 
           {/* HEADER */}
-          <div className="flex bg-gray-100 border-b sticky top-0 z-30">
-            <div className="w-56 px-4 py-3 font-bold sticky left-0 bg-gray-100 z-40">
+          <div className="flex bg-gray-100 border-b sticky top-0 z-30 items-center">
+            <div className="w-56 px-4 py-3 font-bold sticky left-0 bg-gray-100 z-40 flex items-center">
               Service
             </div>
 
@@ -239,14 +189,13 @@ export const StaffTracker: React.FC = () => {
                 className={`w-16 text-center px-1 py-2 border-r ${
                   isBlueDay(e) ? 'bg-blue-50' : ''
                 }`}
-                title={e.bankHolidayTitle}
               >
                 <div className="font-bold">{e.day}</div>
                 <div className="text-xs">{getDayName(e.day)}</div>
               </div>
             ))}
 
-            <div className="w-24 px-3 py-3 font-bold text-center sticky right-0 bg-gray-100 z-40">
+            <div className="w-24 px-3 py-3 font-bold text-center sticky right-0 bg-gray-100 z-40 flex items-center justify-center">
               Total
             </div>
           </div>
@@ -255,11 +204,11 @@ export const StaffTracker: React.FC = () => {
           {services.map((service, idx) => (
             <div
               key={service.service_id}
-              className={`flex border-b ${
+              className={`flex border-b items-center ${
                 idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
               }`}
             >
-              <div className="w-56 px-4 py-3 font-semibold sticky left-0 bg-inherit z-20">
+              <div className="w-56 px-4 py-3 font-semibold sticky left-0 bg-inherit z-20 flex items-center">
                 {service.service_name}
               </div>
 
@@ -268,7 +217,7 @@ export const StaffTracker: React.FC = () => {
                 return (
                   <div
                     key={e.day}
-                    className={`w-16 px-1 py-2 ${
+                    className={`w-16 px-1 py-2 flex items-center justify-center ${
                       isBlueDay(e) ? 'bg-blue-50' : ''
                     }`}
                   >
@@ -276,15 +225,6 @@ export const StaffTracker: React.FC = () => {
                       type="number"
                       value={e.services[service.service_name]}
                       disabled={isTeamSelected}
-                      onFocus={ev => {
-                        if (ev.currentTarget.value === '0') ev.currentTarget.value = '';
-                      }}
-                      onChange={ev =>
-                        handleLocalChange(e.day, service.service_name, ev.target.value)
-                      }
-                      onBlur={ev =>
-                        handleSave(e.day, service.service_name, ev.target.value)
-                      }
                       className={`w-full px-1 py-1 border rounded-md text-center text-sm ${
                         dirty ? 'border-orange-400 ring-1 ring-orange-300' : ''
                       }`}
@@ -293,17 +233,17 @@ export const StaffTracker: React.FC = () => {
                 );
               })}
 
-              <div className="w-24 px-3 py-3 font-bold text-center sticky right-0 bg-inherit z-20">
-                <div className="px-2 py-2 bg-gray-100 rounded-md">
+              <div className="w-24 px-3 py-3 sticky right-0 bg-inherit z-20 flex items-center justify-center">
+                <div className="px-2 py-2 bg-gray-100 rounded-md font-bold">
                   {serviceTotals[service.service_name]}
                 </div>
               </div>
             </div>
           ))}
 
-          {/* DAILY TOTAL — FULL GREY */}
-          <div className="flex bg-gray-200 border-t-2 border-gray-300 [&_div]:bg-transparent">
-            <div className="w-56 px-4 py-3 font-bold sticky left-0 bg-gray-200 z-30">
+          {/* DAILY TOTAL */}
+          <div className="flex bg-gray-200 border-t-2 border-gray-300 items-center">
+            <div className="w-56 px-4 py-3 font-bold sticky left-0 bg-gray-200 z-30 flex items-center">
               Daily Total
             </div>
 
@@ -312,14 +252,14 @@ export const StaffTracker: React.FC = () => {
                 key={i}
                 className="w-16 px-1 py-2 flex items-center justify-center"
               >
-                <div className="px-2 py-2 bg-white rounded-md text-center text-sm font-bold w-full">
+                <div className="px-2 py-2 bg-white rounded-md text-sm font-bold w-full text-center">
                   {t}
                 </div>
               </div>
             ))}
 
             <div className="w-24 px-3 py-3 sticky right-0 bg-gray-200 z-30 flex items-center justify-center">
-              <div className="px-2 py-2 bg-blue-600 text-white rounded-md text-center text-sm font-bold w-full">
+              <div className="px-2 py-2 bg-blue-600 text-white rounded-md text-sm font-bold w-full text-center">
                 {grandTotal}
               </div>
             </div>
