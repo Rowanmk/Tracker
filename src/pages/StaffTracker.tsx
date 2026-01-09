@@ -223,107 +223,108 @@ export const StaffTracker: React.FC = () => {
         />
       )}
 
-      <div className="mt-6 overflow-x-auto">
-        {/* HEADER */}
-        <div className="flex bg-gray-100 border-b sticky top-0 z-30">
-          <div className="w-56 px-4 py-3 font-bold sticky left-0 bg-gray-100 z-40">
-            Service
+      {/* TABLE TILE */}
+      <div className="mt-6 bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+
+          {/* HEADER */}
+          <div className="flex bg-gray-100 border-b sticky top-0 z-30">
+            <div className="w-56 px-4 py-3 font-bold sticky left-0 bg-gray-100 z-40">
+              Service
+            </div>
+
+            {dailyEntries.map(e => (
+              <div
+                key={e.day}
+                className={`w-16 text-center px-1 py-2 border-r ${
+                  isBlueDay(e) ? 'bg-blue-50' : ''
+                }`}
+                title={e.bankHolidayTitle}
+              >
+                <div className="font-bold">{e.day}</div>
+                <div className="text-xs">{getDayName(e.day)}</div>
+              </div>
+            ))}
+
+            <div className="w-24 px-3 py-3 font-bold text-center sticky right-0 bg-gray-100 z-40">
+              Total
+            </div>
           </div>
 
-          {dailyEntries.map(e => (
+          {/* SERVICE ROWS */}
+          {services.map((service, idx) => (
             <div
-              key={e.day}
-              className={`w-16 text-center px-1 py-2 border-r ${
-                isBlueDay(e) ? 'bg-blue-50' : ''
+              key={service.service_id}
+              className={`flex border-b ${
+                idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
               }`}
-              title={e.bankHolidayTitle}
             >
-              <div className="font-bold">{e.day}</div>
-              <div className="text-xs">{getDayName(e.day)}</div>
-            </div>
-          ))}
+              <div className="w-56 px-4 py-3 font-semibold sticky left-0 bg-inherit z-20">
+                {service.service_name}
+              </div>
 
-          <div className="w-24 px-3 py-3 font-bold text-center sticky right-0 bg-gray-100 z-40">
-            Total
-          </div>
-        </div>
-
-        {/* SERVICE ROWS */}
-        {services.map((service, idx) => (
-          <div
-            key={service.service_id}
-            className={`flex border-b ${
-              idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-            }`}
-          >
-            <div className="w-56 px-4 py-3 font-semibold sticky left-0 bg-inherit z-20">
-              {service.service_name}
-            </div>
-
-            {dailyEntries.map(e => {
-              const dirty = dirtyCells.has(`${e.day}-${service.service_name}`);
-              return (
-                <div
-                  key={e.day}
-                  className={`w-16 px-1 py-2 ${
-                    isBlueDay(e) ? 'bg-blue-50' : ''
-                  }`}
-                >
-                  <input
-                    type="number"
-                    value={e.services[service.service_name]}
-                    disabled={isTeamSelected}
-                    onFocus={ev => {
-                      if (ev.currentTarget.value === '0') {
-                        ev.currentTarget.value = '';
-                      }
-                    }}
-                    onChange={ev =>
-                      handleLocalChange(e.day, service.service_name, ev.target.value)
-                    }
-                    onBlur={ev =>
-                      handleSave(e.day, service.service_name, ev.target.value)
-                    }
-                    className={`w-full px-1 py-1 border rounded-md text-center text-sm ${
-                      dirty ? 'border-orange-400 ring-1 ring-orange-300' : ''
+              {dailyEntries.map(e => {
+                const dirty = dirtyCells.has(`${e.day}-${service.service_name}`);
+                return (
+                  <div
+                    key={e.day}
+                    className={`w-16 px-1 py-2 ${
+                      isBlueDay(e) ? 'bg-blue-50' : ''
                     }`}
-                  />
+                  >
+                    <input
+                      type="number"
+                      value={e.services[service.service_name]}
+                      disabled={isTeamSelected}
+                      onFocus={ev => {
+                        if (ev.currentTarget.value === '0') ev.currentTarget.value = '';
+                      }}
+                      onChange={ev =>
+                        handleLocalChange(e.day, service.service_name, ev.target.value)
+                      }
+                      onBlur={ev =>
+                        handleSave(e.day, service.service_name, ev.target.value)
+                      }
+                      className={`w-full px-1 py-1 border rounded-md text-center text-sm ${
+                        dirty ? 'border-orange-400 ring-1 ring-orange-300' : ''
+                      }`}
+                    />
+                  </div>
+                );
+              })}
+
+              <div className="w-24 px-3 py-3 font-bold text-center sticky right-0 bg-inherit z-20">
+                <div className="px-2 py-2 bg-gray-100 rounded-md">
+                  {serviceTotals[service.service_name]}
                 </div>
-              );
-            })}
-
-            <div className="w-24 px-3 py-3 font-bold text-center sticky right-0 bg-inherit z-20">
-              <div className="px-2 py-2 bg-gray-100 rounded-md">
-                {serviceTotals[service.service_name]}
-              </div>
-            </div>
-          </div>
-        ))}
-
-        {/* DAILY TOTAL */}
-        <div className="flex bg-gray-200 border-t-2 border-gray-300">
-          <div className="w-56 px-4 py-3 font-bold sticky left-0 bg-gray-200 z-30">
-            Daily Total
-          </div>
-
-          {dailyTotals.map((t, i) => (
-            <div
-              key={i}
-              className={`w-16 px-1 py-2 flex items-center justify-center ${
-                isBlueDay(dailyEntries[i]) ? 'bg-blue-50' : ''
-              }`}
-            >
-              <div className="px-2 py-2 bg-white rounded-md text-center text-sm font-bold w-full">
-                {t}
               </div>
             </div>
           ))}
 
-          <div className="w-24 px-3 py-3 sticky right-0 bg-gray-200 z-30 flex items-center justify-center">
-            <div className="px-2 py-2 bg-blue-600 text-white rounded-md text-center text-sm font-bold w-full">
-              {grandTotal}
+          {/* DAILY TOTAL — FULL GREY */}
+          <div className="flex bg-gray-200 border-t-2 border-gray-300 [&_div]:bg-transparent">
+            <div className="w-56 px-4 py-3 font-bold sticky left-0 bg-gray-200 z-30">
+              Daily Total
+            </div>
+
+            {dailyTotals.map((t, i) => (
+              <div
+                key={i}
+                className="w-16 px-1 py-2 flex items-center justify-center"
+              >
+                <div className="px-2 py-2 bg-white rounded-md text-center text-sm font-bold w-full">
+                  {t}
+                </div>
+              </div>
+            ))}
+
+            <div className="w-24 px-3 py-3 sticky right-0 bg-gray-200 z-30 flex items-center justify-center">
+              <div className="px-2 py-2 bg-blue-600 text-white rounded-md text-center text-sm font-bold w-full">
+                {grandTotal}
+              </div>
             </div>
           </div>
+
         </div>
       </div>
     </div>
