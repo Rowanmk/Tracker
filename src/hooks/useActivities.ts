@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+importstaffPerformanceimport { useState, useEffect } from 'react';
     import { supabase } from '../supabase/client';
     import { useAuth } from '../context/AuthContext';
     import type { Database } from '../supabase/types';
