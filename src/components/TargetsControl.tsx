@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
 import { getFinancialYearMonths, getFinancialYears } from '../utils/financialYear';
-import { loadTargets, saveTargets, isTargetInFinancialYear } from '../utils/loadTargets';
+import { loadTargets, isTargetInFinancialYear } from '../utils/loadTargets';
 import { unparse } from 'papaparse';
 import type { FinancialYear } from '../utils/financialYear';
 

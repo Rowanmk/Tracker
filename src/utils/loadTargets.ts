@@ -8,6 +8,11 @@ function getExpectedYearForMonth(month: number, financialYear: FinancialYear): n
   return month >= 4 ? financialYear.start : financialYear.end;
 }
 
+export function isTargetInFinancialYear(month: number, year: number, financialYear: FinancialYear): boolean {
+  const expectedYear = getExpectedYearForMonth(month, financialYear);
+  return year === expectedYear;
+}
+
 export async function loadTargets(
   month: number,
   financialYear: FinancialYear,
