@@ -94,11 +94,24 @@ export const StaffTracker: React.FC = () => {
       ? [currentStaff.staff_id]
       : [];
 
-  const columnClass = (d: any) => {
-    if (d.isBankHoliday) return 'bg-blue-100 dark:bg-blue-900/20';
-    if (d.isWeekend) return 'bg-blue-50 dark:bg-blue-900/10';
-    if (!isTeamSelected && d.isOnLeave)
+  /* 🔵 WEEKEND SHADING — FIXED & CONSISTENT */
+  const columnClass = (d: {
+    isWeekend: boolean;
+    isBankHoliday: boolean;
+    isOnLeave: boolean;
+  }) => {
+    if (d.isBankHoliday) {
+      return 'bg-blue-100 dark:bg-blue-900/30';
+    }
+
+    if (d.isWeekend) {
+      return 'bg-blue-100 dark:bg-blue-900/25';
+    }
+
+    if (!isTeamSelected && d.isOnLeave) {
       return 'bg-gray-100 dark:bg-gray-700/40';
+    }
+
     return '';
   };
 
@@ -225,7 +238,6 @@ export const StaffTracker: React.FC = () => {
         workingDaysUpToToday={workingDaysUpToToday}
       />
 
-      {/* TABLE */}
       <div className="bg-white dark:bg-gray-800 shadow-md rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full table-fixed border-collapse">
@@ -314,7 +326,6 @@ export const StaffTracker: React.FC = () => {
                 );
               })}
 
-              {/* DAILY TOTALS */}
               <tr className="bg-gray-200 dark:bg-gray-600">
                 <td className="sticky left-0 z-20 px-3 py-2 text-sm font-bold w-[240px] bg-gray-200 dark:bg-gray-600">
                   Daily Total
