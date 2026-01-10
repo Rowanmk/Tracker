@@ -30,7 +30,12 @@ export const useWorkingDays = (params: Params) => {
         const year = month >= 4 ? financialYear.start : financialYear.end;
 
         const daysInMonth = new Date(year, month, 0).getDate();
-        const today = new Date().toISOString().split('T')[0];
+
+        const now = new Date();
+        const todayDayOfMonth =
+          now.getFullYear() === year && now.getMonth() + 1 === month
+            ? now.getDate()
+            : now.getDate(); // used for future months as run-rate reference
 
         let working = 0;
         let workingToToday = 0;
@@ -38,25 +43,35 @@ export const useWorkingDays = (params: Params) => {
         for (let d = 1; d <= daysInMonth; d++) {
           const date = new Date(year, month - 1, d);
           const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+
           if (!isWeekend) {
             working++;
-            if (date.toISOString().split('T')[0] <= today) {
+
+            if (d <= todayDayOfMonth) {
               workingToToday++;
             }
           }
         }
 
+        const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+        const endDate = `${year}-${String(month).padStart(2, '0')}-${daysInMonth}`;
+
         const { data: holidays } = await supabase
           .from('bank_holidays')
           .select('date')
-          .gte('date', `${year}-${String(month).padStart(2,'0')}-01`)
-          .lte('date', `${year}-${String(month).padStart(2,'0')}-${daysInMonth}`);
+          .gte('date', startDate)
+          .lte('date', endDate);
 
         (holidays as BankHoliday[] | null)?.forEach(h => {
           const d = new Date(h.date);
+          const day = d.getDate();
+
           if (d.getDay() !== 0 && d.getDay() !== 6) {
             working--;
-            if (h.date <= today) workingToToday--;
+
+            if (day <= todayDayOfMonth) {
+              workingToToday--;
+            }
           }
         });
 
@@ -71,10 +86,15 @@ export const useWorkingDays = (params: Params) => {
             const to = new Date(l.end_date);
 
             for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
-              const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-              if (!isWeekend) {
+              if (
+                d.getFullYear() === year &&
+                d.getMonth() + 1 === month &&
+                d.getDay() !== 0 &&
+                d.getDay() !== 6
+              ) {
                 working--;
-                if (d.toISOString().split('T')[0] <= today) {
+
+                if (d.getDate() <= todayDayOfMonth) {
                   workingToToday--;
                 }
               }
@@ -83,7 +103,9 @@ export const useWorkingDays = (params: Params) => {
         }
 
         setTeamWorkingDays(Math.max(0, working));
-        setWorkingDaysUpToToday(Math.max(0, workingToToday));
+        setWorkingDaysUpToToday(
+          Math.max(0, Math.min(working, workingToToday))
+        );
       } catch (e) {
         console.error(e);
         setError('Failed to calculate working days');
