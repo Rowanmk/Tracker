@@ -150,7 +150,6 @@ export const StaffTracker: React.FC = () => {
 
     setDailyEntries(entries);
 
-    /* ---------- TARGETS (FACTUALLY CORRECT) ---------- */
     const targetsAccumulator: Record<string, number> = {};
     services.forEach(s => (targetsAccumulator[s.service_name] = 0));
 
@@ -162,8 +161,7 @@ export const StaffTracker: React.FC = () => {
           staff.staff_id
         );
         services.forEach(s => {
-          targetsAccumulator[s.service_name] +=
-            perService?.[s.service_id] || 0;
+          targetsAccumulator[s.service_name] += perService?.[s.service_id] || 0;
         });
       }
     } else if (currentStaff) {
@@ -173,8 +171,7 @@ export const StaffTracker: React.FC = () => {
         currentStaff.staff_id
       );
       services.forEach(s => {
-        targetsAccumulator[s.service_name] =
-          perService?.[s.service_id] || 0;
+        targetsAccumulator[s.service_name] = perService?.[s.service_id] || 0;
       });
     }
 
@@ -226,10 +223,10 @@ export const StaffTracker: React.FC = () => {
         targets={serviceTargets}
         dashboardMode={isTeamSelected ? 'team' : 'individual'}
         workingDays={teamWorkingDays}
-        workingDaysUpToToday={workingDaysUpToToday}
+        // ✅ Key fix: force tiles to compare Delivered vs FULL target (not expected-by-now)
+        workingDaysUpToToday={teamWorkingDays}
       />
 
-      {/* ================= FULL TABLE (UNCHANGED) ================= */}
       <div className="bg-white dark:bg-gray-800 shadow-md rounded-xl border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full table-fixed border-collapse">
@@ -279,8 +276,7 @@ export const StaffTracker: React.FC = () => {
                     : 'bg-gray-50 dark:bg-gray-750';
 
                 const rowTotal = dayMeta.reduce(
-                  (sum, d) =>
-                    sum + getCellValue(service.service_name, d.day),
+                  (sum, d) => sum + getCellValue(service.service_name, d.day),
                   0
                 );
 
@@ -303,10 +299,7 @@ export const StaffTracker: React.FC = () => {
                           type="number"
                           min={0}
                           disabled={isTeamSelected}
-                          value={getCellValue(
-                            service.service_name,
-                            d.day
-                          )}
+                          value={getCellValue(service.service_name, d.day)}
                           className="w-full px-2 py-1 text-sm text-center rounded-md border border-gray-300"
                         />
                       </td>
@@ -332,18 +325,14 @@ export const StaffTracker: React.FC = () => {
                     className="px-2 py-2 text-sm font-bold text-center w-[72px] bg-gray-200 dark:bg-gray-600"
                   >
                     {services.reduce(
-                      (sum, s) =>
-                        sum + getCellValue(s.service_name, d.day),
+                      (sum, s) => sum + getCellValue(s.service_name, d.day),
                       0
                     )}
                   </td>
                 ))}
 
                 <td className="sticky right-0 z-20 px-2 py-2 text-sm font-bold text-center w-[110px] bg-[#001B47] text-white">
-                  {Object.values(serviceTotals).reduce(
-                    (a, b) => a + b,
-                    0
-                  )}
+                  {Object.values(serviceTotals).reduce((a, b) => a + b, 0)}
                 </td>
               </tr>
             </tbody>
