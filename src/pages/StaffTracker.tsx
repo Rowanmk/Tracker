@@ -119,7 +119,7 @@ export const StaffTracker: React.FC = () => {
 
     setLoading(true);
 
-    /* ---------- BUILD EMPTY GRID ---------- */
+    /* ---------- BASE GRID ---------- */
     const baseEntries: DailyEntry[] = dayMeta.map(d => ({
       date: d.date,
       day: d.day,
@@ -132,7 +132,7 @@ export const StaffTracker: React.FC = () => {
       ),
     }));
 
-    /* ---------- FETCH DAILY ACTIVITY (SOURCE OF TRUTH) ---------- */
+    /* ---------- DAILY ACTIVITY (SOURCE OF TRUTH) ---------- */
     const { data: activities } = await supabase
       .from('dailyactivity')
       .select('staff_id, service_id, delivered_count, day')
@@ -180,7 +180,13 @@ export const StaffTracker: React.FC = () => {
 
     /* ---------- PERFORMANCE BAR (MATCH DASHBOARD) ---------- */
     const deliveredTotal =
-      activities?.reduce((sum, a) => sum + (a.delivered_count || 0), 0) || 0;
+      activities?.reduce(
+        (
+          sum: number,
+          a: { delivered_count: number }
+        ) => sum + (a.delivered_count || 0),
+        0
+      ) || 0;
 
     const performance: StaffPerformance[] = staffIds.map(id => {
       const staff =
@@ -213,7 +219,7 @@ export const StaffTracker: React.FC = () => {
       services.map(s => [
         s.service_name,
         dailyEntries.reduce(
-          (sum, e) => sum + (e.services[s.service_name] || 0),
+          (sum: number, e) => sum + (e.services[s.service_name] || 0),
           0
         ),
       ])
@@ -228,7 +234,6 @@ export const StaffTracker: React.FC = () => {
     <div className="space-y-4">
       <h2 className="text-2xl lg:text-3xl font-bold">My Tracker</h2>
 
-      {/* 🔵 PERFORMANCE BAR — NOW IDENTICAL TO DASHBOARD */}
       <StaffPerformanceBar
         staffPerformance={staffPerformance}
         workingDays={teamWorkingDays}
@@ -243,7 +248,7 @@ export const StaffTracker: React.FC = () => {
         workingDaysUpToToday={workingDaysUpToToday}
       />
 
-      {/* ================= TRACKER TABLE (UNCHANGED) ================= */}
+      {/* ================= TRACKER TABLE ================= */}
       <div className="bg-white shadow-md rounded-xl border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full table-fixed border-collapse">
@@ -285,7 +290,7 @@ export const StaffTracker: React.FC = () => {
                 const zebra = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50';
 
                 const rowTotal = dayMeta.reduce(
-                  (sum, d) =>
+                  (sum: number, d) =>
                     sum +
                     (dailyEntries.find(e => e.day === d.day)
                       ?.services[service.service_name] || 0),
@@ -343,7 +348,7 @@ export const StaffTracker: React.FC = () => {
                 {dayMeta.map(d => (
                   <td key={`total-${d.day}`} className="px-2 py-2 font-bold text-center bg-gray-200">
                     {services.reduce(
-                      (sum, s) =>
+                      (sum: number, s) =>
                         sum +
                         (dailyEntries.find(e => e.day === d.day)
                           ?.services[s.service_name] || 0),
@@ -353,7 +358,10 @@ export const StaffTracker: React.FC = () => {
                 ))}
 
                 <td className="sticky right-0 z-20 px-2 py-2 font-bold text-center bg-[#001B47] text-white">
-                  {Object.values(serviceTotals).reduce((a, b) => a + b, 0)}
+                  {Object.values(serviceTotals).reduce(
+                    (a: number, b: number) => a + b,
+                    0
+                  )}
                 </td>
               </tr>
             </tbody>
