@@ -9,10 +9,6 @@ import { StaffPerformanceBar } from '../components/StaffPerformanceBar';
 import { supabase } from '../supabase/client';
 import { loadTargets } from '../utils/loadTargets';
 
-/* =======================
-   Types
-======================= */
-
 interface DailyEntry {
   date: string;
   day: number;
@@ -38,10 +34,6 @@ interface StaffPerformance {
 
 type LocalInputState = Record<string, string>;
 
-/* =======================
-   Component
-======================= */
-
 export const StaffTracker: React.FC = () => {
   const { selectedMonth, selectedFinancialYear } = useDate();
   const { currentStaff, selectedStaffId, allStaff } = useAuth();
@@ -49,22 +41,14 @@ export const StaffTracker: React.FC = () => {
 
   const isTeamSelected = selectedStaffId === 'team';
 
-  const year =
-    selectedMonth >= 4
-      ? selectedFinancialYear.start
-      : selectedFinancialYear.end;
+  const year = selectedMonth >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
 
-  const { teamWorkingDays, workingDaysUpToToday, loading: workingDaysLoading } =
-    useWorkingDays({
-      financialYear: selectedFinancialYear,
-      month: selectedMonth,
-    });
+  const { teamWorkingDays, workingDaysUpToToday, loading: workingDaysLoading } = useWorkingDays({
+    financialYear: selectedFinancialYear,
+    month: selectedMonth,
+  });
 
-  const {
-    isDateOnLeave,
-    isDateBankHoliday,
-    loading: leaveHolidayLoading,
-  } = useStaffLeaveAndHolidays({
+  const { isDateOnLeave, isDateBankHoliday, loading: leaveHolidayLoading } = useStaffLeaveAndHolidays({
     staffId: currentStaff?.staff_id ?? 0,
     month: selectedMonth,
     year,
@@ -79,17 +63,16 @@ export const StaffTracker: React.FC = () => {
 
   const daysInMonth = new Date(year, selectedMonth, 0).getDate();
 
-  const staffIds = isTeamSelected
-    ? allStaff.map(s => s.staff_id)
-    : currentStaff
-    ? [currentStaff.staff_id]
-    : [];
+  const staffIds = useMemo<number[]>(() => {
+    if (isTeamSelected) return allStaff.map((s) => s.staff_id);
+    if (currentStaff) return [currentStaff.staff_id];
+    return [];
+  }, [isTeamSelected, allStaff, currentStaff]);
 
   const getDayName = (day: number) =>
-    ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][
-      new Date(year, selectedMonth - 1, day).getDay()
-    ];
+    ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(year, selectedMonth - 1, day).getDay()];
 
+  // ✅ FIX: isBankHoliday is boolean; keep title separately
   const dayMeta = useMemo(() => {
     return Array.from({ length: daysInMonth }, (_, i) => {
       const day = i + 1;
@@ -108,20 +91,12 @@ export const StaffTracker: React.FC = () => {
     });
   }, [daysInMonth, year, selectedMonth, isDateBankHoliday, isDateOnLeave]);
 
-  const columnClass = (d: {
-    isWeekend: boolean;
-    isBankHoliday: boolean;
-    isOnLeave: boolean;
-  }) => {
+  const columnClass = (d: { isWeekend: boolean; isBankHoliday: boolean; isOnLeave: boolean }) => {
     if (d.isBankHoliday) return 'bg-blue-100';
     if (d.isWeekend) return 'bg-blue-100';
     if (!isTeamSelected && d.isOnLeave) return 'bg-gray-100';
     return '';
   };
-
-  /* =======================
-     Data Fetch
-  ======================= */
 
   const fetchData = async () => {
     if (services.length === 0 || staffIds.length === 0) {
@@ -131,30 +106,32 @@ export const StaffTracker: React.FC = () => {
 
     setLoading(true);
 
-    /* ---------- Base Grid ---------- */
-    const baseEntries: DailyEntry[] = dayMeta.map(d => ({
+    /* ---------- BASE GRID ---------- */
+    const baseEntries: DailyEntry[] = dayMeta.map((d) => ({
       date: d.date,
       day: d.day,
       isWeekend: d.isWeekend,
       isOnLeave: d.isOnLeave,
       isBankHoliday: d.isBankHoliday,
       bankHolidayTitle: d.bankHolidayTitle,
-      services: Object.fromEntries(
-        services.map(s => [s.service_name, 0])
-      ),
+      services: Object.fromEntries(services.map((s) => [s.service_name, 0])),
     }));
 
-    /* ---------- Activity (SOURCE OF TRUTH) ---------- */
-    const { data: activities } = await supabase
+    /* ---------- DAILY ACTIVITY (SOURCE OF TRUTH) ---------- */
+    const { data: activities, error: activitiesError } = await supabase
       .from('dailyactivity')
       .select('staff_id, service_id, delivered_count, day')
       .eq('month', selectedMonth)
       .eq('year', year)
       .in('staff_id', staffIds);
 
-    (activities as DailyActivityRow[] | null)?.forEach(a => {
-      const service = services.find(s => s.service_id === a.service_id);
-      const entry = baseEntries.find(e => e.day === a.day);
+    if (activitiesError) {
+      console.error('Error fetching daily activity:', activitiesError);
+    }
+
+    (activities as DailyActivityRow[] | null)?.forEach((a) => {
+      const service = services.find((s) => s.service_id === a.service_id);
+      const entry = baseEntries.find((e) => e.day === a.day);
       if (service && entry) {
         entry.services[service.service_name] += a.delivered_count || 0;
       }
@@ -162,72 +139,47 @@ export const StaffTracker: React.FC = () => {
 
     setDailyEntries(baseEntries);
 
-    /* ---------- Targets ---------- */
+    /* ---------- TARGETS ---------- */
     const targetTotals: Record<string, number> = {};
-    services.forEach(s => (targetTotals[s.service_name] = 0));
+    services.forEach((s) => (targetTotals[s.service_name] = 0));
 
     if (isTeamSelected) {
       for (const staff of allStaff) {
-        const { perService } = await loadTargets(
-          selectedMonth,
-          selectedFinancialYear,
-          staff.staff_id
-        );
-        services.forEach(s => {
+        const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, staff.staff_id);
+        services.forEach((s) => {
           targetTotals[s.service_name] += perService?.[s.service_id] || 0;
         });
       }
     } else if (currentStaff) {
-      const { perService } = await loadTargets(
-        selectedMonth,
-        selectedFinancialYear,
-        currentStaff.staff_id
-      );
-      services.forEach(s => {
+      const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, currentStaff.staff_id);
+      services.forEach((s) => {
         targetTotals[s.service_name] = perService?.[s.service_id] || 0;
       });
     }
 
     setTargets(targetTotals);
 
-    /* ---------- Performance Bar (MATCHES DASHBOARD) ---------- */
-    const performance: StaffPerformance[] = staffIds.map(staffId => {
-      const staffActivities =
-        (activities as DailyActivityRow[] | null)?.filter(
-          a => a.staff_id === staffId
-        ) || [];
-
-      const total = staffActivities.reduce(
-        (sum: number, a: DailyActivityRow) =>
-          sum + (a.delivered_count || 0),
-        0
-      );
-
-      const staff =
-        allStaff.find(s => s.staff_id === staffId) || currentStaff!;
-
-      return {
-        staff_id: staff.staff_id,
-        name: staff.name,
-        total,
-      };
+    /* ---------- PERFORMANCE BAR (MATCH DASHBOARD DATA SOURCE) ---------- */
+    // Build per-staff totals from the same activities query (no guessing, no duplication)
+    const totalsByStaff: Record<number, number> = {};
+    (activities as DailyActivityRow[] | null)?.forEach((a) => {
+      totalsByStaff[a.staff_id] = (totalsByStaff[a.staff_id] || 0) + (a.delivered_count || 0);
     });
 
-    /* ---------- Console Guard ---------- */
-    const barTotal = performance.reduce((s, p) => s + p.total, 0);
-    const gridTotal = (activities as DailyActivityRow[] | null)?.reduce(
-      (s, a) => s + (a.delivered_count || 0),
-      0
-    ) || 0;
+    const perf: StaffPerformance[] = staffIds
+      .map((id) => {
+        const staff = allStaff.find((s) => s.staff_id === id) || currentStaff;
+        if (!staff) return null;
+        return {
+          staff_id: id,
+          name: staff.name,
+          total: totalsByStaff[id] || 0,
+        };
+      })
+      .filter((x): x is StaffPerformance => x !== null);
 
-    if (barTotal !== gridTotal) {
-      console.warn(
-        '[StaffTracker] Delivered mismatch',
-        { barTotal, gridTotal, performance }
-      );
-    }
+    setStaffPerformance(perf);
 
-    setStaffPerformance(performance);
     setLoading(false);
   };
 
@@ -235,37 +187,28 @@ export const StaffTracker: React.FC = () => {
     if (!servicesLoading && !leaveHolidayLoading) {
       fetchData();
     }
-  }, [
-    selectedMonth,
-    selectedFinancialYear,
-    selectedStaffId,
-    servicesLoading,
-    leaveHolidayLoading,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMonth, selectedFinancialYear, selectedStaffId, servicesLoading, leaveHolidayLoading, allStaff.length]);
+
+  // Keep tracker in sync when other pages dispatch updates
+  useEffect(() => {
+    const handler = () => fetchData();
+    window.addEventListener('activity-updated', handler);
+    return () => window.removeEventListener('activity-updated', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMonth, selectedFinancialYear, selectedStaffId, servicesLoading, leaveHolidayLoading, allStaff.length]);
 
   const serviceTotals = useMemo(() => {
     return Object.fromEntries(
-      services.map(s => [
+      services.map((s) => [
         s.service_name,
-        dailyEntries.reduce(
-          (sum: number, e) => sum + (e.services[s.service_name] || 0),
-          0
-        ),
+        dailyEntries.reduce((sum: number, e) => sum + (e.services[s.service_name] || 0), 0),
       ])
     );
   }, [dailyEntries, services]);
 
-  if (
-    loading ||
-    servicesLoading ||
-    leaveHolidayLoading ||
-    workingDaysLoading
-  ) {
-    return (
-      <div className="py-6 text-center text-gray-500">
-        Loading tracker…
-      </div>
-    );
+  if (loading || servicesLoading || leaveHolidayLoading || workingDaysLoading) {
+    return <div className="py-6 text-center text-gray-500">Loading tracker…</div>;
   }
 
   return (
@@ -286,8 +229,103 @@ export const StaffTracker: React.FC = () => {
         workingDaysUpToToday={workingDaysUpToToday}
       />
 
-      {/* Tracker table unchanged */}
-      {/* (intentionally omitted here for brevity — logic untouched) */}
+      {/* ================= TRACKER TABLE ================= */}
+      <div className="bg-white shadow-md rounded-xl border overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full table-fixed border-collapse">
+            <thead>
+              <tr className="bg-[#001B47]">
+                <th className="sticky left-0 z-30 px-3 py-2 text-left text-xs font-bold text-white w-[240px]">
+                  SERVICE
+                </th>
+                {dayMeta.map((d) => (
+                  <th key={d.day} className="px-2 py-2 text-xs font-bold text-white w-[72px]">
+                    {d.day}
+                  </th>
+                ))}
+                <th className="sticky right-0 z-30 px-2 py-2 text-xs font-bold text-white w-[110px]">Total</th>
+              </tr>
+
+              <tr className="bg-gray-100">
+                <th className="sticky left-0 z-20 px-3 py-2 text-xs font-semibold w-[240px]">Day</th>
+                {dayMeta.map((d) => (
+                  <th
+                    key={`dow-${d.day}`}
+                    className={`px-2 py-2 text-xs font-semibold w-[72px] ${columnClass(d)}`}
+                    title={d.isBankHoliday ? d.bankHolidayTitle : undefined}
+                  >
+                    {getDayName(d.day)}
+                  </th>
+                ))}
+                <th className="sticky right-0 z-20 px-2 py-2 text-xs font-semibold w-[110px]">—</th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y">
+              {services.map((service, idx) => {
+                const zebra = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+
+                const rowTotal = dayMeta.reduce((sum: number, d) => {
+                  const entry = dailyEntries.find((e) => e.day === d.day);
+                  return sum + (entry?.services[service.service_name] || 0);
+                }, 0);
+
+                return (
+                  <tr key={service.service_id} className={zebra}>
+                    <td className={`sticky left-0 z-20 px-3 py-2 font-semibold whitespace-nowrap ${zebra}`}>
+                      {service.service_name}
+                    </td>
+
+                    {dayMeta.map((d) => {
+                      const key = `${service.service_id}-${d.day}`;
+                      const numericVal =
+                        dailyEntries.find((e) => e.day === d.day)?.services[service.service_name] ?? 0;
+                      const displayVal = localInputState[key] ?? String(numericVal);
+
+                      return (
+                        <td key={key} className={`px-1 py-1 text-center ${columnClass(d)}`}>
+                          <input
+                            type="number"
+                            min={0}
+                            disabled={isTeamSelected}
+                            value={displayVal}
+                            onChange={(e) =>
+                              setLocalInputState((prev) => ({
+                                ...prev,
+                                [key]: e.target.value,
+                              }))
+                            }
+                            className="w-full px-2 py-1 text-sm text-center rounded-md border"
+                          />
+                        </td>
+                      );
+                    })}
+
+                    <td className={`sticky right-0 z-20 px-2 py-2 font-bold text-center ${zebra}`}>{rowTotal}</td>
+                  </tr>
+                );
+              })}
+
+              <tr className="bg-gray-200">
+                <td className="sticky left-0 z-20 px-3 py-2 font-bold bg-gray-200">Daily Total</td>
+
+                {dayMeta.map((d) => (
+                  <td key={`total-${d.day}`} className="px-2 py-2 font-bold text-center bg-gray-200">
+                    {services.reduce((sum: number, s) => {
+                      const entry = dailyEntries.find((e) => e.day === d.day);
+                      return sum + (entry?.services[s.service_name] || 0);
+                    }, 0)}
+                  </td>
+                ))}
+
+                <td className="sticky right-0 z-20 px-2 py-2 font-bold text-center bg-[#001B47] text-white">
+                  {Object.values(serviceTotals).reduce((a: number, b: number) => a + b, 0)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 };
