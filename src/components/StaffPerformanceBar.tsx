@@ -1,10 +1,9 @@
-import React, { useRef } from 'react';
-import { useDate } from '../context/DateContext';
-import type { FinancialYear } from '../utils/financialYear';
+import React, { useRef } from "react";
+import { useDate } from "../context/DateContext";
+import { usePerformanceSummary } from "../hooks/usePerformanceSummary";
 
-export interface StaffPerformance {
+interface StaffPerformance {
   staff_id: number;
-  name: string;
   total: number;
   target?: number;
 }
@@ -13,11 +12,7 @@ interface Props {
   staffPerformance: StaffPerformance[];
   workingDays: number;
   workingDaysUpToToday: number;
-  month: number;
-  financialYear: FinancialYear;
-
-  // REQUIRED CONTEXT
-  dashboardMode: 'team' | 'individual';
+  dashboardMode: "team" | "individual";
   currentStaff: { staff_id: number; name: string } | null;
 }
 
@@ -31,51 +26,15 @@ export const StaffPerformanceBar: React.FC<Props> = ({
   const selectRef = useRef<HTMLSelectElement>(null);
   const { selectedMonth, selectedYear, setSelectedMonth, setSelectedYear } = useDate();
 
-  const today = new Date();
-  const isCurrentMonth =
-    selectedMonth === today.getMonth() + 1 &&
-    selectedYear === today.getFullYear();
-
-  // -----------------------------
-  // Delivered & Target
-  // -----------------------------
-  const totalDelivered =
-    dashboardMode === 'team'
-      ? staffPerformance.reduce((sum, s) => sum + s.total, 0)
-      : staffPerformance.find(s => s.staff_id === currentStaff?.staff_id)?.total || 0;
-
-  const totalTarget =
-    dashboardMode === 'team'
-      ? staffPerformance.reduce((sum, s) => sum + (s.target || 0), 0)
-      : staffPerformance.find(s => s.staff_id === currentStaff?.staff_id)?.target || 0;
-
-  // -----------------------------
-  // Expected (FIXED LOGIC)
-  // -----------------------------
-  let expected: number;
-
-  if (!isCurrentMonth) {
-    // Past or future month → full target
-    expected = totalTarget;
-  } else if (workingDays > 0) {
-    // Current month → run-rate pacing
-    expected = (totalTarget / workingDays) * workingDaysUpToToday;
-  } else {
-    expected = 0;
-  }
-
-  const variance = totalDelivered - expected;
-
-  const statusText =
-    totalTarget === 0
-      ? 'No target set'
-      : Math.abs(variance) < 0.5
-      ? 'On track'
-      : variance > 0
-      ? `Ahead by ${Math.round(variance)} items`
-      : `Behind by ${Math.abs(Math.round(variance))} items`;
-
-  const headerText = `${statusText} | Delivered: ${totalDelivered} | Expected: ${Math.round(expected)}`;
+  const summary = usePerformanceSummary({
+    staffPerformance,
+    workingDays,
+    workingDaysUpToToday,
+    selectedMonth,
+    selectedYear,
+    dashboardMode,
+    currentStaff,
+  });
 
   return (
     <div className="w-full py-4 bg-[#001B47] rounded-xl flex justify-between items-center px-6">
@@ -85,7 +44,7 @@ export const StaffPerformanceBar: React.FC<Props> = ({
           ref={selectRef}
           value={`${selectedYear}-${selectedMonth}`}
           onChange={(e) => {
-            const [year, month] = e.target.value.split('-').map(Number);
+            const [year, month] = e.target.value.split("-").map(Number);
             setSelectedMonth(month);
             setSelectedYear(year);
           }}
@@ -95,7 +54,10 @@ export const StaffPerformanceBar: React.FC<Props> = ({
             const d = new Date(selectedYear, i, 1);
             return (
               <option key={i} value={`${d.getFullYear()}-${i + 1}`}>
-                {d.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                {d.toLocaleString("default", {
+                  month: "long",
+                  year: "numeric",
+                })}
               </option>
             );
           })}
@@ -105,7 +67,7 @@ export const StaffPerformanceBar: React.FC<Props> = ({
       {/* Centre text */}
       <div className="flex-1 text-center">
         <span className="text-white text-lg font-semibold tracking-wide">
-          {headerText}
+          {summary.statusText} | Delivered: {summary.delivered} | Expected: {summary.expected}
         </span>
       </div>
 
