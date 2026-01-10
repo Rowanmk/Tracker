@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useDate } from '../context/DateContext';
-import { useAuth } from '../context/AuthContext';
-import { useDashboardView } from '../context/DashboardViewContext';
+import { loadTargets } from '../utils/loadTargets';
 
-interface GlobalDateSelectorProps {
-  showViewModeToggle?: boolean;
+interface StaffPerformance {
+  staff_id: number;
+  name: string;
+  total: number;
 }
 
 interface MonthYearOption {
@@ -13,25 +14,39 @@ interface MonthYearOption {
   label: string;
 }
 
-export const StaffPerformanceBar: React.FC<any> = ({
+interface Props {
+  staffPerformance: StaffPerformance[];
+  workingDays: number;
+  workingDaysUpToToday: number;
+}
+
+export const StaffPerformanceBar: React.FC<Props> = ({
   staffPerformance,
   workingDays,
   workingDaysUpToToday,
 }) => {
-  const [totalTarget, setTotalTarget] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [totalTarget, setTotalTarget] = useState<number>(0);
+  const [loading, setLoading] = useState<boolean>(false);
   const [monthOptions, setMonthOptions] = useState<MonthYearOption[]>([]);
   const selectRef = useRef<HTMLSelectElement>(null);
 
-  const { selectedMonth, setSelectedMonth, selectedYear, setSelectedYear, selectedFinancialYear } = useDate();
+  const {
+    selectedMonth,
+    selectedYear,
+    setSelectedMonth,
+    setSelectedYear,
+    selectedFinancialYear,
+  } = useDate();
 
-  const totalDelivered = staffPerformance.reduce((sum, s) => sum + s.total, 0);
+  const totalDelivered = staffPerformance.reduce(
+    (sum: number, s: StaffPerformance) => sum + s.total,
+    0
+  );
 
-  // Generate continuous month-year list: 24 months back, current, 12 months forward
+  /* ---------- Month dropdown ---------- */
   useEffect(() => {
     const today = new Date();
     const options: MonthYearOption[] = [];
-
     const startDate = new Date(today.getFullYear(), today.getMonth() - 24, 1);
 
     for (let i = 0; i < 37; i++) {
@@ -39,8 +54,10 @@ export const StaffPerformanceBar: React.FC<any> = ({
       const month = date.getMonth() + 1;
       const year = date.getFullYear();
 
-      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-                         'July', 'August', 'September', 'October', 'November', 'December'];
+      const monthNames = [
+        'January','February','March','April','May','June',
+        'July','August','September','October','November','December'
+      ];
 
       options.push({
         month,
@@ -52,108 +69,67 @@ export const StaffPerformanceBar: React.FC<any> = ({
     setMonthOptions(options);
   }, []);
 
-  // Scroll the select dropdown to center the current month
+  /* ---------- Targets ---------- */
   useEffect(() => {
-    if (selectRef.current && monthOptions.length > 0) {
-      const currentIndex = monthOptions.findIndex(
-        opt => opt.month === selectedMonth && opt.year === selectedYear
-      );
-
-      if (currentIndex !== -1) {
-        // Use setTimeout to ensure the DOM is ready
-        setTimeout(() => {
-          if (selectRef.current) {
-            // Calculate the option height (approximately 20px per option in most browsers)
-            const optionHeight = 20;
-            const visibleOptions = 8; // Approximate number of visible options
-            const scrollPosition = Math.max(0, (currentIndex - Math.floor(visibleOptions / 2)) * optionHeight);
-            
-            selectRef.current.scrollTop = scrollPosition;
-          }
-        }, 0);
-      }
-    }
-  }, [selectedMonth, selectedYear, monthOptions]);
-
-  useEffect(() => {
-    const fetchTotalTarget = async () => {
+    const fetchTargets = async () => {
       setLoading(true);
-      try {
-        let combinedTarget = 0;
+      let combined = 0;
 
-        for (const staff of staffPerformance) {
-          const { loadTargets } = await import('../utils/loadTargets');
-          const { totalTarget: staffTarget } = await loadTargets(selectedMonth, selectedFinancialYear, staff.staff_id);
-          combinedTarget += staffTarget;
-        }
-
-        setTotalTarget(combinedTarget);
-      } catch (error) {
-        console.error('Error fetching total target:', error);
-        setTotalTarget(0);
-      } finally {
-        setLoading(false);
+      for (const staff of staffPerformance) {
+        const { totalTarget } = await loadTargets(
+          selectedMonth,
+          selectedFinancialYear,
+          staff.staff_id
+        );
+        combined += totalTarget;
       }
+
+      setTotalTarget(combined);
+      setLoading(false);
     };
 
     if (staffPerformance.length > 0) {
-      fetchTotalTarget();
+      fetchTargets();
     }
-  }, [selectedMonth, selectedFinancialYear, staffPerformance.length]);
+  }, [staffPerformance, selectedMonth, selectedFinancialYear]);
 
-  const expectedByNow = workingDays > 0 ? (totalTarget / workingDays) * workingDaysUpToToday : 0;
+  const expectedByNow =
+    workingDays > 0
+      ? (totalTarget / workingDays) * workingDaysUpToToday
+      : 0;
+
   const variance = totalDelivered - expectedByNow;
-  const isAhead = variance >= 0;
 
-  const getVarianceText = () => {
-    if (Math.abs(variance) < 0.5) return 'On track';
-    return isAhead 
-      ? `Ahead by ${Math.round(Math.abs(variance))} items`
-      : `Behind by ${Math.round(Math.abs(variance))} items`;
-  };
-
-  const statusText = `${getVarianceText()} | Delivered: ${totalDelivered} | Expected: ${Math.round(expectedByNow)}`;
-
-  const handleMonthChange = (newMonth: number, newYear: number) => {
-    setSelectedMonth(newMonth);
-    setSelectedYear(newYear);
-    setTimeout(() => {
-      window.dispatchEvent(new Event('activity-updated'));
-    }, 0);
-  };
+  const statusText =
+    Math.abs(variance) < 0.5
+      ? 'On track'
+      : variance > 0
+      ? `Ahead by ${Math.round(variance)} items`
+      : `Behind by ${Math.abs(Math.round(variance))} items`;
 
   return (
-    <div className="w-full py-4 bg-[#001B47] rounded-xl flex justify-between items-center px-6">
-      {/* Left: Month selector dropdown */}
-      <div className="flex items-center">
-        <select
-          ref={selectRef}
-          value={`${selectedYear}-${selectedMonth}`}
-          onChange={(e) => {
-            const [year, month] = e.target.value.split('-').map(Number);
-            handleMonthChange(month, year);
-          }}
-          disabled={loading}
-          className="bg-white text-gray-900 px-3 py-2 rounded-md shadow-sm text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed max-h-64 overflow-y-auto"
-        >
-          {monthOptions.map(({ month, year, label }) => (
-            <option key={`${year}-${month}`} value={`${year}-${month}`}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </div>
+    <div className="w-full py-4 bg-[#001B47] rounded-xl flex items-center px-6">
+      <select
+        ref={selectRef}
+        value={`${selectedYear}-${selectedMonth}`}
+        disabled={loading}
+        onChange={e => {
+          const [y, m] = e.target.value.split('-').map(Number);
+          setSelectedMonth(m);
+          setSelectedYear(y);
+          window.dispatchEvent(new Event('activity-updated'));
+        }}
+        className="bg-white px-3 py-2 rounded-md text-sm font-medium"
+      >
+        {monthOptions.map(opt => (
+          <option key={`${opt.year}-${opt.month}`} value={`${opt.year}-${opt.month}`}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
 
-      {/* Centre: Status text */}
-      <div className="flex-1 text-center">
-        <span className="text-white text-lg font-semibold tracking-wide">
-          {statusText}
-        </span>
-      </div>
-
-      {/* Right: Empty space for layout consistency */}
-      <div className="flex items-center space-x-3">
-        {/* View mode selector removed */}
+      <div className="flex-1 text-center text-white text-lg font-semibold">
+        {statusText} | Delivered: {totalDelivered} | Expected: {Math.round(expectedByNow)}
       </div>
     </div>
   );
