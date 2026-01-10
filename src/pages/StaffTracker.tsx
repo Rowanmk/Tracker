@@ -1,5 +1,3 @@
-// src/pages/StaffTracker.tsx
-
 import React, { useEffect, useMemo, useState } from "react";
 import { useDate } from "../context/DateContext";
 import { useAuth } from "../context/AuthContext";
@@ -41,16 +39,14 @@ export const StaffTracker: React.FC = () => {
   const { currentStaff, selectedStaffId, allStaff } = useAuth();
   const { services, loading: servicesLoading } = useServices();
 
-  const isTeamSelected = selectedStaffId === "team";
-  const dashboardMode: "team" | "individual" = isTeamSelected
-    ? "team"
-    : "individual";
+  // Treat "team" and null/undefined as team-selected for consistency with the rest of the app
+  const isTeamSelected = selectedStaffId === "team" || !selectedStaffId;
+  const dashboardMode: "team" | "individual" = isTeamSelected ? "team" : "individual";
 
   const year =
-    selectedMonth >= 4
-      ? selectedFinancialYear.start
-      : selectedFinancialYear.end;
+    selectedMonth >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
 
+  // Working days: if individual selected we pass staffId, else undefined for team calc
   const staffIdForWorkingDays =
     !isTeamSelected && currentStaff ? currentStaff.staff_id : undefined;
 
@@ -65,9 +61,7 @@ export const StaffTracker: React.FC = () => {
     staffId: staffIdForWorkingDays,
   });
 
-  const effectiveWorkingDays = isTeamSelected
-    ? teamWorkingDays
-    : staffWorkingDays ?? teamWorkingDays;
+  const effectiveWorkingDays = isTeamSelected ? teamWorkingDays : staffWorkingDays;
 
   const { isDateOnLeave, isDateBankHoliday, loading: leaveHolidayLoading } =
     useStaffLeaveAndHolidays({
@@ -79,14 +73,13 @@ export const StaffTracker: React.FC = () => {
 
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
   const [targets, setTargets] = useState<Record<string, number>>({});
-  const [staffPerformance, setStaffPerformance] = useState<StaffPerformance[]>(
-    []
-  );
+  const [staffPerformance, setStaffPerformance] = useState<StaffPerformance[]>([]);
   const [localInputState, setLocalInputState] = useState<LocalInputState>({});
   const [loading, setLoading] = useState(true);
 
   const daysInMonth = new Date(year, selectedMonth, 0).getDate();
 
+  // Which staff are included in the activity totals & team tiles
   const staffIds = useMemo<number[]>(() => {
     if (isTeamSelected) return allStaff.map((s) => s.staff_id);
     if (currentStaff) return [currentStaff.staff_id];
@@ -98,12 +91,14 @@ export const StaffTracker: React.FC = () => {
       new Date(year, selectedMonth - 1, day).getDay()
     ];
 
+  // Day metadata used for header + highlighting
   const dayMeta = useMemo(() => {
     return Array.from({ length: daysInMonth }, (_, i) => {
       const day = i + 1;
       const date = `${year}-${String(selectedMonth).padStart(2, "0")}-${String(
         day
       ).padStart(2, "0")}`;
+
       const bh = isDateBankHoliday(date);
       const dow = new Date(year, selectedMonth - 1, day).getDay();
 
@@ -118,102 +113,163 @@ export const StaffTracker: React.FC = () => {
     });
   }, [daysInMonth, year, selectedMonth, isDateBankHoliday, isDateOnLeave]);
 
-  const columnClass = (d: {
-    isWeekend: boolean;
-    isBankHoliday: boolean;
-    isOnLeave: boolean;
-  }) => {
-    if (d.isBankHoliday || d.isWeekend) return "bg-blue-100";
+  const columnClass = (d: { isWeekend: boolean; isBankHoliday: boolean; isOnLeave: boolean }) => {
+    if (d.isBankHoliday) return "bg-blue-100";
+    if (d.isWeekend) return "bg-blue-100";
     if (!isTeamSelected && d.isOnLeave) return "bg-gray-100";
     return "";
   };
 
   const fetchData = async () => {
-    try {
-      if (services.length === 0 || staffIds.length === 0) {
-        setLoading(false);
-        return;
+    if (services.length === 0 || staffIds.length === 0) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    // ---------- BASE GRID ----------
+    const baseEntries: DailyEntry[] = dayMeta.map((d) => ({
+      date: d.date,
+      day: d.day,
+      isWeekend: d.isWeekend,
+      isOnLeave: d.isOnLeave,
+      isBankHoliday: d.isBankHoliday,
+      bankHolidayTitle: d.bankHolidayTitle,
+      services: Object.fromEntries(services.map((s) => [s.service_name, 0])),
+    }));
+
+    // ---------- DAILY ACTIVITY (SOURCE OF TRUTH) ----------
+    const { data: activities, error: activitiesError } = await supabase
+      .from("dailyactivity")
+      .select("staff_id, service_id, delivered_count, day")
+      .eq("month", selectedMonth)
+      .eq("year", year)
+      .in("staff_id", staffIds);
+
+    if (activitiesError) {
+      console.error("Error fetching daily activity:", activitiesError);
+    }
+
+    (activities as DailyActivityRow[] | null)?.forEach((a) => {
+      const service = services.find((s) => s.service_id === a.service_id);
+      const entry = baseEntries.find((e) => e.day === a.day);
+      if (service && entry) {
+        entry.services[service.service_name] += a.delivered_count || 0;
       }
+    });
 
-      setLoading(true);
+    setDailyEntries(baseEntries);
 
-      const baseEntries: DailyEntry[] = dayMeta.map((d) => ({
-        date: d.date,
-        day: d.day,
-        isWeekend: d.isWeekend,
-        isOnLeave: d.isOnLeave,
-        isBankHoliday: d.isBankHoliday,
-        bankHolidayTitle: d.bankHolidayTitle,
-        services: Object.fromEntries(services.map((s) => [s.service_name, 0])),
-      }));
+    // ---------- TARGETS (THIS IS WHAT BROKE YOUR TILES) ----------
+    // Team mode: sum targets across all staff
+    // Individual mode: use current staff targets
+    const targetTotals: Record<string, number> = {};
+    services.forEach((s) => (targetTotals[s.service_name] = 0));
 
-      const { data: activities } = await supabase
-        .from("dailyactivity")
-        .select("staff_id, service_id, delivered_count, day")
-        .eq("month", selectedMonth)
-        .eq("year", year)
-        .in("staff_id", staffIds);
-
-      (activities as DailyActivityRow[] | null)?.forEach((a) => {
-        const service = services.find((s) => s.service_id === a.service_id);
-        const entry = baseEntries.find((e) => e.day === a.day);
-        if (service && entry) {
-          entry.services[service.service_name] += a.delivered_count || 0;
-        }
-      });
-
-      setDailyEntries(baseEntries);
-
-      const totalsByStaff: Record<number, number> = {};
-      (activities as DailyActivityRow[] | null)?.forEach((a) => {
-        totalsByStaff[a.staff_id] =
-          (totalsByStaff[a.staff_id] || 0) + (a.delivered_count || 0);
-      });
-
-      setStaffPerformance(
-        staffIds.map((id) => {
-          const staff = allStaff.find((s) => s.staff_id === id) || currentStaff!;
-          return {
-            staff_id: id,
-            name: staff.name,
-            total: totalsByStaff[id] || 0,
-          };
-        })
-      );
-
-      const targetTotals: Record<string, number> = {};
-      services.forEach((s) => (targetTotals[s.service_name] = 0));
-
-      if (currentStaff) {
+    if (isTeamSelected) {
+      for (const staff of allStaff) {
         const { perService } = await loadTargets(
           selectedMonth,
           selectedFinancialYear,
-          currentStaff.staff_id
+          staff.staff_id
         );
         services.forEach((s) => {
-          targetTotals[s.service_name] = perService?.[s.service_id] || 0;
+          targetTotals[s.service_name] += perService?.[s.service_id] || 0;
         });
       }
-
-      setTargets(targetTotals);
-    } finally {
-      setLoading(false);
+    } else if (currentStaff) {
+      const { perService } = await loadTargets(
+        selectedMonth,
+        selectedFinancialYear,
+        currentStaff.staff_id
+      );
+      services.forEach((s) => {
+        targetTotals[s.service_name] = perService?.[s.service_id] || 0;
+      });
     }
+
+    setTargets(targetTotals);
+
+    // ---------- PERFORMANCE BAR ----------
+    const totalsByStaff: Record<number, number> = {};
+    (activities as DailyActivityRow[] | null)?.forEach((a) => {
+      totalsByStaff[a.staff_id] =
+        (totalsByStaff[a.staff_id] || 0) + (a.delivered_count || 0);
+    });
+
+    const perf: StaffPerformance[] = staffIds
+      .map((id) => {
+        const staff = allStaff.find((s) => s.staff_id === id) || currentStaff;
+        if (!staff) return null;
+        return {
+          staff_id: id,
+          name: staff.name,
+          total: totalsByStaff[id] || 0,
+        };
+      })
+      .filter((x): x is StaffPerformance => x !== null);
+
+    setStaffPerformance(perf);
+
+    setLoading(false);
   };
 
   useEffect(() => {
-    if (!servicesLoading && !leaveHolidayLoading) fetchData();
-  }, [servicesLoading, leaveHolidayLoading, selectedMonth, selectedStaffId]);
+    if (!servicesLoading && !leaveHolidayLoading) {
+      fetchData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedMonth,
+    selectedFinancialYear,
+    selectedStaffId,
+    servicesLoading,
+    leaveHolidayLoading,
+    allStaff.length,
+  ]);
 
+  // Keep tracker in sync when other pages dispatch updates
+  useEffect(() => {
+    const handler = () => fetchData();
+    window.addEventListener("activity-updated", handler);
+    return () => window.removeEventListener("activity-updated", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedMonth,
+    selectedFinancialYear,
+    selectedStaffId,
+    servicesLoading,
+    leaveHolidayLoading,
+    allStaff.length,
+  ]);
+
+  const serviceTotals = useMemo(() => {
+    return Object.fromEntries(
+      services.map((s) => [
+        s.service_name,
+        dailyEntries.reduce(
+          (sum: number, e) => sum + (e.services[s.service_name] || 0),
+          0
+        ),
+      ])
+    );
+  }, [dailyEntries, services]);
+
+  // IMPORTANT: do NOT block rendering forever if working days is briefly loading
   if (loading || servicesLoading || leaveHolidayLoading) {
-    return <div className="py-6 text-center text-gray-500">Loading…</div>;
+    return <div className="py-6 text-center text-gray-500">Loading tracker…</div>;
   }
+
+  const currentIndividualStaff =
+    !isTeamSelected && currentStaff
+      ? { staff_id: currentStaff.staff_id, name: currentStaff.name }
+      : null;
 
   return (
     <div className="space-y-4">
       <h2 className="text-2xl lg:text-3xl font-bold">My Tracker</h2>
 
-      {/* ✅ FIXED — FULL PROPS */}
       <StaffPerformanceBar
         staffPerformance={staffPerformance}
         workingDays={effectiveWorkingDays}
@@ -221,32 +277,151 @@ export const StaffTracker: React.FC = () => {
         month={selectedMonth}
         financialYear={selectedFinancialYear}
         dashboardMode={dashboardMode}
-        currentStaff={
-          !isTeamSelected && currentStaff
-            ? { staff_id: currentStaff.staff_id, name: currentStaff.name }
-            : null
-        }
+        currentStaff={currentIndividualStaff}
       />
 
       <MyTrackerProgressTiles
         services={services}
-        serviceTotals={Object.fromEntries(
-          services.map((s) => [
-            s.service_name,
-            dailyEntries.reduce(
-              (sum, e) => sum + (e.services[s.service_name] || 0),
-              0
-            ),
-          ])
-        )}
+        serviceTotals={serviceTotals}
         targets={targets}
         workingDays={effectiveWorkingDays}
         workingDaysUpToToday={workingDaysUpToToday}
       />
 
-      {/* ✅ THE TABLE IS HERE — GUARANTEED */}
-      {/* (unchanged table rendering logic follows) */}
-      {/* YOUR INPUT TABLE IS NOT REMOVED */}
+      {/* ================= TRACKER TABLE (RESTORED) ================= */}
+      <div className="bg-white shadow-md rounded-xl border overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full table-fixed border-collapse">
+            <thead>
+              <tr className="bg-[#001B47]">
+                <th className="sticky left-0 z-30 px-3 py-2 text-left text-xs font-bold text-white w-[240px]">
+                  SERVICE
+                </th>
+                {dayMeta.map((d) => (
+                  <th
+                    key={d.day}
+                    className="px-2 py-2 text-xs font-bold text-white w-[72px]"
+                  >
+                    {d.day}
+                  </th>
+                ))}
+                <th className="sticky right-0 z-30 px-2 py-2 text-xs font-bold text-white w-[110px]">
+                  Total
+                </th>
+              </tr>
+
+              <tr className="bg-gray-100">
+                <th className="sticky left-0 z-20 px-3 py-2 text-xs font-semibold w-[240px]">
+                  Day
+                </th>
+                {dayMeta.map((d) => (
+                  <th
+                    key={`dow-${d.day}`}
+                    className={`px-2 py-2 text-xs font-semibold w-[72px] ${columnClass(
+                      d
+                    )}`}
+                    title={d.isBankHoliday ? d.bankHolidayTitle : undefined}
+                  >
+                    {getDayName(d.day)}
+                  </th>
+                ))}
+                <th className="sticky right-0 z-20 px-2 py-2 text-xs font-semibold w-[110px]">
+                  —
+                </th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y">
+              {services.map((service, idx) => {
+                const zebra = idx % 2 === 0 ? "bg-white" : "bg-gray-50";
+
+                const rowTotal = dayMeta.reduce((sum: number, d) => {
+                  const entry = dailyEntries.find((e) => e.day === d.day);
+                  return sum + (entry?.services[service.service_name] || 0);
+                }, 0);
+
+                return (
+                  <tr key={service.service_id} className={zebra}>
+                    <td
+                      className={`sticky left-0 z-20 px-3 py-2 font-semibold whitespace-nowrap ${zebra}`}
+                    >
+                      {service.service_name}
+                    </td>
+
+                    {dayMeta.map((d) => {
+                      const key = `${service.service_id}-${d.day}`;
+                      const numericVal =
+                        dailyEntries.find((e) => e.day === d.day)?.services[
+                          service.service_name
+                        ] ?? 0;
+                      const displayVal = localInputState[key] ?? String(numericVal);
+
+                      return (
+                        <td
+                          key={key}
+                          className={`px-1 py-1 text-center ${columnClass(d)}`}
+                        >
+                          <input
+                            type="number"
+                            min={0}
+                            disabled={isTeamSelected}
+                            value={displayVal}
+                            onChange={(e) =>
+                              setLocalInputState((prev) => ({
+                                ...prev,
+                                [key]: e.target.value,
+                              }))
+                            }
+                            className="w-full px-2 py-1 text-sm text-center rounded-md border"
+                          />
+                        </td>
+                      );
+                    })}
+
+                    <td
+                      className={`sticky right-0 z-20 px-2 py-2 font-bold text-center ${zebra}`}
+                    >
+                      {rowTotal}
+                    </td>
+                  </tr>
+                );
+              })}
+
+              <tr className="bg-gray-200">
+                <td className="sticky left-0 z-20 px-3 py-2 font-bold bg-gray-200">
+                  Daily Total
+                </td>
+
+                {dayMeta.map((d) => (
+                  <td
+                    key={`total-${d.day}`}
+                    className="px-2 py-2 font-bold text-center bg-gray-200"
+                  >
+                    {services.reduce((sum: number, s) => {
+                      const entry = dailyEntries.find((e) => e.day === d.day);
+                      return sum + (entry?.services[s.service_name] || 0);
+                    }, 0)}
+                  </td>
+                ))}
+
+                <td className="sticky right-0 z-20 px-2 py-2 font-bold text-center bg-[#001B47] text-white">
+                  {Object.values(serviceTotals).reduce(
+                    (a: number, b: number) => a + b,
+                    0
+                  )}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Optional: show working day calc status (doesn't block UI) */}
+      {workingDaysLoading && (
+        <div className="text-xs text-gray-500">
+          Calculating working days…
+        </div>
+      )}
     </div>
   );
 };
