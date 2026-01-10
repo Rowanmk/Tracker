@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef } from "react";
 import { TeamProgressTile } from "../components/TeamProgressTile";
 import { EmployeeProgressChart } from "../components/EmployeeProgressChart";
 import { RunRateTile } from "../components/RunRateTile";
@@ -12,39 +12,39 @@ import { useStaffPerformance } from "../hooks/useStaffPerformance";
 
 export const Dashboard: React.FC = () => {
   const { viewMode } = useDashboardView();
-  const { selectedMonth, selectedYear, financialYear } = useDate();
+  const { selectedMonth, financialYear } = useDate();
 
-  const [sortMode, setSortMode] = useState<"desc" | "asc" | "name">("desc");
-
+  const [sortMode] = useState<"desc" | "asc" | "name">("desc");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const {
     currentStaff,
-    allStaff,
     selectedStaffId,
-    loading: authLoading,
     showFallbackWarning: authWarning,
   } = useAuth();
 
   const {
     services,
-    loading: servicesLoading,
     showFallbackWarning: servicesWarning,
   } = useServices();
 
   const isTeamSelected = selectedStaffId === "team" || !selectedStaffId;
   const dashboardMode: "team" | "individual" = isTeamSelected ? "team" : "individual";
 
+  const staffIdForWorkingDays =
+    !isTeamSelected && currentStaff ? currentStaff.staff_id : undefined;
+
   const {
     teamWorkingDays,
+    staffWorkingDays,
     workingDaysUpToToday,
     showFallbackWarning: workingDaysWarning,
   } = useWorkingDays({
-    financialYear: financialYear,
+    financialYear,
     month: selectedMonth,
+    staffId: staffIdForWorkingDays,
   });
 
-  // ✅ Shared staff performance + daily activities + team target
   const {
     staffPerformance,
     dailyActivities,
@@ -54,71 +54,63 @@ export const Dashboard: React.FC = () => {
   } = useStaffPerformance(sortMode);
 
   const totalActual = dailyActivities.reduce(
-    (sum, a) => sum + a.delivered_count,
+    (sum, a) => sum + (a.delivered_count || 0),
     0
   );
 
-  const teamDelivered = staffPerformance.reduce((sum, s) => sum + s.total, 0);
+  const teamDelivered = staffPerformance.reduce(
+    (sum, s) => sum + (s.total || 0),
+    0
+  );
 
-  const getProgressBarColor = (delivered: number, target: number) => {
-    if (target === 0) return '#6B7280';
-    const expectedSoFar = teamWorkingDays > 0 ? (target / teamWorkingDays) * workingDaysUpToToday : 0;
-    const difference = delivered - expectedSoFar;
-
-    if (difference >= 0) return '#008A00';
-    if (difference >= -0.25 * expectedSoFar) return '#FF8A2A';
-    return '#FF3B30';
-  };
+  const effectiveWorkingDays = isTeamSelected
+    ? teamWorkingDays
+    : staffWorkingDays;
 
   const renderProgressBar = (label: string, delivered: number, target: number) => {
     const percentage = target > 0 ? (delivered / target) * 100 : 0;
-    const barColor = getProgressBarColor(delivered, target);
 
-    const expectedSoFar = teamWorkingDays > 0 ? (target / teamWorkingDays) * workingDaysUpToToday : 0;
-    const markerPercentage = target > 0 ? (expectedSoFar / target) * 100 : 0;
-    const variance = delivered - expectedSoFar;
+    const expected =
+      effectiveWorkingDays > 0
+        ? (target / effectiveWorkingDays) * workingDaysUpToToday
+        : 0;
 
-    let varianceLabel = "0";
-    let varianceColor = "#FFFFFF";
-
-    if (Math.abs(variance) >= 0.5) {
-      varianceLabel = variance > 0 ? `+${Math.round(variance)}` : `${Math.round(variance)}`;
-      varianceColor = variance > 0 ? "#FFFFFF" : "#FF3B30";
-    }
+    const variance = delivered - expected;
 
     return (
       <div className="space-y-2">
         <div className="flex justify-between items-center">
-          <span className="font-medium text-gray-900 dark:text-white text-sm">{label}</span>
-          <div className="flex items-center space-x-2">
-            <span className="font-bold text-gray-900 dark:text-white text-sm">{delivered} / {target}</span>
-            <span className="text-xs text-gray-600 dark:text-gray-400">({Math.round(percentage)}%)</span>
-          </div>
+          <span className="font-medium text-sm">{label}</span>
+          <span className="font-bold text-sm">
+            {delivered} / {target} ({Math.round(percentage)}%)
+          </span>
         </div>
-        <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-6 overflow-hidden relative">
+
+        <div className="relative w-full h-6 bg-gray-200 rounded-full overflow-hidden">
           <div
-            className="h-6 rounded-full transition-all duration-300 ease-in-out"
-            style={{
-              width: `${Math.min(percentage, 100)}%`,
-              backgroundColor: barColor
-            }}
-            title={`${label}: ${delivered}/${target} (${Math.round(percentage)}%)`}
+            className="h-6 bg-green-600 rounded-full"
+            style={{ width: `${Math.min(percentage, 100)}%` }}
           />
+
           <div
-            className="absolute top-0 h-6 w-0.5 bg-[#001B47] transition-all duration-300 ease-in-out"
-            style={{ left: `${Math.min(markerPercentage, 100)}%` }}
-            title={`Expected by now: ${Math.round(expectedSoFar)}`}
-          />
-          <div
-            className="absolute top-0 h-6 flex items-center text-xs font-bold transition-all duration-300 ease-in-out"
+            className="absolute top-0 h-6 w-0.5 bg-[#001B47]"
             style={{
-              left: `${Math.min(markerPercentage, 95)}%`,
-              marginLeft: '4px',
-              color: varianceColor
+              left: `${target > 0 ? Math.min((expected / target) * 100, 100) : 0}%`,
             }}
-          >
-            {varianceLabel}
-          </div>
+          />
+
+          {Math.abs(variance) >= 1 && (
+            <span
+              className={`absolute top-0 h-6 flex items-center text-xs font-bold ml-1 ${
+                variance < 0 ? "text-red-600" : "text-white"
+              }`}
+              style={{
+                left: `${target > 0 ? Math.min((expected / target) * 100, 95) : 0}%`,
+              }}
+            >
+              {variance > 0 ? `+${Math.round(variance)}` : Math.round(variance)}
+            </span>
+          )}
         </div>
       </div>
     );
@@ -127,104 +119,86 @@ export const Dashboard: React.FC = () => {
   const showWarning =
     authWarning || servicesWarning || workingDaysWarning || !!error;
 
-  const currentIndividualStaff = !isTeamSelected && currentStaff
-    ? { staff_id: currentStaff.staff_id, name: currentStaff.name }
-    : null;
-
-  // (sortMode setter/UI not shown in your paste; keeping your state intact)
-  useEffect(() => {
-    // no-op placeholder to keep sortMode dependency behaviour identical to your current setup
-  }, [sortMode]);
+  const currentIndividualStaff =
+    !isTeamSelected && currentStaff
+      ? { staff_id: currentStaff.staff_id, name: currentStaff.name }
+      : null;
 
   return (
     <div>
-      <div className="mb-3.2">
-        <h2 className="text-2xl lg:text-3xl font-bold text-brand-blue dark:text-white mb-4.8">
-          Dashboard
-        </h2>
-      </div>
+      <h2 className="text-2xl font-bold mb-4">Dashboard</h2>
 
       {showWarning && (
-        <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl animate-fade-in">
-          <p className="text-yellow-800 dark:text-yellow-200">
-            ⚠️ Some data may be unavailable due to connection issues. Showing
-            available data with fallbacks.
-          </p>
+        <div className="mb-6 p-4 bg-yellow-50 border rounded-xl">
+          ⚠️ Some data may be unavailable. Showing fallbacks.
         </div>
       )}
 
-      <div className="mb-6 animate-slide-up">
+      <div className="mb-6">
         <StaffPerformanceBar
           staffPerformance={staffPerformance}
           dashboardMode={dashboardMode}
           currentStaff={currentIndividualStaff}
-          workingDays={teamWorkingDays}
+          workingDays={effectiveWorkingDays}
           workingDaysUpToToday={workingDaysUpToToday}
           month={selectedMonth}
           financialYear={financialYear}
         />
       </div>
 
-      <div className="mb-6 animate-slide-up">
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6">
-          <div className="space-y-4">
-            {isTeamSelected
-              ? renderProgressBar("Team Progress", teamDelivered, teamTarget)
-              : renderProgressBar(`${currentStaff?.name || "My"} Progress`,
-                staffPerformance.find(s => s.staff_id === currentStaff?.staff_id)?.total || 0,
-                staffPerformance.find(s => s.staff_id === currentStaff?.staff_id)?.target || 0
-              )
-            }
-          </div>
-        </div>
+      <div className="mb-6">
+        {isTeamSelected
+          ? renderProgressBar("Team Progress", teamDelivered, teamTarget)
+          : renderProgressBar(
+              `${currentStaff?.name} Progress`,
+              staffPerformance.find(
+                s => s.staff_id === currentStaff?.staff_id
+              )?.total || 0,
+              staffPerformance.find(
+                s => s.staff_id === currentStaff?.staff_id
+              )?.target || 0
+            )}
       </div>
 
-      <div className="animate-slide-up">
-        <div
-          ref={scrollContainerRef}
-          className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 overflow-x-auto pb-4"
-          style={{ scrollBehavior: 'smooth' }}
-        >
-          <div className="min-w-full lg:min-w-0">
-            <TeamProgressTile
-              services={services}
-              staffPerformance={staffPerformance}
-              dashboardMode={dashboardMode}
-              currentStaff={currentIndividualStaff}
-              viewMode={viewMode}
-              workingDays={teamWorkingDays}
-              workingDaysUpToToday={workingDaysUpToToday}
-              month={selectedMonth}
-              financialYear={financialYear}
-            />
-          </div>
-          <div className="min-w-full lg:min-w-0">
-            <EmployeeProgressChart
-              services={services}
-              staffPerformance={staffPerformance}
-              dashboardMode={dashboardMode}
-              currentStaff={currentIndividualStaff}
-              viewMode={viewMode}
-              workingDays={teamWorkingDays}
-              workingDaysUpToToday={workingDaysUpToToday}
-              month={selectedMonth}
-              financialYear={financialYear}
-            />
-          </div>
-          <div className="min-w-full lg:min-w-0">
-            <RunRateTile
-              workingDays={teamWorkingDays}
-              workingDaysUpToToday={workingDaysUpToToday}
-              totalActual={totalActual}
-              dailyActivities={dailyActivities}
-              month={selectedMonth}
-              financialYear={financialYear}
-              dashboardMode={dashboardMode}
-              currentStaff={currentIndividualStaff}
-              viewMode={viewMode}
-            />
-          </div>
-        </div>
+      <div
+        ref={scrollContainerRef}
+        className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+      >
+        <TeamProgressTile
+          services={services}
+          staffPerformance={staffPerformance}
+          dashboardMode={dashboardMode}
+          currentStaff={currentIndividualStaff}
+          viewMode={viewMode}
+          workingDays={effectiveWorkingDays}
+          workingDaysUpToToday={workingDaysUpToToday}
+          month={selectedMonth}
+          financialYear={financialYear}
+        />
+
+        <EmployeeProgressChart
+          services={services}
+          staffPerformance={staffPerformance}
+          dashboardMode={dashboardMode}
+          currentStaff={currentIndividualStaff}
+          viewMode={viewMode}
+          workingDays={effectiveWorkingDays}
+          workingDaysUpToToday={workingDaysUpToToday}
+          month={selectedMonth}
+          financialYear={financialYear}
+        />
+
+        <RunRateTile
+          workingDays={effectiveWorkingDays}
+          workingDaysUpToToday={workingDaysUpToToday}
+          totalActual={totalActual}
+          dailyActivities={dailyActivities}
+          month={selectedMonth}
+          financialYear={financialYear}
+          dashboardMode={dashboardMode}
+          currentStaff={currentIndividualStaff}
+          viewMode={viewMode}
+        />
       </div>
     </div>
   );

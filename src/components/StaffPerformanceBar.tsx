@@ -1,97 +1,45 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useDate } from '../context/DateContext';
-import { loadTargets } from '../utils/loadTargets';
+import type { FinancialYear } from '../utils/financialYear';
 
-interface StaffPerformance {
+export interface StaffPerformance {
   staff_id: number;
   name: string;
   total: number;
-}
-
-interface MonthYearOption {
-  month: number;
-  year: number;
-  label: string;
+  target?: number;
 }
 
 interface Props {
   staffPerformance: StaffPerformance[];
   workingDays: number;
   workingDaysUpToToday: number;
+  month: number;
+  financialYear: FinancialYear;
+
+  // REQUIRED CONTEXT
+  dashboardMode: 'team' | 'individual';
+  currentStaff: { staff_id: number; name: string } | null;
 }
 
 export const StaffPerformanceBar: React.FC<Props> = ({
   staffPerformance,
   workingDays,
   workingDaysUpToToday,
+  dashboardMode,
+  currentStaff,
 }) => {
-  const [totalTarget, setTotalTarget] = useState<number>(0);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [monthOptions, setMonthOptions] = useState<MonthYearOption[]>([]);
   const selectRef = useRef<HTMLSelectElement>(null);
+  const { selectedMonth, selectedYear, setSelectedMonth, setSelectedYear } = useDate();
 
-  const {
-    selectedMonth,
-    selectedYear,
-    setSelectedMonth,
-    setSelectedYear,
-    selectedFinancialYear,
-  } = useDate();
+  const totalDelivered =
+    dashboardMode === 'team'
+      ? staffPerformance.reduce((sum, s) => sum + s.total, 0)
+      : staffPerformance.find(s => s.staff_id === currentStaff?.staff_id)?.total || 0;
 
-  const totalDelivered = staffPerformance.reduce(
-    (sum: number, s: StaffPerformance) => sum + s.total,
-    0
-  );
-
-  /* ---------- Month dropdown ---------- */
-  useEffect(() => {
-    const today = new Date();
-    const options: MonthYearOption[] = [];
-    const startDate = new Date(today.getFullYear(), today.getMonth() - 24, 1);
-
-    for (let i = 0; i < 37; i++) {
-      const date = new Date(startDate.getFullYear(), startDate.getMonth() + i, 1);
-      const month = date.getMonth() + 1;
-      const year = date.getFullYear();
-
-      const monthNames = [
-        'January','February','March','April','May','June',
-        'July','August','September','October','November','December'
-      ];
-
-      options.push({
-        month,
-        year,
-        label: `${monthNames[month - 1]} ${year}`,
-      });
-    }
-
-    setMonthOptions(options);
-  }, []);
-
-  /* ---------- Targets ---------- */
-  useEffect(() => {
-    const fetchTargets = async () => {
-      setLoading(true);
-      let combined = 0;
-
-      for (const staff of staffPerformance) {
-        const { totalTarget } = await loadTargets(
-          selectedMonth,
-          selectedFinancialYear,
-          staff.staff_id
-        );
-        combined += totalTarget;
-      }
-
-      setTotalTarget(combined);
-      setLoading(false);
-    };
-
-    if (staffPerformance.length > 0) {
-      fetchTargets();
-    }
-  }, [staffPerformance, selectedMonth, selectedFinancialYear]);
+  const totalTarget =
+    dashboardMode === 'team'
+      ? staffPerformance.reduce((sum, s) => sum + (s.target || 0), 0)
+      : staffPerformance.find(s => s.staff_id === currentStaff?.staff_id)?.target || 0;
 
   const expectedByNow =
     workingDays > 0
@@ -107,30 +55,42 @@ export const StaffPerformanceBar: React.FC<Props> = ({
       ? `Ahead by ${Math.round(variance)} items`
       : `Behind by ${Math.abs(Math.round(variance))} items`;
 
-  return (
-    <div className="w-full py-4 bg-[#001B47] rounded-xl flex items-center px-6">
-      <select
-        ref={selectRef}
-        value={`${selectedYear}-${selectedMonth}`}
-        disabled={loading}
-        onChange={e => {
-          const [y, m] = e.target.value.split('-').map(Number);
-          setSelectedMonth(m);
-          setSelectedYear(y);
-          window.dispatchEvent(new Event('activity-updated'));
-        }}
-        className="bg-white px-3 py-2 rounded-md text-sm font-medium"
-      >
-        {monthOptions.map(opt => (
-          <option key={`${opt.year}-${opt.month}`} value={`${opt.year}-${opt.month}`}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
+  const headerText = `${statusText} | Delivered: ${totalDelivered} | Expected: ${Math.round(expectedByNow)}`;
 
-      <div className="flex-1 text-center text-white text-lg font-semibold">
-        {statusText} | Delivered: {totalDelivered} | Expected: {Math.round(expectedByNow)}
+  return (
+    <div className="w-full py-4 bg-[#001B47] rounded-xl flex justify-between items-center px-6">
+      {/* Month selector */}
+      <div className="flex items-center">
+        <select
+          ref={selectRef}
+          value={`${selectedYear}-${selectedMonth}`}
+          onChange={(e) => {
+            const [year, month] = e.target.value.split('-').map(Number);
+            setSelectedMonth(month);
+            setSelectedYear(year);
+          }}
+          className="bg-white text-gray-900 px-3 py-2 rounded-md shadow-sm text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          {Array.from({ length: 12 }).map((_, i) => {
+            const d = new Date(selectedYear, i, 1);
+            return (
+              <option key={i} value={`${d.getFullYear()}-${i + 1}`}>
+                {d.toLocaleString('default', { month: 'long', year: 'numeric' })}
+              </option>
+            );
+          })}
+        </select>
       </div>
+
+      {/* Centre text */}
+      <div className="flex-1 text-center">
+        <span className="text-white text-lg font-semibold tracking-wide">
+          {headerText}
+        </span>
+      </div>
+
+      {/* Spacer */}
+      <div className="w-[120px]" />
     </div>
   );
 };
