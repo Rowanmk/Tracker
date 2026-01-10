@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { useDate } from '../context/DateContext';
 import type { FinancialYear } from '../utils/financialYear';
 
@@ -31,6 +31,14 @@ export const StaffPerformanceBar: React.FC<Props> = ({
   const selectRef = useRef<HTMLSelectElement>(null);
   const { selectedMonth, selectedYear, setSelectedMonth, setSelectedYear } = useDate();
 
+  const today = new Date();
+  const isCurrentMonth =
+    selectedMonth === today.getMonth() + 1 &&
+    selectedYear === today.getFullYear();
+
+  // -----------------------------
+  // Delivered & Target
+  // -----------------------------
   const totalDelivered =
     dashboardMode === 'team'
       ? staffPerformance.reduce((sum, s) => sum + s.total, 0)
@@ -41,21 +49,33 @@ export const StaffPerformanceBar: React.FC<Props> = ({
       ? staffPerformance.reduce((sum, s) => sum + (s.target || 0), 0)
       : staffPerformance.find(s => s.staff_id === currentStaff?.staff_id)?.target || 0;
 
-  const expectedByNow =
-    workingDays > 0
-      ? (totalTarget / workingDays) * workingDaysUpToToday
-      : 0;
+  // -----------------------------
+  // Expected (FIXED LOGIC)
+  // -----------------------------
+  let expected: number;
 
-  const variance = totalDelivered - expectedByNow;
+  if (!isCurrentMonth) {
+    // Past or future month → full target
+    expected = totalTarget;
+  } else if (workingDays > 0) {
+    // Current month → run-rate pacing
+    expected = (totalTarget / workingDays) * workingDaysUpToToday;
+  } else {
+    expected = 0;
+  }
+
+  const variance = totalDelivered - expected;
 
   const statusText =
-    Math.abs(variance) < 0.5
+    totalTarget === 0
+      ? 'No target set'
+      : Math.abs(variance) < 0.5
       ? 'On track'
       : variance > 0
       ? `Ahead by ${Math.round(variance)} items`
       : `Behind by ${Math.abs(Math.round(variance))} items`;
 
-  const headerText = `${statusText} | Delivered: ${totalDelivered} | Expected: ${Math.round(expectedByNow)}`;
+  const headerText = `${statusText} | Delivered: ${totalDelivered} | Expected: ${Math.round(expected)}`;
 
   return (
     <div className="w-full py-4 bg-[#001B47] rounded-xl flex justify-between items-center px-6">
