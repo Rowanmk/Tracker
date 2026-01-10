@@ -4,7 +4,6 @@ interface Props {
   services: { service_name: string }[];
   serviceTotals: Record<string, number>;
   targets: Record<string, number>;
-  dashboardMode: 'team' | 'individual';
   workingDays: number;
   workingDaysUpToToday: number;
 }
@@ -17,62 +16,59 @@ export const MyTrackerProgressTiles: React.FC<Props> = ({
   workingDaysUpToToday,
 }) => {
   const renderTile = (label: string, delivered: number, target: number) => {
-    const percentage = target > 0 ? (delivered / target) * 100 : 0;
-
     const expectedByNow =
-      workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
+      workingDays > 0
+        ? (target / workingDays) * workingDaysUpToToday
+        : 0;
 
     const variance = delivered - expectedByNow;
 
     let statusText = 'On run rate';
-    let statusColour = 'text-green-600';
+    let statusClass = 'text-green-600';
 
     if (variance < -0.5) {
       statusText = `${Math.abs(Math.round(variance))} items behind run rate`;
-      statusColour = 'text-red-600';
+      statusClass = 'text-red-600';
     } else if (variance > 0.5) {
       statusText = `${Math.round(variance)} items ahead of run rate`;
-      statusColour = 'text-green-600';
+      statusClass = 'text-green-600';
     }
 
-    const markerPosition =
-      target > 0 ? Math.min((expectedByNow / target) * 100, 100) : 0;
+    const deliveredPercent =
+      target > 0 ? Math.min((delivered / target) * 100, 100) : 0;
+
+    const runRateMarkerPercent =
+      target > 0
+        ? Math.min((expectedByNow / target) * 100, 100)
+        : 0;
 
     return (
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
-        <div className="flex justify-between items-center mb-2">
-          <h3 className="font-semibold text-gray-900 dark:text-white">
-            {label}
-          </h3>
-        </div>
+        <h3 className="font-semibold text-gray-900 dark:text-white mb-1">
+          {label}
+        </h3>
 
-        <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-          Delivered vs Expected
-        </div>
-
-        <div className="flex justify-between items-center mb-2">
-          <span className="font-bold text-gray-900 dark:text-white">
-            {delivered} / {Math.round(target)}
-          </span>
+        <div className="font-bold text-gray-900 dark:text-white mb-2">
+          {delivered} / {Math.round(target)}
         </div>
 
         <div className="relative w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mb-2">
           {/* Delivered bar */}
           <div
             className={`h-3 rounded-full ${
-              percentage >= 100 ? 'bg-green-500' : 'bg-red-500'
+              delivered >= expectedByNow ? 'bg-green-500' : 'bg-red-500'
             }`}
-            style={{ width: `${Math.min(percentage, 100)}%` }}
+            style={{ width: `${deliveredPercent}%` }}
           />
 
           {/* Run-rate marker */}
           <div
             className="absolute top-0 h-3 w-0.5 bg-[#001B47]"
-            style={{ left: `${markerPosition}%` }}
+            style={{ left: `${runRateMarkerPercent}%` }}
           />
         </div>
 
-        <div className={`text-sm font-medium ${statusColour}`}>
+        <div className={`text-sm font-medium ${statusClass}`}>
           {statusText}
         </div>
       </div>
