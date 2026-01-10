@@ -30,7 +30,9 @@ export const Dashboard: React.FC = () => {
   } = useServices();
 
   const isTeamSelected = selectedStaffId === "team" || !selectedStaffId;
-  const dashboardMode: "team" | "individual" = isTeamSelected ? "team" : "individual";
+  const dashboardMode: "team" | "individual" = isTeamSelected
+    ? "team"
+    : "individual";
 
   const staffIdForWorkingDays =
     !isTeamSelected && currentStaff ? currentStaff.staff_id : undefined;
@@ -49,7 +51,6 @@ export const Dashboard: React.FC = () => {
   const {
     staffPerformance,
     dailyActivities,
-    teamTarget,
     loading,
     error,
   } = useStaffPerformance(sortMode);
@@ -63,7 +64,7 @@ export const Dashboard: React.FC = () => {
       ? { staff_id: currentStaff.staff_id, name: currentStaff.name }
       : null;
 
-  // ✅ SINGLE SOURCE OF TRUTH
+  // ✅ Centralised performance maths
   const performanceSummary = usePerformanceSummary({
     staffPerformance,
     workingDays: effectiveWorkingDays,
@@ -87,17 +88,12 @@ export const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* ✅ FIXED: no month / financialYear props */}
+      {/* ✅ Staff performance header bar */}
       <div className="mb-6">
-        <StaffPerformanceBar
-          staffPerformance={staffPerformance}
-          dashboardMode={dashboardMode}
-          currentStaff={currentIndividualStaff}
-          workingDays={effectiveWorkingDays}
-          workingDaysUpToToday={workingDaysUpToToday}
-        />
+        <StaffPerformanceBar staffPerformance={staffPerformance} />
       </div>
 
+      {/* Grey / green progress bar */}
       <div className="mb-6 space-y-2">
         <div className="flex justify-between items-center">
           <span className="font-medium text-sm">

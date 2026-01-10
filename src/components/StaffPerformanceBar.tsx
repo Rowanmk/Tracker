@@ -18,10 +18,12 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
   const { selectedStaffId, currentStaff, staff } = useAuth();
   const { selectedMonth, selectedFinancialYear } = useDate();
 
-  const isTeam = selectedStaffId === "team";
+  // ✅ SINGLE SOURCE OF TRUTH
+  const isTeam = selectedStaffId === "team" || !selectedStaffId;
 
   const {
-    workingDays,
+    teamWorkingDays,
+    staffWorkingDays,
     workingDaysUpToToday,
   } = useWorkingDays({
     financialYear: selectedFinancialYear,
@@ -29,7 +31,9 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
     staffId: isTeam ? undefined : currentStaff?.staff_id,
   });
 
-  const [targetTotal, setTargetTotal] = useState(0);
+  const workingDays = isTeam ? teamWorkingDays : staffWorkingDays;
+
+  const [targetTotal, setTargetTotal] = useState<number>(0);
 
   // ---------------------------------------------------------------------------
   // ACTUALS
@@ -72,13 +76,7 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
     };
 
     load();
-  }, [
-    isTeam,
-    staff,
-    currentStaff,
-    selectedMonth,
-    selectedFinancialYear,
-  ]);
+  }, [isTeam, staff, currentStaff, selectedMonth, selectedFinancialYear]);
 
   // ---------------------------------------------------------------------------
   // EXPECTED (PRO-RATED)
