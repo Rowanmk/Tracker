@@ -5,8 +5,10 @@ import { useServices } from '../hooks/useServices';
 import { useWorkingDays } from '../hooks/useWorkingDays';
 import { useStaffLeaveAndHolidays } from '../hooks/useStaffLeaveAndHolidays';
 import { MyTrackerProgressTiles } from '../components/MyTrackerProgressTiles';
+import { StaffPerformanceBar } from '../components/StaffPerformanceBar';
 import { supabase } from '../supabase/client';
 import { loadTargets } from '../utils/loadTargets';
+import { useStaffPerformance } from '../hooks/useStaffPerformance';
 
 interface DailyEntry {
   date: string;
@@ -28,15 +30,14 @@ interface DailyActivityRow {
 type LocalInputState = Record<string, string>;
 
 export const StaffTracker: React.FC = () => {
-  const { selectedMonth, selectedFinancialYear } = useDate();
+  const { selectedMonth, selectedYear, selectedFinancialYear } = useDate();
   const { currentStaff, selectedStaffId, allStaff } = useAuth();
   const { services, loading: servicesLoading, error: servicesError } = useServices();
 
+  // Use the shared performance data (same source as Dashboard)
+  const { staffPerformance } = useStaffPerformance("desc"); // sort doesn't matter for the bar; keep stable
+
   const isTeamSelected = selectedStaffId === 'team';
-  const year =
-    selectedMonth >= 4
-      ? selectedFinancialYear.start
-      : selectedFinancialYear.end;
 
   const { teamWorkingDays, workingDaysUpToToday, loading: workingDaysLoading } =
     useWorkingDays({
@@ -51,7 +52,7 @@ export const StaffTracker: React.FC = () => {
   } = useStaffLeaveAndHolidays({
     staffId: currentStaff?.staff_id ?? 0,
     month: selectedMonth,
-    year,
+    year: selectedYear,
     homeRegion: currentStaff?.home_region || 'england-and-wales',
   });
 
@@ -60,22 +61,22 @@ export const StaffTracker: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [localInputState, setLocalInputState] = useState<LocalInputState>({});
 
-  const daysInMonth = new Date(year, selectedMonth, 0).getDate();
+  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
 
   const getDayName = (day: number) =>
     ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][
-      new Date(year, selectedMonth - 1, day).getDay()
+      new Date(selectedYear, selectedMonth - 1, day).getDay()
     ];
 
   const dateString = (day: number) =>
-    `${year}-${String(selectedMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
   const dayMeta = useMemo(() => {
     return Array.from({ length: daysInMonth }, (_, i) => {
       const day = i + 1;
       const date = dateString(day);
       const bh = isDateBankHoliday(date);
-      const dow = new Date(year, selectedMonth - 1, day).getDay();
+      const dow = new Date(selectedYear, selectedMonth - 1, day).getDay();
 
       return {
         day,
@@ -86,7 +87,7 @@ export const StaffTracker: React.FC = () => {
         bankHolidayTitle: bh?.title,
       };
     });
-  }, [daysInMonth, year, selectedMonth, isDateBankHoliday, isDateOnLeave]);
+  }, [daysInMonth, selectedYear, selectedMonth, isDateBankHoliday, isDateOnLeave]);
 
   const staffIds = isTeamSelected
     ? allStaff.map(s => s.staff_id)
@@ -94,24 +95,14 @@ export const StaffTracker: React.FC = () => {
       ? [currentStaff.staff_id]
       : [];
 
-  /* 🔵 WEEKEND SHADING — FIXED & CONSISTENT */
   const columnClass = (d: {
     isWeekend: boolean;
     isBankHoliday: boolean;
     isOnLeave: boolean;
   }) => {
-    if (d.isBankHoliday) {
-      return 'bg-blue-100 dark:bg-blue-900/30';
-    }
-
-    if (d.isWeekend) {
-      return 'bg-blue-100 dark:bg-blue-900/25';
-    }
-
-    if (!isTeamSelected && d.isOnLeave) {
-      return 'bg-gray-100 dark:bg-gray-700/40';
-    }
-
+    if (d.isBankHoliday) return 'bg-blue-100 dark:bg-blue-900/30';
+    if (d.isWeekend) return 'bg-blue-100 dark:bg-blue-900/25';
+    if (!isTeamSelected && d.isOnLeave) return 'bg-gray-100 dark:bg-gray-700/40';
     return '';
   };
 
@@ -123,9 +114,7 @@ export const StaffTracker: React.FC = () => {
       isOnLeave: d.isOnLeave,
       isBankHoliday: d.isBankHoliday,
       bankHolidayTitle: d.bankHolidayTitle,
-      services: Object.fromEntries(
-        services.map(s => [s.service_name, 0])
-      ),
+      services: Object.fromEntries(services.map(s => [s.service_name, 0])),
     }));
 
   const getCellValue = (serviceName: string, day: number) =>
@@ -144,13 +133,12 @@ export const StaffTracker: React.FC = () => {
       .from('dailyactivity')
       .select('day, service_id, delivered_count, staff_id')
       .eq('month', selectedMonth)
-      .eq('year', year)
+      .eq('year', selectedYear)
       .in('staff_id', staffIds);
 
     activities?.forEach((a: DailyActivityRow) => {
       const service = services.find(s => s.service_id === a.service_id);
       const entry = entries.find(e => e.day === a.day);
-
       if (service && entry) {
         entry.services[service.service_name] += a.delivered_count || 0;
       }
@@ -163,25 +151,15 @@ export const StaffTracker: React.FC = () => {
 
     if (isTeamSelected) {
       for (const sid of staffIds) {
-        const { perService } = await loadTargets(
-          selectedMonth,
-          selectedFinancialYear,
-          sid
-        );
+        const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, sid);
         services.forEach(s => {
-          targetTotals[s.service_name] +=
-            perService?.[s.service_id] || 0;
+          targetTotals[s.service_name] += perService?.[s.service_id] || 0;
         });
       }
     } else if (currentStaff) {
-      const { perService } = await loadTargets(
-        selectedMonth,
-        selectedFinancialYear,
-        currentStaff.staff_id
-      );
+      const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, currentStaff.staff_id);
       services.forEach(s => {
-        targetTotals[s.service_name] =
-          perService?.[s.service_id] || 0;
+        targetTotals[s.service_name] = perService?.[s.service_id] || 0;
       });
     }
 
@@ -197,19 +175,18 @@ export const StaffTracker: React.FC = () => {
     leaveHolidayLoading,
     servicesLoading,
     selectedMonth,
+    selectedYear,
     selectedFinancialYear,
     currentStaff?.staff_id,
     selectedStaffId,
     allStaff.length,
+    services.length,
   ]);
 
   const serviceTotals = Object.fromEntries(
     services.map(s => [
       s.service_name,
-      dailyEntries.reduce(
-        (sum, e) => sum + (e.services[s.service_name] || 0),
-        0
-      ),
+      dailyEntries.reduce((sum, e) => sum + (e.services[s.service_name] || 0), 0),
     ])
   );
 
@@ -229,6 +206,13 @@ export const StaffTracker: React.FC = () => {
     <div className="space-y-4">
       <h2 className="text-2xl lg:text-3xl font-bold">My Tracker</h2>
 
+      {/* ✅ Performance bar sits directly above the tiles */}
+      <StaffPerformanceBar
+        staffPerformance={staffPerformance}
+        workingDays={teamWorkingDays}
+        workingDaysUpToToday={workingDaysUpToToday}
+      />
+
       <MyTrackerProgressTiles
         services={services}
         serviceTotals={serviceTotals}
@@ -247,10 +231,7 @@ export const StaffTracker: React.FC = () => {
                   Service
                 </th>
                 {dayMeta.map(d => (
-                  <th
-                    key={d.day}
-                    className="px-2 py-2 text-xs font-bold text-white w-[72px]"
-                  >
+                  <th key={d.day} className="px-2 py-2 text-xs font-bold text-white w-[72px]">
                     {d.day}
                   </th>
                 ))}
@@ -347,6 +328,7 @@ export const StaffTracker: React.FC = () => {
                   {Object.values(serviceTotals).reduce((a, b) => a + b, 0)}
                 </td>
               </tr>
+
             </tbody>
           </table>
         </div>

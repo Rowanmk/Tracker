@@ -7,30 +7,14 @@ import { useDate } from "../context/DateContext";
 import { useAuth } from "../context/AuthContext";
 import { useServices } from "../hooks/useServices";
 import { useWorkingDays } from "../hooks/useWorkingDays";
-import { supabase } from "../supabase/client";
 import { useDashboardView } from "../context/DashboardViewContext";
-import { loadTargets } from "../utils/loadTargets";
-
-interface StaffPerformance {
-  staff_id: number;
-  name: string;
-  services: { [key: string]: number };
-  total: number;
-  target: number;
-  achieved_percent: number;
-  historicalAverage: number;
-  previousMonthRatio?: number;
-}
+import { useStaffPerformance } from "../hooks/useStaffPerformance";
 
 export const Dashboard: React.FC = () => {
   const { viewMode } = useDashboardView();
   const { selectedMonth, selectedYear, financialYear } = useDate();
-  const [staffPerformance, setStaffPerformance] = useState<StaffPerformance[]>([]);
-  const [dailyActivities, setDailyActivities] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
   const [sortMode, setSortMode] = useState<"desc" | "asc" | "name">("desc");
-  const [teamTarget, setTeamTarget] = useState(0);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -41,6 +25,7 @@ export const Dashboard: React.FC = () => {
     loading: authLoading,
     showFallbackWarning: authWarning,
   } = useAuth();
+
   const {
     services,
     loading: servicesLoading,
@@ -59,183 +44,14 @@ export const Dashboard: React.FC = () => {
     month: selectedMonth,
   });
 
-  const fetchPerformanceData = async () => {
-    if (authLoading || servicesLoading || allStaff.length === 0 || services.length === 0) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const { startDate, endDate } = {
-        startDate: new Date(financialYear.start, 3, 1),
-        endDate: new Date(financialYear.end, 2, 31),
-      };
-
-      const { data: activities, error: activitiesError } = await supabase
-        .from("dailyactivity")
-        .select("staff_id, service_id, delivered_count, month, year, day, date")
-        .eq("month", selectedMonth)
-        .eq("year", selectedYear)
-        .gte("date", startDate.toISOString().split("T")[0])
-        .lte("date", endDate.toISOString().split("T")[0]);
-
-      if (activitiesError) {
-        console.error("Error fetching activities:", activitiesError);
-        setError("Failed to load activity data");
-      }
-
-      setDailyActivities(activities || []);
-
-      let historicalQuery = supabase
-        .from("dailyactivity")
-        .select("staff_id, delivered_count, month, year, date")
-        .neq("month", selectedMonth)
-        .gte("date", startDate.toISOString().split("T")[0])
-        .lte("date", endDate.toISOString().split("T")[0]);
-
-      const { data: historicalActivities, error: historicalError } =
-        await historicalQuery;
-
-      if (historicalError) {
-        console.error("Error fetching historical data:", historicalError);
-      }
-
-      const previousMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
-      const previousYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
-
-      let previousMonthQuery = supabase
-        .from("dailyactivity")
-        .select("staff_id, service_id, delivered_count")
-        .eq("month", previousMonth)
-        .eq("year", previousYear);
-
-      const { data: previousMonthActivities } = await previousMonthQuery;
-
-      const performance: StaffPerformance[] = await Promise.all(
-        allStaff.map(async (staff) => {
-          const staffActivities =
-            activities?.filter((a) => a.staff_id === staff.staff_id) || [];
-
-          const staffActivityMap: Record<number, number> = {};
-          staffActivities.forEach((activity) => {
-            if (activity.service_id) {
-              staffActivityMap[activity.service_id] =
-                (staffActivityMap[activity.service_id] || 0) +
-                activity.delivered_count;
-            }
-          });
-
-          const serviceData: { [key: string]: number } = {};
-          services.forEach((service) => {
-            serviceData[service.service_name] =
-              staffActivityMap[service.service_id] || 0;
-          });
-
-          const total = Object.values(serviceData).reduce((sum, val) => sum + val, 0);
-
-          const { totalTarget } = await loadTargets(selectedMonth, financialYear, staff.staff_id);
-
-          const achieved_percent = totalTarget > 0 ? (total / totalTarget) * 100 : 0;
-
-          const staffHistorical =
-            historicalActivities?.filter((a) => a.staff_id === staff.staff_id) ||
-            [];
-          const monthlyTotals: Record<string, number> = {};
-          staffHistorical.forEach((activity) => {
-            const key = `${activity.year}-${activity.month}`;
-            monthlyTotals[key] = (monthlyTotals[key] || 0) + activity.delivered_count;
-          });
-          const monthsWithData = Object.keys(monthlyTotals).length;
-          const totalHistorical = Object.values(monthlyTotals).reduce(
-            (sum, val) => sum + val,
-            0
-          );
-          const historicalAverage =
-            monthsWithData > 0 ? totalHistorical / monthsWithData : 0;
-
-          const prevMonthActivities =
-            previousMonthActivities?.filter((a) => a.staff_id === staff.staff_id) ||
-            [];
-          const prevMonthTotal = prevMonthActivities.reduce(
-            (sum, a) => sum + a.delivered_count,
-            0
-          );
-
-          const { totalTarget: prevMonthTarget } = await loadTargets(previousMonth, financialYear, staff.staff_id);
-          const previousMonthRatio =
-            prevMonthTarget > 0 ? prevMonthTotal / prevMonthTarget : 0;
-
-          return {
-            staff_id: staff.staff_id,
-            name: staff.name,
-            services: serviceData,
-            total,
-            target: totalTarget,
-            achieved_percent,
-            historicalAverage,
-            previousMonthRatio,
-          };
-        })
-      );
-
-      const sortedPerformance = [...performance].sort((a, b) => {
-        const perfA = a.target > 0 ? a.total / a.target : 0;
-        const perfB = b.target > 0 ? b.total / b.target : 0;
-
-        if (sortMode === "desc") return perfB - perfA;
-        if (sortMode === "asc") return perfA - perfB;
-        if (sortMode === "name") return a.name.localeCompare(b.name);
-        return 0;
-      });
-
-      setStaffPerformance(sortedPerformance);
-
-      let teamTotalTarget = 0;
-      for (const staff of allStaff) {
-        const { totalTarget: staffTarget } = await loadTargets(selectedMonth, financialYear, staff.staff_id);
-        teamTotalTarget += staffTarget;
-      }
-      setTeamTarget(teamTotalTarget);
-
-    } catch (error) {
-      console.error("Error in fetchPerformanceData:", error);
-      setError("Failed to connect to database");
-      setStaffPerformance([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchPerformanceData();
-  }, [
-    selectedMonth,
-    selectedYear,
-    financialYear,
-    allStaff.length,
-    services.length,
-    authLoading,
-    servicesLoading,
-    sortMode,
-  ]);
-
-  useEffect(() => {
-    const handler = () => {
-      fetchPerformanceData();
-    };
-    window.addEventListener("activity-updated", handler);
-    return () => window.removeEventListener("activity-updated", handler);
-  }, [
-    selectedMonth,
-    selectedYear,
-    financialYear,
-    allStaff.length,
-    services.length,
-    sortMode,
-  ]);
+  // ✅ Shared staff performance + daily activities + team target
+  const {
+    staffPerformance,
+    dailyActivities,
+    teamTarget,
+    loading,
+    error,
+  } = useStaffPerformance(sortMode);
 
   const totalActual = dailyActivities.reduce(
     (sum, a) => sum + a.delivered_count,
@@ -248,7 +64,7 @@ export const Dashboard: React.FC = () => {
     if (target === 0) return '#6B7280';
     const expectedSoFar = teamWorkingDays > 0 ? (target / teamWorkingDays) * workingDaysUpToToday : 0;
     const difference = delivered - expectedSoFar;
-    
+
     if (difference >= 0) return '#008A00';
     if (difference >= -0.25 * expectedSoFar) return '#FF8A2A';
     return '#FF3B30';
@@ -257,19 +73,19 @@ export const Dashboard: React.FC = () => {
   const renderProgressBar = (label: string, delivered: number, target: number) => {
     const percentage = target > 0 ? (delivered / target) * 100 : 0;
     const barColor = getProgressBarColor(delivered, target);
-    
+
     const expectedSoFar = teamWorkingDays > 0 ? (target / teamWorkingDays) * workingDaysUpToToday : 0;
     const markerPercentage = target > 0 ? (expectedSoFar / target) * 100 : 0;
     const variance = delivered - expectedSoFar;
-    
+
     let varianceLabel = "0";
     let varianceColor = "#FFFFFF";
-    
+
     if (Math.abs(variance) >= 0.5) {
       varianceLabel = variance > 0 ? `+${Math.round(variance)}` : `${Math.round(variance)}`;
       varianceColor = variance > 0 ? "#FFFFFF" : "#FF3B30";
     }
-    
+
     return (
       <div className="space-y-2">
         <div className="flex justify-between items-center">
@@ -282,7 +98,7 @@ export const Dashboard: React.FC = () => {
         <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-6 overflow-hidden relative">
           <div
             className="h-6 rounded-full transition-all duration-300 ease-in-out"
-            style={{ 
+            style={{
               width: `${Math.min(percentage, 100)}%`,
               backgroundColor: barColor
             }}
@@ -295,7 +111,7 @@ export const Dashboard: React.FC = () => {
           />
           <div
             className="absolute top-0 h-6 flex items-center text-xs font-bold transition-all duration-300 ease-in-out"
-            style={{ 
+            style={{
               left: `${Math.min(markerPercentage, 95)}%`,
               marginLeft: '4px',
               color: varianceColor
@@ -311,9 +127,14 @@ export const Dashboard: React.FC = () => {
   const showWarning =
     authWarning || servicesWarning || workingDaysWarning || !!error;
 
-  const currentIndividualStaff = !isTeamSelected && currentStaff 
+  const currentIndividualStaff = !isTeamSelected && currentStaff
     ? { staff_id: currentStaff.staff_id, name: currentStaff.name }
     : null;
+
+  // (sortMode setter/UI not shown in your paste; keeping your state intact)
+  useEffect(() => {
+    // no-op placeholder to keep sortMode dependency behaviour identical to your current setup
+  }, [sortMode]);
 
   return (
     <div>
@@ -347,12 +168,12 @@ export const Dashboard: React.FC = () => {
       <div className="mb-6 animate-slide-up">
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6">
           <div className="space-y-4">
-            {isTeamSelected 
+            {isTeamSelected
               ? renderProgressBar("Team Progress", teamDelivered, teamTarget)
-              : renderProgressBar(`${currentStaff?.name || "My"} Progress`, 
-                  staffPerformance.find(s => s.staff_id === currentStaff?.staff_id)?.total || 0,
-                  staffPerformance.find(s => s.staff_id === currentStaff?.staff_id)?.target || 0
-                )
+              : renderProgressBar(`${currentStaff?.name || "My"} Progress`,
+                staffPerformance.find(s => s.staff_id === currentStaff?.staff_id)?.total || 0,
+                staffPerformance.find(s => s.staff_id === currentStaff?.staff_id)?.target || 0
+              )
             }
           </div>
         </div>
