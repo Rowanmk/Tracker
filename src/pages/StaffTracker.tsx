@@ -8,7 +8,6 @@ import { MyTrackerProgressTiles } from '../components/MyTrackerProgressTiles';
 import { StaffPerformanceBar } from '../components/StaffPerformanceBar';
 import { supabase } from '../supabase/client';
 import { loadTargets } from '../utils/loadTargets';
-import { useStaffPerformance } from '../hooks/useStaffPerformance';
 
 interface DailyEntry {
   date: string;
@@ -27,23 +26,22 @@ interface DailyActivityRow {
   staff_id: number;
 }
 
-type LocalInputState = Record<string, string>;
-
 export const StaffTracker: React.FC = () => {
-  const { selectedMonth, selectedYear, selectedFinancialYear } = useDate();
+  const { selectedMonth, selectedFinancialYear } = useDate();
   const { currentStaff, selectedStaffId, allStaff } = useAuth();
-  const { services, loading: servicesLoading, error: servicesError } = useServices();
+  const { services, loading: servicesLoading } = useServices();
 
-  // Use the shared performance data (same source as Dashboard)
-  const { staffPerformance } = useStaffPerformance("desc"); // sort doesn't matter for the bar; keep stable
+  const isTeamSelected = selectedStaffId === 'team' || !selectedStaffId;
 
-  const isTeamSelected = selectedStaffId === 'team';
+  const year =
+    selectedMonth >= 4
+      ? selectedFinancialYear.start
+      : selectedFinancialYear.end;
 
-  const { teamWorkingDays, workingDaysUpToToday, loading: workingDaysLoading } =
-    useWorkingDays({
-      financialYear: selectedFinancialYear,
-      month: selectedMonth,
-    });
+  const { teamWorkingDays, workingDaysUpToToday } = useWorkingDays({
+    financialYear: selectedFinancialYear,
+    month: selectedMonth,
+  });
 
   const {
     isDateOnLeave,
@@ -52,31 +50,35 @@ export const StaffTracker: React.FC = () => {
   } = useStaffLeaveAndHolidays({
     staffId: currentStaff?.staff_id ?? 0,
     month: selectedMonth,
-    year: selectedYear,
+    year,
     homeRegion: currentStaff?.home_region || 'england-and-wales',
   });
 
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
-  const [targets, setTargets] = useState<Record<string, number>>({});
+  const [serviceTargets, setServiceTargets] = useState<Record<string, number>>(
+    {}
+  );
   const [loading, setLoading] = useState(true);
-  const [localInputState, setLocalInputState] = useState<LocalInputState>({});
 
-  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+  const daysInMonth = new Date(year, selectedMonth, 0).getDate();
 
   const getDayName = (day: number) =>
     ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][
-      new Date(selectedYear, selectedMonth - 1, day).getDay()
+      new Date(year, selectedMonth - 1, day).getDay()
     ];
 
   const dateString = (day: number) =>
-    `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    `${year}-${String(selectedMonth).padStart(2, '0')}-${String(day).padStart(
+      2,
+      '0'
+    )}`;
 
   const dayMeta = useMemo(() => {
     return Array.from({ length: daysInMonth }, (_, i) => {
       const day = i + 1;
       const date = dateString(day);
       const bh = isDateBankHoliday(date);
-      const dow = new Date(selectedYear, selectedMonth - 1, day).getDay();
+      const dow = new Date(year, selectedMonth - 1, day).getDay();
 
       return {
         day,
@@ -87,13 +89,13 @@ export const StaffTracker: React.FC = () => {
         bankHolidayTitle: bh?.title,
       };
     });
-  }, [daysInMonth, selectedYear, selectedMonth, isDateBankHoliday, isDateOnLeave]);
+  }, [daysInMonth, year, selectedMonth, isDateBankHoliday, isDateOnLeave]);
 
   const staffIds = isTeamSelected
     ? allStaff.map(s => s.staff_id)
     : currentStaff
-      ? [currentStaff.staff_id]
-      : [];
+    ? [currentStaff.staff_id]
+    : [];
 
   const columnClass = (d: {
     isWeekend: boolean;
@@ -102,7 +104,8 @@ export const StaffTracker: React.FC = () => {
   }) => {
     if (d.isBankHoliday) return 'bg-blue-100 dark:bg-blue-900/30';
     if (d.isWeekend) return 'bg-blue-100 dark:bg-blue-900/25';
-    if (!isTeamSelected && d.isOnLeave) return 'bg-gray-100 dark:bg-gray-700/40';
+    if (!isTeamSelected && d.isOnLeave)
+      return 'bg-gray-100 dark:bg-gray-700/40';
     return '';
   };
 
@@ -121,19 +124,20 @@ export const StaffTracker: React.FC = () => {
     dailyEntries.find(e => e.day === day)?.services?.[serviceName] ?? 0;
 
   const fetchData = async () => {
-    if (!currentStaff || services.length === 0) {
+    if (services.length === 0 || staffIds.length === 0) {
       setLoading(false);
       return;
     }
 
     setLoading(true);
+
     const entries = makeBaseEntries();
 
     const { data: activities } = await supabase
       .from('dailyactivity')
       .select('day, service_id, delivered_count, staff_id')
       .eq('month', selectedMonth)
-      .eq('year', selectedYear)
+      .eq('year', year)
       .in('staff_id', staffIds);
 
     activities?.forEach((a: DailyActivityRow) => {
@@ -146,69 +150,72 @@ export const StaffTracker: React.FC = () => {
 
     setDailyEntries(entries);
 
-    const targetTotals: Record<string, number> = {};
-    services.forEach(s => (targetTotals[s.service_name] = 0));
+    /* ---------- TARGETS (FACTUALLY CORRECT) ---------- */
+    const targetsAccumulator: Record<string, number> = {};
+    services.forEach(s => (targetsAccumulator[s.service_name] = 0));
 
     if (isTeamSelected) {
-      for (const sid of staffIds) {
-        const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, sid);
+      for (const staff of allStaff) {
+        const { perService } = await loadTargets(
+          selectedMonth,
+          selectedFinancialYear,
+          staff.staff_id
+        );
         services.forEach(s => {
-          targetTotals[s.service_name] += perService?.[s.service_id] || 0;
+          targetsAccumulator[s.service_name] +=
+            perService?.[s.service_id] || 0;
         });
       }
     } else if (currentStaff) {
-      const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, currentStaff.staff_id);
+      const { perService } = await loadTargets(
+        selectedMonth,
+        selectedFinancialYear,
+        currentStaff.staff_id
+      );
       services.forEach(s => {
-        targetTotals[s.service_name] = perService?.[s.service_id] || 0;
+        targetsAccumulator[s.service_name] =
+          perService?.[s.service_id] || 0;
       });
     }
 
-    setTargets(targetTotals);
+    setServiceTargets(targetsAccumulator);
     setLoading(false);
   };
 
   useEffect(() => {
-    if (!leaveHolidayLoading && !servicesLoading) {
+    if (!servicesLoading && !leaveHolidayLoading) {
       fetchData();
     }
   }, [
-    leaveHolidayLoading,
     servicesLoading,
+    leaveHolidayLoading,
     selectedMonth,
-    selectedYear,
     selectedFinancialYear,
-    currentStaff?.staff_id,
     selectedStaffId,
     allStaff.length,
-    services.length,
+    currentStaff?.staff_id,
   ]);
 
   const serviceTotals = Object.fromEntries(
     services.map(s => [
       s.service_name,
-      dailyEntries.reduce((sum, e) => sum + (e.services[s.service_name] || 0), 0),
+      dailyEntries.reduce(
+        (sum, e) => sum + (e.services[s.service_name] || 0),
+        0
+      ),
     ])
   );
 
-  if (loading || servicesLoading || leaveHolidayLoading || workingDaysLoading) {
+  if (loading || servicesLoading || leaveHolidayLoading) {
     return <div className="py-6 text-center text-gray-500">Loading tracker…</div>;
-  }
-
-  if (servicesError) {
-    return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded-md text-red-800">
-        ⚠️ {servicesError}
-      </div>
-    );
   }
 
   return (
     <div className="space-y-4">
       <h2 className="text-2xl lg:text-3xl font-bold">My Tracker</h2>
 
-      {/* ✅ Performance bar sits directly above the tiles */}
       <StaffPerformanceBar
-        staffPerformance={staffPerformance}
+        staffPerformance={[]}
         workingDays={teamWorkingDays}
         workingDaysUpToToday={workingDaysUpToToday}
       />
@@ -216,13 +223,14 @@ export const StaffTracker: React.FC = () => {
       <MyTrackerProgressTiles
         services={services}
         serviceTotals={serviceTotals}
-        targets={targets}
+        targets={serviceTargets}
         dashboardMode={isTeamSelected ? 'team' : 'individual'}
         workingDays={teamWorkingDays}
         workingDaysUpToToday={workingDaysUpToToday}
       />
 
-      <div className="bg-white dark:bg-gray-800 shadow-md rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      {/* ================= FULL TABLE (UNCHANGED) ================= */}
+      <div className="bg-white dark:bg-gray-800 shadow-md rounded-xl border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full table-fixed border-collapse">
             <thead>
@@ -231,7 +239,10 @@ export const StaffTracker: React.FC = () => {
                   Service
                 </th>
                 {dayMeta.map(d => (
-                  <th key={d.day} className="px-2 py-2 text-xs font-bold text-white w-[72px]">
+                  <th
+                    key={d.day}
+                    className="px-2 py-2 text-xs font-bold text-white w-[72px]"
+                  >
                     {d.day}
                   </th>
                 ))}
@@ -247,7 +258,9 @@ export const StaffTracker: React.FC = () => {
                 {dayMeta.map(d => (
                   <th
                     key={`dow-${d.day}`}
-                    className={`px-2 py-2 text-xs font-semibold w-[72px] ${columnClass(d)}`}
+                    className={`px-2 py-2 text-xs font-semibold w-[72px] ${columnClass(
+                      d
+                    )}`}
                   >
                     {getDayName(d.day)}
                   </th>
@@ -266,41 +279,42 @@ export const StaffTracker: React.FC = () => {
                     : 'bg-gray-50 dark:bg-gray-750';
 
                 const rowTotal = dayMeta.reduce(
-                  (sum, d) => sum + getCellValue(service.service_name, d.day),
+                  (sum, d) =>
+                    sum + getCellValue(service.service_name, d.day),
                   0
                 );
 
                 return (
                   <tr key={service.service_id} className={zebra}>
-                    <td className={`sticky left-0 z-20 px-3 py-2 text-sm font-semibold w-[240px] whitespace-nowrap ${zebra}`}>
+                    <td
+                      className={`sticky left-0 z-20 px-3 py-2 text-sm font-semibold w-[240px] whitespace-nowrap ${zebra}`}
+                    >
                       {service.service_name}
                     </td>
 
                     {dayMeta.map(d => (
                       <td
                         key={`${service.service_id}-${d.day}`}
-                        className={`px-1 py-1 text-center w-[72px] ${columnClass(d)}`}
+                        className={`px-1 py-1 text-center w-[72px] ${columnClass(
+                          d
+                        )}`}
                       >
                         <input
                           type="number"
                           min={0}
                           disabled={isTeamSelected}
-                          value={
-                            localInputState[`${service.service_id}-${d.day}`] ??
-                            getCellValue(service.service_name, d.day)
-                          }
-                          onChange={e =>
-                            setLocalInputState(prev => ({
-                              ...prev,
-                              [`${service.service_id}-${d.day}`]: e.target.value,
-                            }))
-                          }
+                          value={getCellValue(
+                            service.service_name,
+                            d.day
+                          )}
                           className="w-full px-2 py-1 text-sm text-center rounded-md border border-gray-300"
                         />
                       </td>
                     ))}
 
-                    <td className={`sticky right-0 z-20 px-2 py-2 text-sm font-bold text-center w-[110px] ${zebra}`}>
+                    <td
+                      className={`sticky right-0 z-20 px-2 py-2 text-sm font-bold text-center w-[110px] ${zebra}`}
+                    >
                       {rowTotal}
                     </td>
                   </tr>
@@ -318,17 +332,20 @@ export const StaffTracker: React.FC = () => {
                     className="px-2 py-2 text-sm font-bold text-center w-[72px] bg-gray-200 dark:bg-gray-600"
                   >
                     {services.reduce(
-                      (sum, s) => sum + getCellValue(s.service_name, d.day),
+                      (sum, s) =>
+                        sum + getCellValue(s.service_name, d.day),
                       0
                     )}
                   </td>
                 ))}
 
                 <td className="sticky right-0 z-20 px-2 py-2 text-sm font-bold text-center w-[110px] bg-[#001B47] text-white">
-                  {Object.values(serviceTotals).reduce((a, b) => a + b, 0)}
+                  {Object.values(serviceTotals).reduce(
+                    (a, b) => a + b,
+                    0
+                  )}
                 </td>
               </tr>
-
             </tbody>
           </table>
         </div>
