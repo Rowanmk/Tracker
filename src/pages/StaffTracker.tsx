@@ -119,6 +119,7 @@ export const StaffTracker: React.FC = () => {
 
     setLoading(true);
 
+    /* ---------- BUILD EMPTY GRID ---------- */
     const baseEntries: DailyEntry[] = dayMeta.map(d => ({
       date: d.date,
       day: d.day,
@@ -131,6 +132,7 @@ export const StaffTracker: React.FC = () => {
       ),
     }));
 
+    /* ---------- FETCH DAILY ACTIVITY (SOURCE OF TRUTH) ---------- */
     const { data: activities } = await supabase
       .from('dailyactivity')
       .select('staff_id, service_id, delivered_count, day')
@@ -148,7 +150,7 @@ export const StaffTracker: React.FC = () => {
 
     setDailyEntries(baseEntries);
 
-    /* -------- TARGETS -------- */
+    /* ---------- TARGETS ---------- */
     const targetTotals: Record<string, number> = {};
     services.forEach(s => (targetTotals[s.service_name] = 0));
 
@@ -176,21 +178,17 @@ export const StaffTracker: React.FC = () => {
 
     setTargets(targetTotals);
 
-    /* -------- STAFF PERFORMANCE (for top bar) -------- */
+    /* ---------- PERFORMANCE BAR (MATCH DASHBOARD) ---------- */
+    const deliveredTotal =
+      activities?.reduce((sum, a) => sum + (a.delivered_count || 0), 0) || 0;
+
     const performance: StaffPerformance[] = staffIds.map(id => {
       const staff =
         allStaff.find(s => s.staff_id === id) || currentStaff!;
-      const total = baseEntries.reduce(
-        (sum, e) =>
-          sum +
-          Object.values(e.services).reduce((a, b) => a + b, 0),
-        0
-      );
-
       return {
         staff_id: staff.staff_id,
         name: staff.name,
-        total,
+        total: deliveredTotal,
       };
     });
 
@@ -230,6 +228,7 @@ export const StaffTracker: React.FC = () => {
     <div className="space-y-4">
       <h2 className="text-2xl lg:text-3xl font-bold">My Tracker</h2>
 
+      {/* 🔵 PERFORMANCE BAR — NOW IDENTICAL TO DASHBOARD */}
       <StaffPerformanceBar
         staffPerformance={staffPerformance}
         workingDays={teamWorkingDays}
@@ -244,7 +243,7 @@ export const StaffTracker: React.FC = () => {
         workingDaysUpToToday={workingDaysUpToToday}
       />
 
-      {/* ================= TRACKER TABLE ================= */}
+      {/* ================= TRACKER TABLE (UNCHANGED) ================= */}
       <div className="bg-white shadow-md rounded-xl border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full table-fixed border-collapse">
