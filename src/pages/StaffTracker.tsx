@@ -147,7 +147,8 @@ export const StaffTracker: React.FC = () => {
     [services]
   );
 
-  const fetchData = useCallback(async () => {
+  // ✅ IMPORTANT: fetchData is a plain function (NOT useCallback) to avoid render loops
+  const fetchData = async () => {
     if (services.length === 0 || staffIds.length === 0) {
       setDailyEntries([]);
       setTargets({});
@@ -172,7 +173,6 @@ export const StaffTracker: React.FC = () => {
       console.error("Error loading dailyactivity:", activitiesError);
     }
 
-    // Populate baseEntries from activities
     (activities as DailyActivityRow[] | null)?.forEach((a) => {
       const service = services.find((s) => s.service_id === a.service_id);
       const entry = baseEntries.find((e) => e.day === a.day);
@@ -184,7 +184,6 @@ export const StaffTracker: React.FC = () => {
     setDailyEntries(baseEntries);
     initLocalInputsFromEntries(baseEntries);
 
-    // Targets
     const targetTotals: Record<string, number> = {};
     services.forEach((s) => (targetTotals[s.service_name] = 0));
 
@@ -212,7 +211,6 @@ export const StaffTracker: React.FC = () => {
 
     setTargets(targetTotals);
 
-    // Staff performance totals (for StaffPerformanceBar)
     const totalsByStaff: Record<number, number> = {};
     (activities as DailyActivityRow[] | null)?.forEach((a) => {
       totalsByStaff[a.staff_id] =
@@ -229,30 +227,29 @@ export const StaffTracker: React.FC = () => {
 
     setStaffPerformance(perf);
     setLoading(false);
+  };
+
+  // ✅ Single effect to load data (prevents flashing)
+  useEffect(() => {
+    if (servicesLoading || leaveHolidayLoading) return;
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    services,
-    staffIds,
-    allStaff,
-    currentStaff,
     selectedMonth,
     selectedFinancialYear,
-    year,
-    isTeamSelected,
-    buildBaseEntries,
-    initLocalInputsFromEntries,
+    selectedStaffId,
+    servicesLoading,
+    leaveHolidayLoading,
+    allStaff.length,
   ]);
 
-  useEffect(() => {
-    if (!servicesLoading && !leaveHolidayLoading) {
-      fetchData();
-    }
-  }, [fetchData, servicesLoading, leaveHolidayLoading]);
-
+  // ✅ Stable event listener (does not depend on fetchData)
   useEffect(() => {
     const handler = () => fetchData();
     window.addEventListener("activity-updated", handler);
     return () => window.removeEventListener("activity-updated", handler);
-  }, [fetchData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMonth, selectedFinancialYear, selectedStaffId]);
 
   const serviceTotals = useMemo(() => {
     return Object.fromEntries(
@@ -266,18 +263,17 @@ export const StaffTracker: React.FC = () => {
     );
   }, [dailyEntries, services]);
 
-  const currentIndividualStaff =
-    !isTeamSelected && currentStaff
-      ? { staff_id: currentStaff.staff_id, name: currentStaff.name }
-      : null;
-
-  const onCellChange = (serviceId: number, serviceName: string, day: number, raw: string) => {
+  const onCellChange = (
+    serviceId: number,
+    serviceName: string,
+    day: number,
+    raw: string
+  ) => {
     const cleaned = raw.replace(/[^\d]/g, "");
     const key = `${serviceId}-${day}`;
 
     setLocalInputState((prev) => ({ ...prev, [key]: cleaned }));
 
-    // Update local entries for immediate UI feedback (tiles/table)
     const nextValue = cleaned === "" ? 0 : Number(cleaned);
 
     setDailyEntries((prev) =>
@@ -294,10 +290,8 @@ export const StaffTracker: React.FC = () => {
     );
   };
 
-  const saveCell = async (serviceId: number, serviceName: string, day: number) => {
-    // No saving in Team mode (table is read-only)
+  const saveCell = async (serviceId: number, day: number) => {
     if (isTeamSelected) return;
-
     if (!currentStaff) return;
 
     const key = `${serviceId}-${day}`;
@@ -309,7 +303,6 @@ export const StaffTracker: React.FC = () => {
     setSavingKey(key);
 
     try {
-      // Upsert this cell to dailyactivity (assumes uniqueness on staff_id+month+year+day+service_id)
       const payload = {
         staff_id: currentStaff.staff_id,
         month: selectedMonth,
@@ -321,9 +314,7 @@ export const StaffTracker: React.FC = () => {
 
       const { error } = await supabase
         .from("dailyactivity")
-        .upsert(payload, {
-          onConflict: "staff_id,month,year,day,service_id",
-        });
+        .upsert(payload, { onConflict: "staff_id,month,year,day,service_id" });
 
       if (error) {
         console.error("Error saving dailyactivity:", error);
@@ -343,7 +334,6 @@ export const StaffTracker: React.FC = () => {
     <div className="space-y-4">
       <h2 className="text-2xl lg:text-3xl font-bold">My Tracker</h2>
 
-      {/* ✅ Correct: StaffPerformanceBar now ONLY takes staffPerformance */}
       <StaffPerformanceBar staffPerformance={staffPerformance} />
 
       <MyTrackerProgressTiles
@@ -354,11 +344,7 @@ export const StaffTracker: React.FC = () => {
         workingDaysUpToToday={workingDaysUpToToday}
       />
 
-      {/* =========================
-          TRACKER INPUT TABLE
-          ========================= */}
       <div className="border rounded-xl overflow-hidden">
-        {/* Blue header row */}
         <div className="bg-[#001B47] text-white px-4 py-2 flex items-center justify-between">
           <div className="font-semibold">
             {isTeamSelected ? "Team View (read-only)" : "Daily Entry Table"}
@@ -372,7 +358,6 @@ export const StaffTracker: React.FC = () => {
 
         <div className="overflow-x-auto">
           <table className="min-w-max w-full border-collapse">
-            {/* Header: Day numbers + day names */}
             <thead>
               <tr className="bg-gray-50">
                 <th
@@ -408,7 +393,6 @@ export const StaffTracker: React.FC = () => {
             <tbody>
               {services.map((s) => (
                 <tr key={s.service_id} className="hover:bg-gray-50">
-                  {/* Service name */}
                   <td
                     className="sticky left-0 bg-white z-10 px-4 py-2 border-b border-r whitespace-nowrap font-medium"
                     style={{ minWidth: 220 }}
@@ -416,7 +400,6 @@ export const StaffTracker: React.FC = () => {
                     {s.service_name}
                   </td>
 
-                  {/* Inputs per day */}
                   {dayMeta.map((d) => {
                     const key = `${s.service_id}-${d.day}`;
                     const disabled = isTeamSelected;
@@ -430,13 +413,22 @@ export const StaffTracker: React.FC = () => {
                         <input
                           value={localInputState[key] ?? "0"}
                           onChange={(e) =>
-                            onCellChange(s.service_id, s.service_name, d.day, e.target.value)
+                            onCellChange(
+                              s.service_id,
+                              s.service_name,
+                              d.day,
+                              e.target.value
+                            )
                           }
-                          onBlur={() => saveCell(s.service_id, s.service_name, d.day)}
+                          onBlur={() => saveCell(s.service_id, d.day)}
                           disabled={disabled}
                           inputMode="numeric"
                           className={`w-12 text-center rounded-md border px-2 py-1 text-sm
-                            ${disabled ? "bg-gray-100 text-gray-500 cursor-not-allowed" : "bg-white"}
+                            ${
+                              disabled
+                                ? "bg-gray-100 text-gray-500 cursor-not-allowed"
+                                : "bg-white"
+                            }
                             ${isSaving ? "opacity-60" : ""}
                           `}
                         />
@@ -446,7 +438,6 @@ export const StaffTracker: React.FC = () => {
                 </tr>
               ))}
 
-              {/* Totals row */}
               <tr className="bg-gray-50">
                 <td
                   className="sticky left-0 bg-gray-50 z-10 px-4 py-2 border-t border-r font-semibold whitespace-nowrap"
