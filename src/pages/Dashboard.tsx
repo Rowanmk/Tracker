@@ -75,6 +75,11 @@ export const Dashboard: React.FC = () => {
     currentStaff: currentIndividualStaff,
   });
 
+  const variance =
+    performanceSummary.delivered - performanceSummary.expected;
+
+  const isAhead = variance >= 0;
+
   const showWarning =
     authWarning || servicesWarning || workingDaysWarning || !!error;
 
@@ -93,7 +98,7 @@ export const Dashboard: React.FC = () => {
         <StaffPerformanceBar staffPerformance={staffPerformance} />
       </div>
 
-      {/* Grey / green progress bar */}
+      {/* ✅ Corrected progress bar */}
       <div className="mb-6 space-y-2">
         <div className="flex justify-between items-center">
           <span className="font-medium text-sm">
@@ -101,22 +106,36 @@ export const Dashboard: React.FC = () => {
               ? "Team Progress"
               : `${currentStaff?.name} Progress`}
           </span>
-          <span className="font-bold text-sm">
-            {performanceSummary.delivered} / {performanceSummary.target} (
-            {performanceSummary.target > 0
-              ? Math.round(
-                  (performanceSummary.delivered /
-                    performanceSummary.target) *
-                    100
-                )
-              : 0}
-            %)
+
+          <span className="font-bold text-sm flex items-center gap-3">
+            <span>
+              {performanceSummary.delivered} / {performanceSummary.target} (
+              {performanceSummary.target > 0
+                ? Math.round(
+                    (performanceSummary.delivered /
+                      performanceSummary.target) *
+                      100
+                  )
+                : 0}
+              %)
+            </span>
+
+            <span
+              className={`font-bold ${
+                isAhead ? "text-green-600" : "text-red-600"
+              }`}
+            >
+              {isAhead ? "+" : "-"}
+              {Math.abs(Math.round(variance))}
+            </span>
           </span>
         </div>
 
         <div className="relative w-full h-6 bg-gray-200 rounded-full overflow-hidden">
           <div
-            className="h-6 bg-green-600 rounded-full"
+            className={`h-6 rounded-full ${
+              isAhead ? "bg-green-600" : "bg-red-600"
+            }`}
             style={{
               width: `${
                 performanceSummary.target > 0

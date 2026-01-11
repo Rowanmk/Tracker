@@ -85,10 +85,10 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
 
   return (
     <div
-      className="text-white rounded-lg px-6 py-4 flex items-center justify-between"
-      style={{ backgroundColor: "#001B47" }}   // ← hard-set brand blue
+      className="text-white rounded-lg px-6 py-4 flex items-center justify-center"
+      style={{ backgroundColor: "#001B47" }}
     >
-      <div className="font-semibold">
+      <div className="font-semibold text-center">
         {statusText}
         {" | "}Delivered: {Math.round(actualTotal)}
         {" | "}Expected: {Math.round(expectedByNow)}
