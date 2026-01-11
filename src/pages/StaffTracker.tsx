@@ -32,7 +32,7 @@ interface StaffPerformance {
   total: number;
 }
 
-type LocalInputState = Record<string, string>; // key = `${serviceId}-${day}`
+type LocalInputState = Record<string, string>;
 
 export const StaffTracker: React.FC = () => {
   const { selectedMonth, selectedFinancialYear } = useDate();
@@ -60,7 +60,6 @@ export const StaffTracker: React.FC = () => {
 
   const effectiveWorkingDays = isTeamSelected ? teamWorkingDays : staffWorkingDays;
 
-  // Leave/holiday highlighting is only meaningful for individual
   const { isDateOnLeave, isDateBankHoliday, loading: leaveHolidayLoading } =
     useStaffLeaveAndHolidays({
       staffId: currentStaff?.staff_id ?? 0,
@@ -147,7 +146,6 @@ export const StaffTracker: React.FC = () => {
     [services]
   );
 
-  // ✅ IMPORTANT: fetchData is a plain function (NOT useCallback) to avoid render loops
   const fetchData = async () => {
     if (services.length === 0 || staffIds.length === 0) {
       setDailyEntries([]);
@@ -159,25 +157,20 @@ export const StaffTracker: React.FC = () => {
     }
 
     setLoading(true);
-
     const baseEntries = buildBaseEntries();
 
-    const { data: activities, error: activitiesError } = await supabase
+    const { data: activities } = await supabase
       .from("dailyactivity")
       .select("staff_id, service_id, delivered_count, day")
       .eq("month", selectedMonth)
       .eq("year", year)
       .in("staff_id", staffIds);
 
-    if (activitiesError) {
-      console.error("Error loading dailyactivity:", activitiesError);
-    }
-
     (activities as DailyActivityRow[] | null)?.forEach((a) => {
       const service = services.find((s) => s.service_id === a.service_id);
       const entry = baseEntries.find((e) => e.day === a.day);
       if (service && entry) {
-        entry.services[service.service_name] += a.delivered_count || 0;
+        entry.services[service.service_name] = a.delivered_count || 0;
       }
     });
 
@@ -229,11 +222,9 @@ export const StaffTracker: React.FC = () => {
     setLoading(false);
   };
 
-  // ✅ Single effect to load data (prevents flashing)
   useEffect(() => {
     if (servicesLoading || leaveHolidayLoading) return;
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     selectedMonth,
     selectedFinancialYear,
@@ -243,12 +234,10 @@ export const StaffTracker: React.FC = () => {
     allStaff.length,
   ]);
 
-  // ✅ Stable event listener (does not depend on fetchData)
   useEffect(() => {
     const handler = () => fetchData();
     window.addEventListener("activity-updated", handler);
     return () => window.removeEventListener("activity-updated", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonth, selectedFinancialYear, selectedStaffId]);
 
   const serviceTotals = useMemo(() => {
@@ -271,56 +260,56 @@ export const StaffTracker: React.FC = () => {
   ) => {
     const cleaned = raw.replace(/[^\d]/g, "");
     const key = `${serviceId}-${day}`;
-
     setLocalInputState((prev) => ({ ...prev, [key]: cleaned }));
 
     const nextValue = cleaned === "" ? 0 : Number(cleaned);
 
     setDailyEntries((prev) =>
-      prev.map((e) => {
-        if (e.day !== day) return e;
-        return {
-          ...e,
-          services: {
-            ...e.services,
-            [serviceName]: Number.isFinite(nextValue) ? nextValue : 0,
-          },
-        };
-      })
+      prev.map((e) =>
+        e.day !== day
+          ? e
+          : {
+              ...e,
+              services: {
+                ...e.services,
+                [serviceName]: Number.isFinite(nextValue) ? nextValue : 0,
+              },
+            }
+      )
     );
   };
 
   const saveCell = async (serviceId: number, day: number) => {
-    if (isTeamSelected) return;
-    if (!currentStaff) return;
+    if (isTeamSelected || !currentStaff) return;
 
     const key = `${serviceId}-${day}`;
     const raw = localInputState[key] ?? "0";
     const value = raw === "" ? 0 : Number(raw);
-
     if (!Number.isFinite(value) || value < 0) return;
 
     setSavingKey(key);
 
+    const date = `${year}-${String(selectedMonth).padStart(2, "0")}-${String(
+      day
+    ).padStart(2, "0")}`;
+
     try {
-      const payload = {
-        staff_id: currentStaff.staff_id,
-        month: selectedMonth,
-        year,
-        day,
-        service_id: serviceId,
-        delivered_count: value,
-      };
-
-      const { error } = await supabase
+      await supabase
         .from("dailyactivity")
-        .upsert(payload, { onConflict: "staff_id,month,year,day,service_id" });
+        .upsert(
+          {
+            staff_id: currentStaff.staff_id,
+            service_id: serviceId,
+            delivered_count: value,
+            date,
+            day,
+            month: selectedMonth,
+            year,
+          },
+          { onConflict: "staff_id,service_id,date" }
+        );
 
-      if (error) {
-        console.error("Error saving dailyactivity:", error);
-      } else {
-        window.dispatchEvent(new Event("activity-updated"));
-      }
+      window.dispatchEvent(new Event("activity-updated"));
     } finally {
       setSavingKey(null);
     }
@@ -384,7 +373,9 @@ export const StaffTracker: React.FC = () => {
                     style={{ minWidth: 56 }}
                   >
                     <div className="font-semibold">{d.day}</div>
-                    <div className="text-xs text-gray-600">{getDayName(d.day)}</div>
+                    <div className="text-xs text-gray-600">
+                      {getDayName(d.day)}
+                    </div>
                   </th>
                 ))}
               </tr>
@@ -408,7 +399,9 @@ export const StaffTracker: React.FC = () => {
                     return (
                       <td
                         key={key}
-                        className={`px-2 py-2 border-b text-center ${columnClass(d)}`}
+                        className={`px-2 py-2 border-b text-center ${columnClass(
+                          d
+                        )}`}
                       >
                         <input
                           value={localInputState[key] ?? "0"}
@@ -423,14 +416,11 @@ export const StaffTracker: React.FC = () => {
                           onBlur={() => saveCell(s.service_id, d.day)}
                           disabled={disabled}
                           inputMode="numeric"
-                          className={`w-12 text-center rounded-md border px-2 py-1 text-sm
-                            ${
-                              disabled
-                                ? "bg-gray-100 text-gray-500 cursor-not-allowed"
-                                : "bg-white"
-                            }
-                            ${isSaving ? "opacity-60" : ""}
-                          `}
+                          className={`w-12 text-center rounded-md border px-2 py-1 text-sm ${
+                            disabled
+                              ? "bg-gray-100 text-gray-500 cursor-not-allowed"
+                              : "bg-white"
+                          } ${isSaving ? "opacity-60" : ""}`}
                         />
                       </td>
                     );
