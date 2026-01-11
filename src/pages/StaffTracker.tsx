@@ -170,7 +170,7 @@ export const StaffTracker: React.FC = () => {
       const service = services.find((s) => s.service_id === a.service_id);
       const entry = baseEntries.find((e) => e.day === a.day);
       if (service && entry) {
-        entry.services[service.service_name] = a.delivered_count || 0;
+        entry.services[service.service_name] += a.delivered_count || 0;
       }
     });
 
