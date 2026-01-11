@@ -30,9 +30,7 @@ export const Dashboard: React.FC = () => {
   } = useServices();
 
   const isTeamSelected = selectedStaffId === "team" || !selectedStaffId;
-  const dashboardMode: "team" | "individual" = isTeamSelected
-    ? "team"
-    : "individual";
+  const dashboardMode: "team" | "individual" = isTeamSelected ? "team" : "individual";
 
   const staffIdForWorkingDays =
     !isTeamSelected && currentStaff ? currentStaff.staff_id : undefined;
@@ -48,23 +46,16 @@ export const Dashboard: React.FC = () => {
     staffId: staffIdForWorkingDays,
   });
 
-  const {
-    staffPerformance,
-    dailyActivities,
-    loading,
-    error,
-  } = useStaffPerformance(sortMode);
+  const { staffPerformance, dailyActivities, loading, error } =
+    useStaffPerformance(sortMode);
 
-  const effectiveWorkingDays = isTeamSelected
-    ? teamWorkingDays
-    : staffWorkingDays;
+  const effectiveWorkingDays = isTeamSelected ? teamWorkingDays : staffWorkingDays;
 
   const currentIndividualStaff =
     !isTeamSelected && currentStaff
       ? { staff_id: currentStaff.staff_id, name: currentStaff.name }
       : null;
 
-  // ✅ Centralised performance maths
   const performanceSummary = usePerformanceSummary({
     staffPerformance,
     workingDays: effectiveWorkingDays,
@@ -75,9 +66,7 @@ export const Dashboard: React.FC = () => {
     currentStaff: currentIndividualStaff,
   });
 
-  const variance =
-    performanceSummary.delivered - performanceSummary.expected;
-
+  const variance = performanceSummary.delivered - performanceSummary.expected;
   const isAhead = variance >= 0;
 
   const showWarning =
@@ -93,56 +82,38 @@ export const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* ✅ Staff performance header bar */}
+      {/* 🔵 Staff performance header bar (includes date selector inside it) */}
       <div className="mb-6">
         <StaffPerformanceBar staffPerformance={staffPerformance} />
       </div>
 
-      {/* ✅ Corrected progress bar */}
+      {/* Progress bar */}
       <div className="mb-6 space-y-2">
-        <div className="flex justify-between items-center">
-          <span className="font-medium text-sm">
+        <div className="flex justify-between items-center text-sm font-medium">
+          <span>
             {dashboardMode === "team"
               ? "Team Progress"
               : `${currentStaff?.name} Progress`}
           </span>
-
-          <span className="font-bold text-sm flex items-center gap-3">
-            <span>
-              {performanceSummary.delivered} / {performanceSummary.target} (
-              {performanceSummary.target > 0
-                ? Math.round(
-                    (performanceSummary.delivered /
-                      performanceSummary.target) *
-                      100
-                  )
-                : 0}
-              %)
-            </span>
-
-            <span
-              className={`font-bold ${
-                isAhead ? "text-green-600" : "text-red-600"
-              }`}
-            >
-              {isAhead ? "+" : "-"}
-              {Math.abs(Math.round(variance))}
-            </span>
+          <span>
+            {performanceSummary.delivered} / {performanceSummary.target} (
+            {performanceSummary.target > 0
+              ? Math.round(
+                  (performanceSummary.delivered / performanceSummary.target) * 100
+                )
+              : 0}
+            %)
           </span>
         </div>
 
         <div className="relative w-full h-6 bg-gray-200 rounded-full overflow-hidden">
           <div
-            className={`h-6 rounded-full ${
-              isAhead ? "bg-green-600" : "bg-red-600"
-            }`}
+            className={`h-6 rounded-full ${isAhead ? "bg-green-600" : "bg-red-600"}`}
             style={{
               width: `${
                 performanceSummary.target > 0
                   ? Math.min(
-                      (performanceSummary.delivered /
-                        performanceSummary.target) *
-                        100,
+                      (performanceSummary.delivered / performanceSummary.target) * 100,
                       100
                     )
                   : 0
@@ -150,21 +121,31 @@ export const Dashboard: React.FC = () => {
             }}
           />
 
+          {/* Expected marker */}
           <div
             className="absolute top-0 h-6 w-0.5 bg-[#001B47]"
             style={{
               left: `${
                 performanceSummary.target > 0
                   ? Math.min(
-                      (performanceSummary.expected /
-                        performanceSummary.target) *
-                        100,
+                      (performanceSummary.expected / performanceSummary.target) * 100,
                       100
                     )
                   : 0
               }%`,
             }}
           />
+
+          {/* Variance at the END of the bar */}
+          <div
+            className={`absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold ${
+              isAhead ? "text-green-700" : "text-red-700"
+            }`}
+            title="Ahead/Behind vs expected by today"
+          >
+            {isAhead ? "+" : "-"}
+            {Math.abs(Math.round(variance))}
+          </div>
         </div>
       </div>
 
