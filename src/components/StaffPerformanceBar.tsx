@@ -18,7 +18,6 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
   const { selectedStaffId, currentStaff, staff } = useAuth();
   const { selectedMonth, selectedFinancialYear } = useDate();
 
-  // ✅ SINGLE SOURCE OF TRUTH
   const isTeam = selectedStaffId === "team" || !selectedStaffId;
 
   const {
@@ -33,36 +32,27 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
 
   const workingDays = isTeam ? teamWorkingDays : staffWorkingDays;
 
-  const [targetTotal, setTargetTotal] = useState<number>(0);
+  const [targetTotal, setTargetTotal] = useState(0);
 
-  // ---------------------------------------------------------------------------
-  // ACTUALS
-  // ---------------------------------------------------------------------------
   const actualTotal = useMemo(() => {
-    if (isTeam) {
-      return staffPerformance.reduce((sum, s) => sum + s.total, 0);
-    }
-    return staffPerformance[0]?.total ?? 0;
+    return isTeam
+      ? staffPerformance.reduce((sum, s) => sum + s.total, 0)
+      : staffPerformance[0]?.total ?? 0;
   }, [isTeam, staffPerformance]);
 
-  // ---------------------------------------------------------------------------
-  // TARGETS
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     const load = async () => {
       if (isTeam) {
-        let teamTarget = 0;
-
+        let total = 0;
         for (const s of staff) {
           const { totalTarget } = await loadTargets(
             selectedMonth,
             selectedFinancialYear,
             s.staff_id
           );
-          teamTarget += totalTarget;
+          total += totalTarget;
         }
-
-        setTargetTotal(teamTarget);
+        setTargetTotal(total);
       } else if (currentStaff) {
         const { totalTarget } = await loadTargets(
           selectedMonth,
@@ -74,13 +64,9 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
         setTargetTotal(0);
       }
     };
-
     load();
   }, [isTeam, staff, currentStaff, selectedMonth, selectedFinancialYear]);
 
-  // ---------------------------------------------------------------------------
-  // EXPECTED (PRO-RATED)
-  // ---------------------------------------------------------------------------
   const expectedByNow =
     workingDays > 0
       ? (targetTotal / workingDays) *
@@ -89,24 +75,19 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
 
   const variance = actualTotal - expectedByNow;
 
-  // ---------------------------------------------------------------------------
-  // LABEL
-  // ---------------------------------------------------------------------------
   let statusText = "No target set";
-
   if (targetTotal > 0) {
-    if (variance >= 0) {
-      statusText = `Ahead by ${Math.round(variance)} items`;
-    } else {
-      statusText = `Behind by ${Math.abs(Math.round(variance))} items`;
-    }
+    statusText =
+      variance >= 0
+        ? `Ahead by ${Math.round(variance)} items`
+        : `Behind by ${Math.abs(Math.round(variance))} items`;
   }
 
-  // ---------------------------------------------------------------------------
-  // RENDER
-  // ---------------------------------------------------------------------------
   return (
-    <div className="bg-brand-blue text-white rounded-lg px-6 py-4 flex items-center justify-between">
+    <div
+      className="text-white rounded-lg px-6 py-4 flex items-center justify-between"
+      style={{ backgroundColor: "#001B47" }}   // ← hard-set brand blue
+    >
       <div className="font-semibold">
         {statusText}
         {" | "}Delivered: {Math.round(actualTotal)}
