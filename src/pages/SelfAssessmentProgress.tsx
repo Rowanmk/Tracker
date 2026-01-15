@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { useSelfAssessmentProgress } from '../hooks/useSelfAssessmentProgress';
 import { FinancialYearSelector } from '../components/FinancialYearSelector';
-import { getFinancialYears } from '../utils/financialYear';
 import type { FinancialYear } from '../utils/financialYear';
 
 export const SelfAssessmentProgress: React.FC = () => {
@@ -26,9 +25,17 @@ export const SelfAssessmentProgress: React.FC = () => {
   };
 
   /* ---------------------------------------------------------
-     Totals
+     Filter staff to display
+     Rule: show only if target > 0 OR submitted > 0
   --------------------------------------------------------- */
-  const totals = staffProgress.reduce(
+  const visibleStaff = staffProgress.filter(
+    (staff) => staff.fullYearTarget > 0 || staff.submitted > 0
+  );
+
+  /* ---------------------------------------------------------
+     Totals (based on visible staff only)
+  --------------------------------------------------------- */
+  const totals = visibleStaff.reduce(
     (acc, staff) => {
       acc.fullYearTarget += staff.fullYearTarget;
       acc.submitted += staff.submitted;
@@ -83,7 +90,7 @@ export const SelfAssessmentProgress: React.FC = () => {
         </div>
       </div>
 
-      {staffProgress.length === 0 ? (
+      {visibleStaff.length === 0 ? (
         <div className="p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 text-center">
           <p className="text-gray-600 dark:text-gray-400">
             No staff members with Self Assessment targets or actuals in this financial year.
@@ -113,7 +120,7 @@ export const SelfAssessmentProgress: React.FC = () => {
             </thead>
 
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {staffProgress.map((staff, idx) => {
+              {visibleStaff.map((staff, idx) => {
                 const percentAchieved =
                   staff.fullYearTarget > 0
                     ? (staff.submitted / staff.fullYearTarget) * 100
