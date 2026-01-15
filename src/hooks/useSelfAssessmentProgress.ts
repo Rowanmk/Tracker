@@ -58,7 +58,7 @@ export const useSelfAssessmentProgress = (
         // Fetch all SA actuals in the financial year
         const { data: activities, error: activitiesError } = await supabase
           .from('dailyactivity')
-          .select('staff_id, delivered_count')
+          .select('staff_id, delivered_count, date')
           .eq('service_id', saService.service_id)
           .gte('date', startIso)
           .lte('date', endIso);
@@ -110,12 +110,12 @@ export const useSelfAssessmentProgress = (
             .reduce((sum, a) => sum + (a.delivered_count || 0), 0);
 
           // Calculate full year target
-          // = (Completed items up to end of last fully completed month) + (Monthly targets for future months)
+          // = (Completed items up to end of last fully completed month) + (Monthly targets for this month and future months)
           const today = new Date();
           const currentMonth = today.getMonth() + 1;
           const currentYear = today.getFullYear();
 
-          // Determine last fully completed month
+          // Determine last fully completed month (the month before current month)
           let lastCompletedMonth = currentMonth - 1;
           let lastCompletedYear = currentYear;
           if (lastCompletedMonth === 0) {
@@ -134,21 +134,21 @@ export const useSelfAssessmentProgress = (
             })
             .reduce((sum, a) => sum + (a.delivered_count || 0), 0);
 
-          // Sum targets for future months in the financial year
+          // Sum targets for this month and future months in the financial year
           let futureTargets = 0;
 
-          // Determine which months are "future" relative to last completed month
+          // Financial year months in order: Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec, Jan, Feb, Mar
           const fyMonths = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
 
           fyMonths.forEach((month) => {
             const year = month >= 4 ? financialYear.start : financialYear.end;
 
-            // Check if this month is after last completed month
-            const isAfterLastCompleted =
+            // Check if this month is this month or later
+            const isThisMonthOrLater =
               year > lastCompletedYear ||
-              (year === lastCompletedYear && month > lastCompletedMonth);
+              (year === lastCompletedYear && month >= currentMonth);
 
-            if (isAfterLastCompleted) {
+            if (isThisMonthOrLater) {
               const monthTargets = (targets || [])
                 .filter(
                   (t) =>
