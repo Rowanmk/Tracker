@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useDate } from '../context/DateContext';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
@@ -8,11 +8,12 @@ import { getFinancialYears } from '../utils/financialYear';
 import type { FinancialYear } from '../utils/financialYear';
 
 export const SelfAssessmentProgress: React.FC = () => {
-  const { selectedFinancialYear, setSelectedFinancialYear } = useDate();
+  const { selectedFinancialYear } = useDate();
   const { allStaff, loading: authLoading } = useAuth();
   const { services, loading: servicesLoading } = useServices();
 
-  const [localFinancialYear, setLocalFinancialYear] = useState<FinancialYear>(selectedFinancialYear);
+  const [localFinancialYear, setLocalFinancialYear] =
+    useState<FinancialYear>(selectedFinancialYear);
 
   const { staffProgress, loading, error } = useSelfAssessmentProgress(
     localFinancialYear,
@@ -24,7 +25,23 @@ export const SelfAssessmentProgress: React.FC = () => {
     setLocalFinancialYear(fy);
   };
 
-  const financialYears = getFinancialYears();
+  /* ---------------------------------------------------------
+     Totals
+  --------------------------------------------------------- */
+  const totals = staffProgress.reduce(
+    (acc, staff) => {
+      acc.fullYearTarget += staff.fullYearTarget;
+      acc.submitted += staff.submitted;
+      acc.leftToDo += staff.leftToDo;
+      return acc;
+    },
+    { fullYearTarget: 0, submitted: 0, leftToDo: 0 }
+  );
+
+  const totalPercentAchieved =
+    totals.fullYearTarget > 0
+      ? (totals.submitted / totals.fullYearTarget) * 100
+      : 0;
 
   if (loading || authLoading || servicesLoading) {
     return (
@@ -77,45 +94,79 @@ export const SelfAssessmentProgress: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
+                <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider">
                   Staff Member
                 </th>
-                <th className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
+                <th className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider">
                   Full Year Target
                 </th>
-                <th className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
+                <th className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider">
                   Submitted
                 </th>
-                <th className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
+                <th className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider">
                   Left to Do
+                </th>
+                <th className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider">
+                  % Achieved
                 </th>
               </tr>
             </thead>
+
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {staffProgress.map((staff, idx) => (
-                <tr
-                  key={staff.staff_id}
-                  className={`transition-colors ${
-                    idx % 2 === 0
-                      ? 'bg-white dark:bg-gray-800'
-                      : 'bg-gray-50 dark:bg-gray-750'
-                  } hover:bg-blue-50 dark:hover:bg-gray-700/50`}
-                >
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                    {staff.name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900 dark:text-white">
-                    {staff.fullYearTarget}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900 dark:text-white">
-                    {staff.submitted}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900 dark:text-white">
-                    {staff.leftToDo}
-                  </td>
-                </tr>
-              ))}
+              {staffProgress.map((staff, idx) => {
+                const percentAchieved =
+                  staff.fullYearTarget > 0
+                    ? (staff.submitted / staff.fullYearTarget) * 100
+                    : 0;
+
+                return (
+                  <tr
+                    key={staff.staff_id}
+                    className={`transition-colors ${
+                      idx % 2 === 0
+                        ? 'bg-white dark:bg-gray-800'
+                        : 'bg-gray-50 dark:bg-gray-750'
+                    } hover:bg-blue-50 dark:hover:bg-gray-700/50`}
+                  >
+                    <td className="px-6 py-4 text-sm font-medium">
+                      {staff.name}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-center font-semibold">
+                      {staff.fullYearTarget}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-center font-semibold">
+                      {staff.submitted}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-center font-semibold">
+                      {staff.leftToDo}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-center font-semibold">
+                      {percentAchieved.toFixed(1)}%
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
+
+            <tfoot className="bg-gray-100 dark:bg-gray-700 border-t border-gray-300 dark:border-gray-600">
+              <tr>
+                <td className="px-6 py-4 text-sm font-bold">
+                  Total
+                </td>
+                <td className="px-6 py-4 text-sm text-center font-bold">
+                  {totals.fullYearTarget}
+                </td>
+                <td className="px-6 py-4 text-sm text-center font-bold">
+                  {totals.submitted}
+                </td>
+                <td className="px-6 py-4 text-sm text-center font-bold">
+                  {totals.leftToDo}
+                </td>
+                <td className="px-6 py-4 text-sm text-center font-bold">
+                  {totalPercentAchieved.toFixed(1)}%
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}
