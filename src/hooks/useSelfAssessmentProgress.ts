@@ -58,7 +58,7 @@ export const useSelfAssessmentProgress = (
         // Fetch all SA actuals in the financial year
         const { data: activities, error: activitiesError } = await supabase
           .from('dailyactivity')
-          .select('staff_id, delivered_count, date')
+          .select('staff_id, delivered_count, date, month, year')
           .eq('service_id', saService.service_id)
           .gte('date', startIso)
           .lte('date', endIso);
@@ -110,12 +110,20 @@ export const useSelfAssessmentProgress = (
             .reduce((sum, a) => sum + (a.delivered_count || 0), 0);
 
           // Calculate full year target
-          // = (Completed items up to end of last fully completed month) + (Monthly targets for this month and future months)
+          // Logic:
+          // - Today: actual delivered (April 2025 - December 2025) + forecast for January 2026
+          // - Reporting in November: actual delivered (April 2025 - October 2025) + forecast for (November, December, January)
+          // 
+          // General formula:
+          // = (Actual delivered from April to end of last fully completed month)
+          //   + (Forecast/targets for this month and all future months in the FY)
+
           const today = new Date();
           const currentMonth = today.getMonth() + 1;
           const currentYear = today.getFullYear();
 
-          // Determine last fully completed month (the month before current month)
+          // Determine last fully completed month
+          // Last fully completed month = the month before the current month
           let lastCompletedMonth = currentMonth - 1;
           let lastCompletedYear = currentYear;
           if (lastCompletedMonth === 0) {
@@ -123,7 +131,7 @@ export const useSelfAssessmentProgress = (
             lastCompletedYear--;
           }
 
-          // Sum actuals up to end of last fully completed month
+          // Sum actuals delivered from April through end of last fully completed month
           const lastCompletedDateEnd = new Date(lastCompletedYear, lastCompletedMonth, 0);
           const lastCompletedIso = lastCompletedDateEnd.toISOString().slice(0, 10);
 
@@ -134,8 +142,8 @@ export const useSelfAssessmentProgress = (
             })
             .reduce((sum, a) => sum + (a.delivered_count || 0), 0);
 
-          // Sum targets for this month and future months in the financial year
-          let futureTargets = 0;
+          // Sum targets for this month and all future months in the financial year
+          let forecastTargets = 0;
 
           // Financial year months in order: Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec, Jan, Feb, Mar
           const fyMonths = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
@@ -143,7 +151,7 @@ export const useSelfAssessmentProgress = (
           fyMonths.forEach((month) => {
             const year = month >= 4 ? financialYear.start : financialYear.end;
 
-            // Check if this month is this month or later
+            // Include this month and all future months
             const isThisMonthOrLater =
               year > lastCompletedYear ||
               (year === lastCompletedYear && month >= currentMonth);
@@ -158,11 +166,11 @@ export const useSelfAssessmentProgress = (
                 )
                 .reduce((sum, t) => sum + (t.target_value || 0), 0);
 
-              futureTargets += monthTargets;
+              forecastTargets += monthTargets;
             }
           });
 
-          const fullYearTarget = submittedUpToLastMonth + futureTargets;
+          const fullYearTarget = submittedUpToLastMonth + forecastTargets;
           const leftToDo = Math.max(0, fullYearTarget - submitted);
 
           progress.push({
