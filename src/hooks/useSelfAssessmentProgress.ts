@@ -27,7 +27,7 @@ export const useSelfAssessmentProgress = (
 
   useEffect(() => {
     const fetchData = async () => {
-      if (allStaff.length === 0 || services.length === 0) {
+      if (!financialYear || allStaff.length === 0 || services.length === 0) {
         setStaffProgress([]);
         setLoading(false);
         return;
@@ -37,9 +37,11 @@ export const useSelfAssessmentProgress = (
       setError(null);
 
       try {
-        // Find Self Assessment service
+        /* ---------------------------------------------------------
+           1. Resolve Self Assessment service
+        --------------------------------------------------------- */
         const saService = services.find(
-          (s) => s.service_name === 'Self Assessments'
+          (s: Service) => s.service_name === 'Self Assessments'
         );
 
         if (!saService) {
@@ -49,146 +51,172 @@ export const useSelfAssessmentProgress = (
           return;
         }
 
-        // Date range for financial year: April YYYY to January YYYY+1
-        const startDate = new Date(financialYear.start, 3, 1); // April 1
-        const endDate = new Date(financialYear.end, 0, 31); // January 31
-        const startIso = startDate.toISOString().slice(0, 10);
-        const endIso = endDate.toISOString().slice(0, 10);
+        /* ---------------------------------------------------------
+           2. Delivery window (10 months after FY)
+        --------------------------------------------------------- */
+        const deliveryStartYear = financialYear.end;
+        const deliveryEndYear = financialYear.end + 1;
 
-        // Fetch all SA actuals in the financial year
-        const { data: activities, error: activitiesError } = await supabase
-          .from('dailyactivity')
-          .select('staff_id, delivered_count, date, month, year')
-          .eq('service_id', saService.service_id)
-          .gte('date', startIso)
-          .lte('date', endIso);
+        const deliveryStartDate = new Date(deliveryStartYear, 3, 1); // Apr 1
+        const deliveryEndDate = new Date(deliveryEndYear, 0, 31);   // Jan 31
+
+        const deliveryStartIso = deliveryStartDate.toISOString().slice(0, 10);
+        const deliveryEndIso = deliveryEndDate.toISOString().slice(0, 10);
+
+        /* ---------------------------------------------------------
+           3. Last completed month (calendar-based, clipped)
+        --------------------------------------------------------- */
+        const today = new Date();
+
+        let lastCompletedIso: string | null = null;
+
+        if (today > deliveryStartDate) {
+          const endOfPreviousMonth = new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            0
+          );
+
+          const clipped =
+            endOfPreviousMonth < deliveryStartDate
+              ? null
+              : endOfPreviousMonth > deliveryEndDate
+              ? deliveryEndDate
+              : endOfPreviousMonth;
+
+          lastCompletedIso = clipped
+            ? clipped.toISOString().slice(0, 10)
+            : null;
+        }
+
+        /* ---------------------------------------------------------
+           4. Fetch actuals
+        --------------------------------------------------------- */
+        const { data: activities, error: activitiesError } =
+          await supabase
+            .from('dailyactivity')
+            .select('staff_id, delivered_count, date')
+            .eq('service_id', saService.service_id)
+            .gte('date', deliveryStartIso)
+            .lte('date', deliveryEndIso);
 
         if (activitiesError) {
-          console.error('Error fetching activities:', activitiesError);
+          console.error(activitiesError);
           setError('Failed to load activity data');
           setStaffProgress([]);
           setLoading(false);
           return;
         }
 
-        // Fetch all SA targets in the financial year
-        const { data: targets, error: targetsError } = await supabase
-          .from('monthlytargets')
-          .select('staff_id, month, year, target_value')
-          .eq('service_id', saService.service_id)
-          .in('year', [financialYear.start, financialYear.end]);
+        const safeActivities: DailyActivity[] = activities ?? [];
+
+        /* ---------------------------------------------------------
+           5. Fetch targets
+        --------------------------------------------------------- */
+        const { data: targets, error: targetsError } =
+          await supabase
+            .from('monthlytargets')
+            .select('staff_id, month, year, target_value')
+            .eq('service_id', saService.service_id)
+            .in('year', [deliveryStartYear, deliveryEndYear]);
 
         if (targetsError) {
-          console.error('Error fetching targets:', targetsError);
+          console.error(targetsError);
           setError('Failed to load target data');
           setStaffProgress([]);
           setLoading(false);
           return;
         }
 
-        // Build set of staff IDs that have either actuals or targets
+        const safeTargets: MonthlyTarget[] = targets ?? [];
+
+        /* ---------------------------------------------------------
+           6. Staff inclusion
+        --------------------------------------------------------- */
         const staffWithData = new Set<number>();
 
-        (activities || []).forEach((a) => {
+        safeActivities.forEach((a: DailyActivity) => {
           if (a.staff_id) staffWithData.add(a.staff_id);
         });
 
-        (targets || []).forEach((t) => {
+        safeTargets.forEach((t: MonthlyTarget) => {
           if (t.staff_id) staffWithData.add(t.staff_id);
         });
 
-        // Calculate progress for each staff member
-        const progress: StaffProgressData[] = [];
+        /* ---------------------------------------------------------
+           7. Per-staff calculations
+        --------------------------------------------------------- */
+        const results: StaffProgressData[] = [];
 
-        for (const staffId of Array.from(staffWithData).sort((a, b) => a - b)) {
-          const staff = allStaff.find((s) => s.staff_id === staffId);
-          if (!staff) continue;
+        staffWithData.forEach((staffId: number) => {
+          const staff = allStaff.find(
+            (s: Staff) => s.staff_id === staffId
+          );
+          if (!staff) return;
 
-          // Sum submitted (actuals)
-          const submitted = (activities || [])
-            .filter((a) => a.staff_id === staffId)
-            .reduce((sum, a) => sum + (a.delivered_count || 0), 0);
+          const submitted = safeActivities
+            .filter((a: DailyActivity) => a.staff_id === staffId)
+            .reduce(
+              (sum: number, a: DailyActivity) =>
+                sum + (a.delivered_count ?? 0),
+              0
+            );
 
-          // Calculate full year target
-          // Logic:
-          // - Today: actual delivered (April 2025 - December 2025) + forecast for January 2026
-          // - Reporting in November: actual delivered (April 2025 - October 2025) + forecast for (November, December, January)
-          // 
-          // General formula:
-          // = (Actual delivered from April to end of last fully completed month)
-          //   + (Forecast/targets for this month and all future months in the FY)
+          const actualsToLastMonth =
+            lastCompletedIso === null
+              ? 0
+              : safeActivities
+                  .filter(
+                    (a: DailyActivity) =>
+                      a.staff_id === staffId &&
+                      a.date <= lastCompletedIso
+                  )
+                  .reduce(
+                    (sum: number, a: DailyActivity) =>
+                      sum + (a.delivered_count ?? 0),
+                    0
+                  );
 
-          const today = new Date();
-          const currentMonth = today.getMonth() + 1;
-          const currentYear = today.getFullYear();
+          const targetStartDate = new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            1
+          );
 
-          // Determine last fully completed month
-          // Last fully completed month = the month before the current month
-          let lastCompletedMonth = currentMonth - 1;
-          let lastCompletedYear = currentYear;
-          if (lastCompletedMonth === 0) {
-            lastCompletedMonth = 12;
-            lastCompletedYear--;
-          }
+          const futureTargets = safeTargets
+            .filter((t: MonthlyTarget) => {
+              if (t.staff_id !== staffId) return false;
 
-          // Sum actuals delivered from April through end of last fully completed month
-          const lastCompletedDateEnd = new Date(lastCompletedYear, lastCompletedMonth, 0);
-          const lastCompletedIso = lastCompletedDateEnd.toISOString().slice(0, 10);
-
-          const submittedUpToLastMonth = (activities || [])
-            .filter((a) => {
-              if (a.staff_id !== staffId) return false;
-              return a.date <= lastCompletedIso;
+              const tDate = new Date(t.year, t.month - 1, 1);
+              return (
+                tDate >= targetStartDate &&
+                tDate >= deliveryStartDate &&
+                tDate <= deliveryEndDate
+              );
             })
-            .reduce((sum, a) => sum + (a.delivered_count || 0), 0);
+            .reduce(
+              (sum: number, t: MonthlyTarget) =>
+                sum + (t.target_value ?? 0),
+              0
+            );
 
-          // Sum targets for this month and all future months in the financial year
-          let forecastTargets = 0;
-
-          // Financial year months in order: Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec, Jan, Feb, Mar
-          const fyMonths = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
-
-          fyMonths.forEach((month) => {
-            const year = month >= 4 ? financialYear.start : financialYear.end;
-
-            // Include this month and all future months
-            const isThisMonthOrLater =
-              year > lastCompletedYear ||
-              (year === lastCompletedYear && month >= currentMonth);
-
-            if (isThisMonthOrLater) {
-              const monthTargets = (targets || [])
-                .filter(
-                  (t) =>
-                    t.staff_id === staffId &&
-                    t.month === month &&
-                    t.year === year
-                )
-                .reduce((sum, t) => sum + (t.target_value || 0), 0);
-
-              forecastTargets += monthTargets;
-            }
-          });
-
-          const fullYearTarget = submittedUpToLastMonth + forecastTargets;
+          const fullYearTarget = actualsToLastMonth + futureTargets;
           const leftToDo = Math.max(0, fullYearTarget - submitted);
 
-          progress.push({
+          results.push({
             staff_id: staffId,
             name: staff.name,
             fullYearTarget,
             submitted,
             leftToDo,
           });
-        }
+        });
 
-        // Sort by name
-        progress.sort((a, b) => a.name.localeCompare(b.name));
-
-        setStaffProgress(progress);
+        results.sort((a, b) => a.name.localeCompare(b.name));
+        setStaffProgress(results);
       } catch (err) {
-        console.error('Error in useSelfAssessmentProgress:', err);
-        setError('Failed to load Self Assessment progress data');
+        console.error('useSelfAssessmentProgress error:', err);
+        setError('Failed to load Self Assessment progress');
         setStaffProgress([]);
       } finally {
         setLoading(false);
