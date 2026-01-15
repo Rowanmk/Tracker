@@ -13,6 +13,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
   const baseNavigationLinks = [
     { path: "/", label: "Dashboard" },
     { path: "/tracker", label: "My Tracker" },
+    { path: "/sa-progress", label: "Self Assessment Progress" },
     { path: "/team", label: "Team View" },
     { path: "/annual", label: "Annual Summary" },
   ];

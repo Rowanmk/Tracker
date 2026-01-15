@@ -8,6 +8,7 @@ import { Dashboard } from './pages/Dashboard';
 import { TeamView } from './pages/TeamView';
 import { AnnualSummary } from './pages/AnnualSummary';
 import { StaffTracker } from './pages/StaffTracker';
+import { SelfAssessmentProgress } from './pages/SelfAssessmentProgress';
 import { TargetsControl } from './pages/TargetsControl';
 import { Settings } from './pages/Settings';
 
@@ -19,6 +20,7 @@ const AppContent: React.FC = () => {
         <Route path="/team" element={<TeamView />} />
         <Route path="/annual" element={<AnnualSummary />} />
         <Route path="/tracker" element={<StaffTracker />} />
+        <Route path="/sa-progress" element={<SelfAssessmentProgress />} />
         <Route path="/targets" element={<TargetsControl />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
