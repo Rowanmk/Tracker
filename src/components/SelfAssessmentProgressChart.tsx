@@ -149,11 +149,11 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
     return PADDING_LEFT + monthIndex * xStep;
   };
 
-  // Shaded regions: April-July (indices 0-3) and November-January (indices 7-9)
+  // Shaded regions: April-July (indices 0-3) and October-January (indices 6-9)
   const aprilJulyStart = getXForMonth(0);
   const aprilJulyEnd = getXForMonth(3);
-  const novemberJanuaryStart = getXForMonth(7);
-  const novemberJanuaryEnd = getXForMonth(displayMonths.length - 1);
+  const octoberJanuaryStart = getXForMonth(6);
+  const octoberJanuaryEnd = getXForMonth(displayMonths.length - 1);
 
   // Label positions: July (index 3) and October (index 6)
   const julyIndex = 3;
@@ -183,11 +183,11 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
             className="dark:fill-blue-900"
           />
 
-          {/* November-January shading */}
+          {/* October-January shading */}
           <rect
-            x={novemberJanuaryStart}
+            x={octoberJanuaryStart}
             y={PADDING_TOP}
-            width={novemberJanuaryEnd - novemberJanuaryStart}
+            width={octoberJanuaryEnd - octoberJanuaryStart}
             height={CHART_HEIGHT}
             fill="#E0E7FF"
             opacity="0.4"
@@ -328,8 +328,8 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
             </g>
           ))}
 
-          {/* Staff member labels at July and October */}
-          {staffChartData.map((staff, staffIdx) => {
+          {/* % achieved labels at July and October */}
+          {staffChartData.map((staff) => {
             const julyPoint = staff.points[julyIndex];
             const octoberPoint = staff.points[octoberIndex];
 
@@ -342,7 +342,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
             return (
               <g key={`labels-${staff.staff_id}`}>
-                {/* July label */}
+                {/* July % label */}
                 <text
                   x={julyX}
                   y={julyY - 12}
@@ -350,10 +350,10 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
                   className="text-xs font-semibold fill-gray-700 dark:fill-gray-300"
                   style={{ pointerEvents: 'none' }}
                 >
-                  {staff.name}
+                  {Math.round(julyPoint.percent)}%
                 </text>
 
-                {/* October label */}
+                {/* October % label */}
                 <text
                   x={octoberX}
                   y={octoberY - 12}
@@ -361,7 +361,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
                   className="text-xs font-semibold fill-gray-700 dark:fill-gray-300"
                   style={{ pointerEvents: 'none' }}
                 >
-                  {staff.name}
+                  {Math.round(octoberPoint.percent)}%
                 </text>
               </g>
             );
@@ -387,7 +387,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
       {/* Tooltip info */}
       <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800">
         <p className="text-xs text-blue-800 dark:text-blue-200">
-          💡 Chart shows cumulative monthly progress (%) toward the Full Year Target from April through January. Shaded regions highlight April–July and November–January. Staff names appear at July and October milestones.
+          💡 Chart shows cumulative monthly progress (%) toward the Full Year Target from April through January. Shaded regions highlight April–July and October–January. Percentage achieved is displayed at July and October milestones.
         </p>
       </div>
     </div>
