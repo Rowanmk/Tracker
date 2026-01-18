@@ -16,10 +16,10 @@ interface SelfAssessmentProgressChartProps {
   monthlyData: Record<number, Record<number, { submitted: number; target: number }>>;
 }
 
-const VIEWBOX_WIDTH = 1000;
+const VIEWBOX_WIDTH = 1200;
 const VIEWBOX_HEIGHT = 500;
 const PADDING_LEFT = 60;
-const PADDING_RIGHT = 40;
+const PADDING_RIGHT = 200;
 const PADDING_TOP = 30;
 const PADDING_BOTTOM = 100;
 
@@ -155,9 +155,8 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   const octoberJanuaryStart = getXForMonth(6);
   const octoberJanuaryEnd = getXForMonth(displayMonths.length - 1);
 
-  // Label positions: July (index 3) and October (index 6)
-  const julyIndex = 3;
-  const octoberIndex = 6;
+  // Get year for January label
+  const januaryYear = financialYear.end;
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 mt-6">
@@ -254,9 +253,11 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
             );
           })}
 
-          {/* X-axis labels (months) */}
+          {/* X-axis labels (months with year) */}
           {displayMonths.map((m, idx) => {
             const x = getXForMonth(idx);
+            // Add year to January
+            const monthLabel = m.number === 1 ? `${m.name} ${januaryYear}` : m.number === 4 ? `${m.name} ${financialYear.start}` : m.name;
             return (
               <g key={`x-${m.number}`}>
                 <line
@@ -273,7 +274,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
                   textAnchor="middle"
                   className="text-xs fill-gray-600 dark:fill-gray-400"
                 >
-                  {m.name}
+                  {monthLabel}
                 </text>
               </g>
             );
@@ -328,40 +329,35 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
             </g>
           ))}
 
-          {/* % achieved labels at July and October */}
+          {/* Staff name and % achieved labels at the end (January) */}
           {staffChartData.map((staff) => {
-            const julyPoint = staff.points[julyIndex];
-            const octoberPoint = staff.points[octoberIndex];
-
-            const julyX = getXForMonth(julyIndex);
-            const octoberX = getXForMonth(octoberIndex);
-
+            const lastPoint = staff.points[staff.points.length - 1];
+            const lastX = getXForMonth(displayMonths.length - 1);
             const yScale = CHART_HEIGHT / maxPercent;
-            const julyY = VIEWBOX_HEIGHT - PADDING_BOTTOM - julyPoint.percent * yScale;
-            const octoberY = VIEWBOX_HEIGHT - PADDING_BOTTOM - octoberPoint.percent * yScale;
+            const lastY = VIEWBOX_HEIGHT - PADDING_BOTTOM - lastPoint.percent * yScale;
 
             return (
-              <g key={`labels-${staff.staff_id}`}>
-                {/* July % label */}
+              <g key={`end-label-${staff.staff_id}`}>
+                {/* Staff name */}
                 <text
-                  x={julyX}
-                  y={julyY - 12}
-                  textAnchor="middle"
+                  x={lastX + 12}
+                  y={lastY - 8}
+                  textAnchor="start"
                   className="text-xs font-semibold fill-gray-700 dark:fill-gray-300"
                   style={{ pointerEvents: 'none' }}
                 >
-                  {Math.round(julyPoint.percent)}%
+                  {staff.name}
                 </text>
 
-                {/* October % label */}
+                {/* % achieved */}
                 <text
-                  x={octoberX}
-                  y={octoberY - 12}
-                  textAnchor="middle"
+                  x={lastX + 12}
+                  y={lastY + 6}
+                  textAnchor="start"
                   className="text-xs font-semibold fill-gray-700 dark:fill-gray-300"
                   style={{ pointerEvents: 'none' }}
                 >
-                  {Math.round(octoberPoint.percent)}%
+                  {Math.round(lastPoint.percent)}%
                 </text>
               </g>
             );
@@ -382,13 +378,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
             </span>
           </div>
         ))}
-      </div>
-
-      {/* Tooltip info */}
-      <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800">
-        <p className="text-xs text-blue-800 dark:text-blue-200">
-          💡 Chart shows cumulative monthly progress (%) toward the Full Year Target from April through January. Shaded regions highlight April–July and October–January. Percentage achieved is displayed at July and October milestones.
-        </p>
       </div>
     </div>
   );
