@@ -94,7 +94,7 @@ export const SelfAssessmentProgress: React.FC = () => {
 
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Financial Year
+            Tax Year
           </label>
           <FinancialYearSelector
             selectedFinancialYear={localFinancialYear}
