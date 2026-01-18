@@ -210,88 +210,91 @@ export const SelfAssessmentProgress: React.FC = () => {
           </p>
         </div>
       ) : (
-        <>
-          <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead className="bg-gray-50 dark:bg-gray-700">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider">
-                    Staff Member
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider">
-                    Full Year Target
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider">
-                    Submitted
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider">
-                    Left to Do
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider">
-                    % Achieved
-                  </th>
-                </tr>
-              </thead>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left column: Data table (50% width) */}
+          <div className="overflow-hidden bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col">
+            <div className="overflow-x-auto flex-1">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider">
+                      Staff Member
+                    </th>
+                    <th className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider">
+                      Target
+                    </th>
+                    <th className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider">
+                      Submitted
+                    </th>
+                    <th className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider">
+                      Left
+                    </th>
+                    <th className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider">
+                      %
+                    </th>
+                  </tr>
+                </thead>
 
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {visibleStaff.map((staff, idx) => {
-                  const percentAchieved =
-                    staff.fullYearTarget > 0
-                      ? (staff.submitted / staff.fullYearTarget) * 100
-                      : 0;
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {visibleStaff.map((staff, idx) => {
+                    const percentAchieved =
+                      staff.fullYearTarget > 0
+                        ? (staff.submitted / staff.fullYearTarget) * 100
+                        : 0;
 
-                  return (
-                    <tr
-                      key={staff.staff_id}
-                      className={`transition-colors ${
-                        idx % 2 === 0
-                          ? 'bg-white dark:bg-gray-800'
-                          : 'bg-gray-50 dark:bg-gray-750'
-                      } hover:bg-blue-50 dark:hover:bg-gray-700/50`}
-                    >
-                      <td className="px-6 py-4 text-sm font-medium">
-                        {staff.name}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-center font-semibold">
-                        {staff.fullYearTarget}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-center font-semibold">
-                        {staff.submitted}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-center font-semibold">
-                        {staff.leftToDo}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-center font-semibold">
-                        {percentAchieved.toFixed(1)}%
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
+                    return (
+                      <tr
+                        key={staff.staff_id}
+                        className={`transition-colors ${
+                          idx % 2 === 0
+                            ? 'bg-white dark:bg-gray-800'
+                            : 'bg-gray-50 dark:bg-gray-750'
+                        } hover:bg-blue-50 dark:hover:bg-gray-700/50`}
+                      >
+                        <td className="px-6 py-4 text-sm font-medium whitespace-nowrap">
+                          {staff.name}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-center font-semibold">
+                          {staff.fullYearTarget}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-center font-semibold">
+                          {staff.submitted}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-center font-semibold">
+                          {staff.leftToDo}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-center font-semibold">
+                          {percentAchieved.toFixed(1)}%
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
 
-              <tfoot className="bg-gray-100 dark:bg-gray-700 border-t border-gray-300 dark:border-gray-600">
-                <tr>
-                  <td className="px-6 py-4 text-sm font-bold">
-                    Total
-                  </td>
-                  <td className="px-6 py-4 text-sm text-center font-bold">
-                    {totals.fullYearTarget}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-center font-bold">
-                    {totals.submitted}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-center font-bold">
-                    {totals.leftToDo}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-center font-bold">
-                    {totalPercentAchieved.toFixed(1)}%
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+                <tfoot className="bg-gray-100 dark:bg-gray-700 border-t border-gray-300 dark:border-gray-600">
+                  <tr>
+                    <td className="px-6 py-4 text-sm font-bold">
+                      Total
+                    </td>
+                    <td className="px-6 py-4 text-sm text-center font-bold">
+                      {totals.fullYearTarget}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-center font-bold">
+                      {totals.submitted}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-center font-bold">
+                      {totals.leftToDo}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-center font-bold">
+                      {totalPercentAchieved.toFixed(1)}%
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
 
-          {/* Monthly Progress Chart */}
+          {/* Right column: Chart (50% width) */}
           {!loadingMonthly && (
             <SelfAssessmentProgressChart
               staffProgress={visibleStaff}
@@ -300,13 +303,13 @@ export const SelfAssessmentProgress: React.FC = () => {
             />
           )}
           {loadingMonthly && (
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 text-center">
+            <div className="p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 text-center flex items-center justify-center">
               <p className="text-gray-500 dark:text-gray-400">
                 Loading chart data…
               </p>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );

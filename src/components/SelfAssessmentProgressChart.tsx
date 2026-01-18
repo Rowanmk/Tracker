@@ -16,12 +16,12 @@ interface SelfAssessmentProgressChartProps {
   monthlyData: Record<number, Record<number, { submitted: number; target: number }>>;
 }
 
-const VIEWBOX_WIDTH = 1200;
-const VIEWBOX_HEIGHT = 500;
-const PADDING_LEFT = 60;
-const PADDING_RIGHT = 200;
+const VIEWBOX_WIDTH = 800;
+const VIEWBOX_HEIGHT = 400;
+const PADDING_LEFT = 50;
+const PADDING_RIGHT = 150;
 const PADDING_TOP = 30;
-const PADDING_BOTTOM = 100;
+const PADDING_BOTTOM = 80;
 
 const CHART_WIDTH = VIEWBOX_WIDTH - PADDING_LEFT - PADDING_RIGHT;
 const CHART_HEIGHT = VIEWBOX_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
@@ -46,7 +46,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
   if (visibleStaff.length === 0) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 mt-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
           Monthly Progress Chart
         </h3>
@@ -159,15 +159,15 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   const januaryYear = financialYear.end;
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 mt-6">
+    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 flex flex-col h-full">
       <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
         Monthly Progress Chart
       </h3>
 
-      <div className="overflow-x-auto">
+      <div className="flex-1 flex flex-col">
         <svg
           viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
-          className="w-full h-96 min-w-max"
+          className="w-full flex-1"
           preserveAspectRatio="xMidYMid meet"
         >
           {/* Shaded background regions */}
@@ -256,7 +256,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           {/* X-axis labels (months with year) */}
           {displayMonths.map((m, idx) => {
             const x = getXForMonth(idx);
-            // Add year to January
+            // Add year to January and April
             const monthLabel = m.number === 1 ? `${m.name} ${januaryYear}` : m.number === 4 ? `${m.name} ${financialYear.start}` : m.name;
             return (
               <g key={`x-${m.number}`}>
@@ -329,7 +329,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
             </g>
           ))}
 
-          {/* Staff name and % achieved labels at the end (January) */}
+          {/* Staff name and % achieved labels at the end (January) - on ONE line */}
           {staffChartData.map((staff) => {
             const lastPoint = staff.points[staff.points.length - 1];
             const lastX = getXForMonth(displayMonths.length - 1);
@@ -338,46 +338,35 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
             return (
               <g key={`end-label-${staff.staff_id}`}>
-                {/* Staff name */}
+                {/* Combined label: "Name 99%" on one line */}
                 <text
                   x={lastX + 12}
-                  y={lastY - 8}
+                  y={lastY + 2}
                   textAnchor="start"
                   className="text-xs font-semibold fill-gray-700 dark:fill-gray-300"
                   style={{ pointerEvents: 'none' }}
                 >
-                  {staff.name}
-                </text>
-
-                {/* % achieved */}
-                <text
-                  x={lastX + 12}
-                  y={lastY + 6}
-                  textAnchor="start"
-                  className="text-xs font-semibold fill-gray-700 dark:fill-gray-300"
-                  style={{ pointerEvents: 'none' }}
-                >
-                  {Math.round(lastPoint.percent)}%
+                  {staff.name} {Math.round(lastPoint.percent)}%
                 </text>
               </g>
             );
           })}
         </svg>
-      </div>
 
-      {/* Centered Legend */}
-      <div className="mt-8 flex flex-wrap gap-6 justify-center">
-        {staffChartData.map((staff) => (
-          <div key={staff.staff_id} className="flex items-center gap-2">
-            <div
-              className="w-4 h-4 rounded-full"
-              style={{ backgroundColor: staff.color }}
-            />
-            <span className="text-sm text-gray-700 dark:text-gray-300">
-              {staff.name}
-            </span>
-          </div>
-        ))}
+        {/* Centered Legend */}
+        <div className="mt-4 flex flex-wrap gap-4 justify-center">
+          {staffChartData.map((staff) => (
+            <div key={staff.staff_id} className="flex items-center gap-2">
+              <div
+                className="w-3 h-3 rounded-full"
+                style={{ backgroundColor: staff.color }}
+              />
+              <span className="text-xs text-gray-700 dark:text-gray-300">
+                {staff.name}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
