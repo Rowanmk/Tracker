@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useDate } from '../context/DateContext';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { useSelfAssessmentProgress } from '../hooks/useSelfAssessmentProgress';
 import { FinancialYearSelector } from '../components/FinancialYearSelector';
+import { getFinancialYears } from '../utils/financialYear';
 import type { FinancialYear } from '../utils/financialYear';
 
 export const SelfAssessmentProgress: React.FC = () => {
@@ -11,8 +12,21 @@ export const SelfAssessmentProgress: React.FC = () => {
   const { allStaff, loading: authLoading } = useAuth();
   const { services, loading: servicesLoading } = useServices();
 
+  // Calculate the last completed tax year (previous FY)
+  const lastCompletedFinancialYear = useMemo(() => {
+    const allYears = getFinancialYears();
+    const currentFY = selectedFinancialYear;
+    
+    // Find the FY that ends one year before the current FY's end
+    const lastCompleted = allYears.find(
+      (fy) => fy.end === currentFY.start
+    );
+    
+    return lastCompleted || currentFY;
+  }, [selectedFinancialYear]);
+
   const [localFinancialYear, setLocalFinancialYear] =
-    useState<FinancialYear>(selectedFinancialYear);
+    useState<FinancialYear>(lastCompletedFinancialYear);
 
   const { staffProgress, loading, error } = useSelfAssessmentProgress(
     localFinancialYear,
