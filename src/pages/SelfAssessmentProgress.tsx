@@ -22,7 +22,7 @@ export const SelfAssessmentProgress: React.FC = () => {
   const lastCompletedFinancialYear = useMemo(() => {
     const allYears = getFinancialYears();
     const currentFY = selectedFinancialYear;
-    const lastCompleted = allYears.find(fy => fy.end === currentFY.start);
+    const lastCompleted = allYears.find((fy) => fy.end === currentFY.start);
     return lastCompleted || currentFY;
   }, [selectedFinancialYear]);
 
@@ -35,6 +35,7 @@ export const SelfAssessmentProgress: React.FC = () => {
     services
   );
 
+  // Monthly breakdown data for chart
   const [monthlyData, setMonthlyData] = useState<
     Record<number, Record<number, { submitted: number; target: number }>>
   >({});
@@ -48,10 +49,13 @@ export const SelfAssessmentProgress: React.FC = () => {
 
       try {
         const saService = services.find(
-          s => s.service_name === 'Self Assessments'
+          (s) => s.service_name === 'Self Assessments'
         );
 
-        if (!saService) return;
+        if (!saService) {
+          setMonthlyData({});
+          return;
+        }
 
         const deliveryStartYear = localFinancialYear.end;
         const deliveryEndYear = localFinancialYear.end + 1;
@@ -76,33 +80,44 @@ export const SelfAssessmentProgress: React.FC = () => {
           .eq('service_id', saService.service_id)
           .in('year', [deliveryStartYear, deliveryEndYear]);
 
-        const breakdown: typeof monthlyData = {};
+        const breakdown: Record<
+          number,
+          Record<number, { submitted: number; target: number }>
+        > = {};
 
-        staffProgress.forEach(staff => {
+        // Initialise all staff + all FY months
+        staffProgress.forEach((staff) => {
           breakdown[staff.staff_id] = {};
-          getFinancialYearMonths().forEach(m => {
+          getFinancialYearMonths().forEach((m) => {
             breakdown[staff.staff_id][m.number] = { submitted: 0, target: 0 };
           });
         });
 
-        activities?.forEach(a => {
+        // Actuals
+        (activities || []).forEach((a) => {
           if (a.staff_id && breakdown[a.staff_id]) {
             const m = new Date(a.date).getMonth() + 1;
+            if (!breakdown[a.staff_id][m]) {
+              breakdown[a.staff_id][m] = { submitted: 0, target: 0 };
+            }
             breakdown[a.staff_id][m].submitted += a.delivered_count || 0;
           }
         });
 
-        targets?.forEach(t => {
-          if (
-            t.staff_id &&
-            breakdown[t.staff_id] &&
-            breakdown[t.staff_id][t.month]
-          ) {
+        // Targets
+        (targets || []).forEach((t) => {
+          if (t.staff_id && breakdown[t.staff_id]) {
+            if (!breakdown[t.staff_id][t.month]) {
+              breakdown[t.staff_id][t.month] = { submitted: 0, target: 0 };
+            }
             breakdown[t.staff_id][t.month].target += t.target_value || 0;
           }
         });
 
         setMonthlyData(breakdown);
+      } catch (e) {
+        console.error('Error fetching monthly data:', e);
+        setMonthlyData({});
       } finally {
         setLoadingMonthly(false);
       }
@@ -111,8 +126,9 @@ export const SelfAssessmentProgress: React.FC = () => {
     fetchMonthlyData();
   }, [localFinancialYear, services, staffProgress.length]);
 
+  // Visible staff rule: show if target > 0 OR submitted > 0
   const visibleStaff = staffProgress.filter(
-    s => s.fullYearTarget > 0 || s.submitted > 0
+    (s) => s.fullYearTarget > 0 || s.submitted > 0
   );
 
   const totals = visibleStaff.reduce(
@@ -143,9 +159,9 @@ export const SelfAssessmentProgress: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-[1600px] mx-auto px-6 space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-end gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold">Self Assessment Progress</h2>
           <p className="text-sm text-gray-600">
@@ -153,7 +169,7 @@ export const SelfAssessmentProgress: React.FC = () => {
           </p>
         </div>
 
-        <div className="w-48">
+        <div className="w-full lg:w-48">
           <FinancialYearSelector
             selectedFinancialYear={localFinancialYear}
             onFinancialYearChange={setLocalFinancialYear}
@@ -161,92 +177,89 @@ export const SelfAssessmentProgress: React.FC = () => {
         </div>
       </div>
 
-      {/* Layout rebalance — Option 1 */}
-      <div className="grid grid-cols-1 xl:grid-cols-[40%_60%] gap-6">
+      {/* Layout rebalance — Option 1 (more natural proportions) */}
+      <div className="grid grid-cols-1 xl:grid-cols-[45%_55%] gap-6">
         {/* TABLE */}
-        <div className="bg-white rounded-xl shadow-md border tile-brand overflow-hidden">
-          <div className="tile-header px-4 py-1.5">
-            Self Assessment Data
+        <div className="bg-white rounded-xl shadow-md border tile-brand overflow-hidden flex flex-col">
+          <div className="tile-header px-4 py-1.5">Self Assessment Data</div>
+
+          {/* This makes the table fill the tile height */}
+          <div className="flex-1 overflow-auto">
+            <table className="w-full divide-y">
+              <thead className="bg-gray-50 sticky top-0 z-10">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">
+                    Staff
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase">
+                    Target
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase">
+                    Submitted
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase">
+                    %
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {visibleStaff.map((staff) => {
+                  const pct =
+                    staff.fullYearTarget > 0
+                      ? (staff.submitted / staff.fullYearTarget) * 100
+                      : 0;
+
+                  const isActive = activeStaffId === staff.staff_id;
+
+                  return (
+                    <tr
+                      key={staff.staff_id}
+                      className={`transition-colors ${
+                        isActive
+                          ? 'bg-blue-50 ring-1 ring-blue-300'
+                          : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <td className="px-4 py-3 font-medium">{staff.name}</td>
+                      <td className="px-4 py-3 text-center font-semibold">
+                        {staff.fullYearTarget}
+                      </td>
+                      <td className="px-4 py-3 text-center font-semibold">
+                        {staff.submitted}
+                      </td>
+                      <td className="px-4 py-3 text-center font-semibold">
+                        {pct.toFixed(1)}%
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+
+              <tfoot className="bg-gray-100 font-bold sticky bottom-0">
+                <tr>
+                  <td className="px-4 py-3">Total</td>
+                  <td className="px-4 py-3 text-center">{totals.fullYearTarget}</td>
+                  <td className="px-4 py-3 text-center">{totals.submitted}</td>
+                  <td className="px-4 py-3 text-center">
+                    {totalPercentAchieved.toFixed(1)}%
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
-
-          <table className="w-full divide-y">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase">
-                  Staff
-                </th>
-                <th className="px-4 py-3 text-center text-xs font-bold uppercase">
-                  Target
-                </th>
-                <th className="px-4 py-3 text-center text-xs font-bold uppercase">
-                  Submitted
-                </th>
-                <th className="px-4 py-3 text-center text-xs font-bold uppercase">
-                  %
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {visibleStaff.map(staff => {
-                const pct =
-                  staff.fullYearTarget > 0
-                    ? (staff.submitted / staff.fullYearTarget) * 100
-                    : 0;
-
-                const isActive = activeStaffId === staff.staff_id;
-
-                return (
-                  <tr
-                    key={staff.staff_id}
-                    className={`transition-colors ${
-                      isActive
-                        ? 'bg-blue-50 ring-1 ring-blue-300'
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <td className="px-4 py-3 font-medium">
-                      {staff.name}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {staff.fullYearTarget}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {staff.submitted}
-                    </td>
-                    <td className="px-4 py-3 text-center font-semibold">
-                      {pct.toFixed(1)}%
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-
-            <tfoot className="bg-gray-100 font-bold">
-              <tr>
-                <td className="px-4 py-3">Total</td>
-                <td className="px-4 py-3 text-center">
-                  {totals.fullYearTarget}
-                </td>
-                <td className="px-4 py-3 text-center">
-                  {totals.submitted}
-                </td>
-                <td className="px-4 py-3 text-center">
-                  {totalPercentAchieved.toFixed(1)}%
-                </td>
-              </tr>
-            </tfoot>
-          </table>
         </div>
 
         {/* CHART */}
-        {!loadingMonthly && (
-          <div className="bg-white rounded-xl shadow-md border tile-brand overflow-hidden">
-            <div className="tile-header px-4 py-1.5">
-              Monthly Progress
-            </div>
+        <div className="bg-white rounded-xl shadow-md border tile-brand overflow-hidden flex flex-col">
+          <div className="tile-header px-4 py-1.5">Monthly Progress</div>
 
-            <div className="p-3 h-[520px]">
+          <div className="flex-1 p-4">
+            {loadingMonthly ? (
+              <div className="h-full flex items-center justify-center text-gray-500">
+                Loading chart data…
+              </div>
+            ) : (
               <SelfAssessmentProgressChart
                 staffProgress={visibleStaff}
                 financialYear={localFinancialYear}
@@ -254,9 +267,9 @@ export const SelfAssessmentProgress: React.FC = () => {
                 activeStaffId={activeStaffId}
                 onActiveStaffChange={setActiveStaffId}
               />
-            </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
