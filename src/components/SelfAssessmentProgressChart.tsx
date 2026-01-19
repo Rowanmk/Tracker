@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { FinancialYear } from '../utils/financialYear';
 import { getFinancialYearMonths } from '../utils/financialYear';
 
@@ -31,6 +31,8 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   financialYear,
   monthlyData,
 }) => {
+  const [activeStaffId, setActiveStaffId] = useState<number | null>(null);
+
   const allMonthData = getFinancialYearMonths();
 
   // Filter to only months April through January (10 months)
@@ -152,6 +154,29 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
   // Get year for January label
   const januaryYear = financialYear.end;
+
+  // Determine if a staff member's line should be highlighted
+  const isLineHighlighted = (staffId: number): boolean => {
+    if (activeStaffId === null) return true; // All lines visible when no selection
+    return staffId === activeStaffId;
+  };
+
+  // Get opacity for a line
+  const getLineOpacity = (staffId: number): number => {
+    if (activeStaffId === null) return 0.8; // Normal opacity
+    return isLineHighlighted(staffId) ? 0.8 : 0.3; // Highlighted or de-emphasized
+  };
+
+  // Get opacity for a point
+  const getPointOpacity = (staffId: number): number => {
+    if (activeStaffId === null) return 0.8;
+    return isLineHighlighted(staffId) ? 0.8 : 0.3;
+  };
+
+  // Toggle active staff selection
+  const handleLegendClick = (staffId: number) => {
+    setActiveStaffId(activeStaffId === staffId ? null : staffId);
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -293,7 +318,8 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
               strokeWidth="3"
               strokeLinecap="round"
               strokeLinejoin="round"
-              opacity="0.8"
+              opacity={getLineOpacity(staff.staff_id)}
+              className="transition-opacity duration-300 ease-in-out"
             />
           ))}
 
@@ -313,15 +339,16 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
                     cy={y}
                     r="4"
                     fill={staff.color}
-                    opacity="0.8"
+                    opacity={getPointOpacity(staff.staff_id)}
+                    className="transition-opacity duration-300 ease-in-out"
                   />
                 );
               })}
             </g>
           ))}
 
-          {/* Staff name and % achieved labels at the end (January) - on ONE line */}
-          {staffChartData.map((staff) => {
+          {/* Staff name and % achieved labels at the end (January) - ONLY when no selection active */}
+          {activeStaffId === null && staffChartData.map((staff) => {
             const lastPoint = staff.points[staff.points.length - 1];
             const lastX = getXForMonth(displayMonths.length - 1);
             const yScale = CHART_HEIGHT / maxPercent;
@@ -334,7 +361,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
                   x={lastX + 12}
                   y={lastY + 2}
                   textAnchor="start"
-                  className="text-xs font-semibold fill-gray-700 dark:fill-gray-300"
+                  className="text-xs font-semibold fill-gray-700 dark:fill-gray-300 transition-opacity duration-300 ease-in-out"
                   style={{ pointerEvents: 'none' }}
                 >
                   {staff.name} {Math.round(lastPoint.percent)}%
@@ -344,19 +371,37 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           })}
         </svg>
 
-        {/* Centered Legend */}
+        {/* Interactive Legend */}
         <div className="mt-4 flex flex-wrap gap-4 justify-center">
-          {staffChartData.map((staff) => (
-            <div key={staff.staff_id} className="flex items-center gap-2">
-              <div
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: staff.color }}
-              />
-              <span className="text-xs text-gray-700 dark:text-gray-300">
-                {staff.name}
-              </span>
-            </div>
-          ))}
+          {staffChartData.map((staff) => {
+            const isActive = activeStaffId === staff.staff_id;
+            return (
+              <button
+                key={staff.staff_id}
+                onClick={() => handleLegendClick(staff.staff_id)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all duration-200 ease-in-out ${
+                  isActive
+                    ? 'bg-blue-100 dark:bg-blue-900/40 ring-2 ring-blue-500 dark:ring-blue-400'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-700/50'
+                }`}
+                title={isActive ? 'Click to deselect' : 'Click to highlight'}
+              >
+                <div
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: staff.color }}
+                />
+                <span
+                  className={`text-xs transition-all duration-200 ease-in-out ${
+                    isActive
+                      ? 'font-bold text-blue-900 dark:text-blue-100'
+                      : 'text-gray-700 dark:text-gray-300'
+                  }`}
+                >
+                  {staff.name}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
