@@ -46,13 +46,8 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
   if (visibleStaff.length === 0) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          Monthly Progress Chart
-        </h3>
-        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-          No staff members with targets to display.
-        </div>
+      <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+        No staff members with targets to display.
       </div>
     );
   }
@@ -159,11 +154,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   const januaryYear = financialYear.end;
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 flex flex-col h-full">
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-        Monthly Progress Chart
-      </h3>
-
+    <div className="flex flex-col h-full">
       <div className="flex-1 flex flex-col">
         <svg
           viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}

@@ -211,9 +211,15 @@ export const SelfAssessmentProgress: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left column: Data table (50% width) */}
-          <div className="overflow-hidden bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col">
-            <div className="overflow-x-auto flex-1">
+          {/* Left column: Data table tile (50% width) */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 tile-brand transition-all duration-300 ease-in-out flex flex-col overflow-hidden">
+            {/* Tile Header */}
+            <div className="tile-header px-4 py-1.5">
+              Self Assessment Data
+            </div>
+
+            {/* Tile Content */}
+            <div className="flex-1 overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
                   <tr>
@@ -294,19 +300,37 @@ export const SelfAssessmentProgress: React.FC = () => {
             </div>
           </div>
 
-          {/* Right column: Chart (50% width) */}
+          {/* Right column: Chart tile (50% width) */}
           {!loadingMonthly && (
-            <SelfAssessmentProgressChart
-              staffProgress={visibleStaff}
-              financialYear={localFinancialYear}
-              monthlyData={monthlyData}
-            />
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 tile-brand transition-all duration-300 ease-in-out flex flex-col overflow-hidden">
+              {/* Tile Header */}
+              <div className="tile-header px-4 py-1.5">
+                Monthly Progress
+              </div>
+
+              {/* Tile Content */}
+              <div className="flex-1 overflow-hidden p-3">
+                <SelfAssessmentProgressChart
+                  staffProgress={visibleStaff}
+                  financialYear={localFinancialYear}
+                  monthlyData={monthlyData}
+                />
+              </div>
+            </div>
           )}
           {loadingMonthly && (
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 text-center flex items-center justify-center">
-              <p className="text-gray-500 dark:text-gray-400">
-                Loading chart data…
-              </p>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 tile-brand transition-all duration-300 ease-in-out flex flex-col overflow-hidden">
+              {/* Tile Header */}
+              <div className="tile-header px-4 py-1.5">
+                Monthly Progress
+              </div>
+
+              {/* Tile Content */}
+              <div className="flex-1 p-6 flex items-center justify-center text-center">
+                <p className="text-gray-500 dark:text-gray-400">
+                  Loading chart data…
+                </p>
+              </div>
             </div>
           )}
         </div>
