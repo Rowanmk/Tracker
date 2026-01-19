@@ -161,16 +161,28 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
     return staffId === activeStaffId;
   };
 
+  // Get stroke width for a line
+  const getLineStrokeWidth = (staffId: number): number => {
+    if (activeStaffId === null) return 3; // Normal width
+    return isLineHighlighted(staffId) ? 4.5 : 2; // Highlighted or de-emphasized
+  };
+
+  // Get color for a line (grey if not highlighted)
+  const getLineColor = (staffId: number, originalColor: string): string => {
+    if (activeStaffId === null) return originalColor; // Normal color
+    return isLineHighlighted(staffId) ? originalColor : '#D1D5DB'; // Grey if de-emphasized
+  };
+
   // Get opacity for a line
   const getLineOpacity = (staffId: number): number => {
     if (activeStaffId === null) return 0.8; // Normal opacity
-    return isLineHighlighted(staffId) ? 0.8 : 0.3; // Highlighted or de-emphasized
+    return isLineHighlighted(staffId) ? 1 : 0.3; // Highlighted or de-emphasized
   };
 
   // Get opacity for a point
   const getPointOpacity = (staffId: number): number => {
     if (activeStaffId === null) return 0.8;
-    return isLineHighlighted(staffId) ? 0.8 : 0.3;
+    return isLineHighlighted(staffId) ? 1 : 0.3;
   };
 
   // Toggle active staff selection
@@ -314,12 +326,12 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
               key={staff.staff_id}
               d={generatePath(staff.points)}
               fill="none"
-              stroke={staff.color}
-              strokeWidth="3"
+              stroke={getLineColor(staff.staff_id, staff.color)}
+              strokeWidth={getLineStrokeWidth(staff.staff_id)}
               strokeLinecap="round"
               strokeLinejoin="round"
               opacity={getLineOpacity(staff.staff_id)}
-              className="transition-opacity duration-300 ease-in-out"
+              className="transition-all duration-300 ease-in-out"
             />
           ))}
 
@@ -338,9 +350,9 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
                     cx={x}
                     cy={y}
                     r="4"
-                    fill={staff.color}
+                    fill={getLineColor(staff.staff_id, staff.color)}
                     opacity={getPointOpacity(staff.staff_id)}
-                    className="transition-opacity duration-300 ease-in-out"
+                    className="transition-all duration-300 ease-in-out"
                   />
                 );
               })}
@@ -355,13 +367,13 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
             const lastY = VIEWBOX_HEIGHT - PADDING_BOTTOM - lastPoint.percent * yScale;
 
             return (
-              <g key={`end-label-${staff.staff_id}`}>
+              <g key={`end-label-${staff.staff_id}`} className="transition-opacity duration-300 ease-in-out">
                 {/* Combined label: "Name 99%" on one line */}
                 <text
                   x={lastX + 12}
                   y={lastY + 2}
                   textAnchor="start"
-                  className="text-xs font-semibold fill-gray-700 dark:fill-gray-300 transition-opacity duration-300 ease-in-out"
+                  className="text-xs font-semibold fill-gray-700 dark:fill-gray-300"
                   style={{ pointerEvents: 'none' }}
                 >
                   {staff.name} {Math.round(lastPoint.percent)}%
@@ -371,32 +383,45 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           })}
         </svg>
 
-        {/* Interactive Legend */}
-        <div className="mt-4 flex flex-wrap gap-4 justify-center">
+        {/* Interactive Legend - Redesigned as Pill Buttons */}
+        <div className="mt-6 flex flex-wrap gap-3 justify-center px-2">
           {staffChartData.map((staff) => {
             const isActive = activeStaffId === staff.staff_id;
             return (
               <button
                 key={staff.staff_id}
                 onClick={() => handleLegendClick(staff.staff_id)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all duration-200 ease-in-out ${
+                className={`
+                  flex items-center gap-2 px-4 py-2 rounded-full
+                  border-2 transition-all duration-200 ease-in-out
+                  cursor-pointer font-medium text-sm
+                  ${
+                    isActive
+                      ? 'text-white shadow-lg ring-2 ring-offset-2 dark:ring-offset-gray-800'
+                      : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                  }
+                `}
+                style={
                   isActive
-                    ? 'bg-blue-100 dark:bg-blue-900/40 ring-2 ring-blue-500 dark:ring-blue-400'
-                    : 'hover:bg-gray-100 dark:hover:bg-gray-700/50'
-                }`}
+                    ? {
+                        backgroundColor: staff.color,
+                        borderColor: staff.color,
+                        boxShadow: `0 4px 12px ${staff.color}40`,
+                      }
+                    : {}
+                }
                 title={isActive ? 'Click to deselect' : 'Click to highlight'}
               >
+                {/* Color indicator dot */}
                 <div
-                  className="w-3 h-3 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: staff.color }}
+                  className="w-3 h-3 rounded-full flex-shrink-0 transition-all duration-200"
+                  style={{
+                    backgroundColor: staff.color,
+                    opacity: isActive ? 1 : 0.7,
+                  }}
                 />
-                <span
-                  className={`text-xs transition-all duration-200 ease-in-out ${
-                    isActive
-                      ? 'font-bold text-blue-900 dark:text-blue-100'
-                      : 'text-gray-700 dark:text-gray-300'
-                  }`}
-                >
+                {/* Staff name */}
+                <span className="whitespace-nowrap">
                   {staff.name}
                 </span>
               </button>
