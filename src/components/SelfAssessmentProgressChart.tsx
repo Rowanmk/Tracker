@@ -47,27 +47,35 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   const visibleStaff = staffProgress.filter(s => s.fullYearTarget > 0);
 
   const colours = [
-    '#001B47', '#0060B8', '#007EE0',
-    '#FF8A2A', '#FFB000', '#008A00'
+    '#001B47',
+    '#0060B8',
+    '#007EE0',
+    '#FF8A2A',
+    '#FFB000',
+    '#008A00',
   ];
 
   const chartData = React.useMemo(() => {
     return visibleStaff.map((staff, idx) => {
       let cumulative = 0;
+
+      const points: MonthlyPoint[] = months.map(m => {
+        cumulative += monthlyData[staff.staff_id]?.[m.number]?.submitted ?? 0;
+
+        return {
+          month: m.number,
+          percent: Math.min(
+            (cumulative / staff.fullYearTarget) * 100,
+            100
+          ),
+        };
+      });
+
       return {
         staff_id: staff.staff_id,
         name: staff.name,
         color: colours[idx % colours.length],
-        points: months.map(m => {
-          cumulative += monthlyData[staff.staff_id]?.[m.number]?.submitted ?? 0;
-          return {
-            month: m.number,
-            percent: Math.min(
-              (cumulative / staff.fullYearTarget) * 100,
-              100
-            ),
-          };
-        }),
+        points,
       };
     });
   }, [visibleStaff, months, monthlyData]);
@@ -103,13 +111,30 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
         />
 
         {/* Axes */}
-        <line x1={PADDING_LEFT} y1={PADDING_TOP} x2={PADDING_LEFT} y2={VIEWBOX_HEIGHT - PADDING_BOTTOM} stroke="#6B7280" />
-        <line x1={PADDING_LEFT} y1={VIEWBOX_HEIGHT - PADDING_BOTTOM} x2={VIEWBOX_WIDTH - PADDING_RIGHT} y2={VIEWBOX_HEIGHT - PADDING_BOTTOM} stroke="#6B7280" />
+        <line
+          x1={PADDING_LEFT}
+          y1={PADDING_TOP}
+          x2={PADDING_LEFT}
+          y2={VIEWBOX_HEIGHT - PADDING_BOTTOM}
+          stroke="#6B7280"
+        />
+        <line
+          x1={PADDING_LEFT}
+          y1={VIEWBOX_HEIGHT - PADDING_BOTTOM}
+          x2={VIEWBOX_WIDTH - PADDING_RIGHT}
+          y2={VIEWBOX_HEIGHT - PADDING_BOTTOM}
+          stroke="#6B7280"
+        />
 
-        {/* Y grid */}
-        {[0,25,50,75,100].map(p => (
+        {/* Y grid + labels */}
+        {[0, 25, 50, 75, 100].map(p => (
           <g key={p}>
-            <text x={PADDING_LEFT - 10} y={getY(p)+4} textAnchor="end" className="text-xs fill-gray-600">
+            <text
+              x={PADDING_LEFT - 10}
+              y={getY(p) + 4}
+              textAnchor="end"
+              className="text-xs fill-gray-600"
+            >
               {p}%
             </text>
             {p > 0 && (
@@ -125,7 +150,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           </g>
         ))}
 
-        {/* X axis labels */}
+        {/* X-axis labels */}
         {months.map((m, i) => (
           <text
             key={m.number}
@@ -146,13 +171,39 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
         {chartData.map(staff => (
           <path
             key={staff.staff_id}
-            d={staff.points.map((p,i)=>`${i?'L':'M'} ${getX(i)} ${getY(p.percent)}`).join(' ')}
+            d={staff.points
+              .map((p, i) => `${i ? 'L' : 'M'} ${getX(i)} ${getY(p.percent)}`)
+              .join(' ')}
             fill="none"
-            stroke={activeStaffId && activeStaffId !== staff.staff_id ? '#9CA3AF' : staff.color}
+            stroke={
+              activeStaffId && activeStaffId !== staff.staff_id
+                ? '#9CA3AF'
+                : staff.color
+            }
             strokeWidth={activeStaffId === staff.staff_id ? 4.5 : 3}
-            opacity={activeStaffId && activeStaffId !== staff.staff_id ? 0.5 : 1}
+            opacity={activeStaffId && activeStaffId !== staff.staff_id ? 0.6 : 1}
+            strokeLinecap="round"
+            strokeLinejoin="round"
           />
         ))}
+
+        {/* % labels for selected staff only */}
+        {activeStaffId &&
+          chartData
+            .filter(staff => staff.staff_id === activeStaffId)
+            .map(staff =>
+              staff.points.map((p, i) => (
+                <text
+                  key={`label-${staff.staff_id}-${i}`}
+                  x={getX(i)}
+                  y={getY(p.percent) - 10}
+                  textAnchor="middle"
+                  className="text-xs font-semibold fill-gray-800"
+                >
+                  {Math.round(p.percent)}%
+                </text>
+              ))
+            )}
       </svg>
 
       {/* Legend */}
@@ -165,7 +216,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
                 activeStaffId === staff.staff_id ? null : staff.staff_id
               )
             }
-            className={`px-4 py-2 rounded-lg border text-sm ${
+            className={`px-4 py-2 rounded-lg border text-sm transition-all ${
               activeStaffId === staff.staff_id
                 ? 'text-white'
                 : 'bg-white border-gray-300'
