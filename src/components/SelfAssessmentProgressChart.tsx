@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import * as React from 'react';
 import type { FinancialYear } from '../utils/financialYear';
 import { getFinancialYearMonths } from '../utils/financialYear';
 
@@ -10,424 +10,250 @@ interface StaffProgressData {
   leftToDo: number;
 }
 
+interface MonthlyPoint {
+  month: number;
+  percent: number;
+}
+
+interface StaffChartLine {
+  staff_id: number;
+  name: string;
+  color: string;
+  points: MonthlyPoint[];
+}
+
 interface SelfAssessmentProgressChartProps {
   staffProgress: StaffProgressData[];
   financialYear: FinancialYear;
-  monthlyData: Record<number, Record<number, { submitted: number; target: number }>>;
+  monthlyData: Record<
+    number,
+    Record<number, { submitted: number; target: number }>
+  >;
+  activeStaffId: number | null;
+  onActiveStaffChange: (id: number | null) => void;
 }
 
+/* ---------------- Layout constants ---------------- */
 const VIEWBOX_WIDTH = 800;
-const VIEWBOX_HEIGHT = 400;
+const VIEWBOX_HEIGHT = 460;
 const PADDING_LEFT = 50;
-const PADDING_RIGHT = 150;
+const PADDING_RIGHT = 140;
 const PADDING_TOP = 30;
-const PADDING_BOTTOM = 80;
+const PADDING_BOTTOM = 55;
 
 const CHART_WIDTH = VIEWBOX_WIDTH - PADDING_LEFT - PADDING_RIGHT;
 const CHART_HEIGHT = VIEWBOX_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
+const MAX_PERCENT = 100;
 
-export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartProps> = ({
+export const SelfAssessmentProgressChart: React.FC<
+  SelfAssessmentProgressChartProps
+> = ({
   staffProgress,
   financialYear,
   monthlyData,
+  activeStaffId,
+  onActiveStaffChange,
 }) => {
-  const [activeStaffId, setActiveStaffId] = useState<number | null>(null);
+  const months = getFinancialYearMonths().filter(
+    (m) => m.number >= 4 || m.number <= 1
+  );
 
-  const allMonthData = getFinancialYearMonths();
-
-  // Filter to only months April through January (10 months)
-  const displayMonths = allMonthData.filter((m) => {
-    // April (4) through January (1)
-    return m.number >= 4 || m.number <= 1;
-  });
-
-  // Filter to only staff with targets
   const visibleStaff = staffProgress.filter(
-    (staff) => staff.fullYearTarget > 0
+    (s) => s.fullYearTarget > 0
   );
 
   if (visibleStaff.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+      <div className="text-center py-8 text-gray-500">
         No staff members with targets to display.
       </div>
     );
   }
 
-  // Generate color palette for staff members
-  const colors = [
-    '#001B47', // Dark blue
-    '#0060B8', // Medium blue
-    '#007EE0', // Light blue
-    '#FF8A2A', // Orange
-    '#FFB000', // Gold
-    '#008A00', // Green
-    '#FF3B30', // Red
-    '#9C27B0', // Purple
-    '#00BCD4', // Cyan
-    '#FF5722', // Deep orange
+  const colours: string[] = [
+    '#001B47',
+    '#0060B8',
+    '#007EE0',
+    '#FF8A2A',
+    '#FFB000',
+    '#008A00',
+    '#9C27B0',
   ];
 
-  const getColor = (index: number) => colors[index % colors.length];
+  const chartData: StaffChartLine[] = React.useMemo(() => {
+    return visibleStaff.map((staff, idx) => {
+      let cumulative = 0;
 
-  // Build cumulative data for each staff member
-  const staffChartData = useMemo(() => {
-    return visibleStaff.map((staff, staffIndex) => {
-      const points: Array<{ month: number; percent: number }> = [];
+      const points: MonthlyPoint[] = months.map((m) => {
+        cumulative +=
+          monthlyData[staff.staff_id]?.[m.number]?.submitted ?? 0;
 
-      let cumulativeSubmitted = 0;
-
-      displayMonths.forEach((m) => {
-        const staffMonthData = monthlyData[staff.staff_id]?.[m.number];
-        if (staffMonthData) {
-          cumulativeSubmitted += staffMonthData.submitted;
-        }
-
-        const percentAchieved =
+        const percent =
           staff.fullYearTarget > 0
-            ? (cumulativeSubmitted / staff.fullYearTarget) * 100
+            ? Math.min((cumulative / staff.fullYearTarget) * 100, 100)
             : 0;
 
-        points.push({
-          month: m.number,
-          percent: Math.min(percentAchieved, 100),
-        });
+        return { month: m.number, percent };
       });
 
       return {
         staff_id: staff.staff_id,
         name: staff.name,
-        color: getColor(staffIndex),
+        color: colours[idx % colours.length],
         points,
       };
     });
-  }, [visibleStaff, monthlyData, displayMonths]);
+  }, [visibleStaff, months, monthlyData]);
 
-  // Calculate Y-axis max (cap at 100%)
-  const maxPercent = 100;
+  const getX = (index: number): number =>
+    PADDING_LEFT +
+    (CHART_WIDTH / (months.length - 1)) * index;
 
-  // Generate smooth curve path using quadratic Bezier curves
-  const generatePath = (points: Array<{ month: number; percent: number }>) => {
-    if (points.length === 0) return '';
+  const getY = (percent: number): number =>
+    VIEWBOX_HEIGHT -
+    PADDING_BOTTOM -
+    (percent / MAX_PERCENT) * CHART_HEIGHT;
 
-    const xStep = CHART_WIDTH / (displayMonths.length - 1 || 1);
-    const yScale = CHART_HEIGHT / maxPercent;
+  const strokeWidth = (id: number): number =>
+    activeStaffId === null ? 3 : id === activeStaffId ? 4.5 : 2;
 
-    const pathPoints = points.map((p, idx) => {
-      const x = PADDING_LEFT + idx * xStep;
-      const y = VIEWBOX_HEIGHT - PADDING_BOTTOM - p.percent * yScale;
-      return { x, y };
-    });
+  const strokeOpacity = (id: number): number =>
+    activeStaffId === null ? 0.85 : id === activeStaffId ? 1 : 0.5;
 
-    if (pathPoints.length === 1) {
-      return `M ${pathPoints[0].x} ${pathPoints[0].y}`;
-    }
+  const strokeColor = (id: number, c: string): string =>
+    activeStaffId === null ? c : id === activeStaffId ? c : '#9CA3AF';
 
-    let path = `M ${pathPoints[0].x} ${pathPoints[0].y}`;
-
-    for (let i = 1; i < pathPoints.length; i++) {
-      const prev = pathPoints[i - 1];
-      const curr = pathPoints[i];
-      const next = pathPoints[i + 1];
-
-      // Control point for smooth curve
-      const cpx = (prev.x + curr.x) / 2;
-      const cpy = (prev.y + curr.y) / 2;
-
-      path += ` Q ${cpx} ${cpy} ${curr.x} ${curr.y}`;
-    }
-
-    return path;
-  };
-
-  // Calculate x positions for shaded regions
-  const getXForMonth = (monthIndex: number) => {
-    const xStep = CHART_WIDTH / (displayMonths.length - 1 || 1);
-    return PADDING_LEFT + monthIndex * xStep;
-  };
-
-  // Shaded regions: April-July (indices 0-3) and October-January (indices 6-9)
-  const aprilJulyStart = getXForMonth(0);
-  const aprilJulyEnd = getXForMonth(3);
-  const octoberJanuaryStart = getXForMonth(6);
-  const octoberJanuaryEnd = getXForMonth(displayMonths.length - 1);
-
-  // Get year for January label
-  const januaryYear = financialYear.end;
-
-  // Determine if a staff member's line should be highlighted
-  const isLineHighlighted = (staffId: number): boolean => {
-    if (activeStaffId === null) return true; // All lines visible when no selection
-    return staffId === activeStaffId;
-  };
-
-  // Get stroke width for a line
-  const getLineStrokeWidth = (staffId: number): number => {
-    if (activeStaffId === null) return 3; // Normal width
-    return isLineHighlighted(staffId) ? 4.5 : 2; // Highlighted or de-emphasized
-  };
-
-  // Get color for a line (grey if not highlighted)
-  const getLineColor = (staffId: number, originalColor: string): string => {
-    if (activeStaffId === null) return originalColor; // Normal color
-    return isLineHighlighted(staffId) ? originalColor : '#D1D5DB'; // Grey if de-emphasized
-  };
-
-  // Get opacity for a line
-  const getLineOpacity = (staffId: number): number => {
-    if (activeStaffId === null) return 0.8; // Normal opacity
-    return isLineHighlighted(staffId) ? 1 : 0.3; // Highlighted or de-emphasized
-  };
-
-  // Get opacity for a point
-  const getPointOpacity = (staffId: number): number => {
-    if (activeStaffId === null) return 0.8;
-    return isLineHighlighted(staffId) ? 1 : 0.3;
-  };
-
-  // Toggle active staff selection
-  const handleLegendClick = (staffId: number) => {
-    setActiveStaffId(activeStaffId === staffId ? null : staffId);
-  };
+  const toggleStaff = (id: number): void =>
+    onActiveStaffChange(activeStaffId === id ? null : id);
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 flex flex-col">
-        <svg
-          viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
-          className="w-full flex-1"
-          preserveAspectRatio="xMidYMid meet"
-        >
-          {/* Shaded background regions */}
-          {/* April-July shading */}
-          <rect
-            x={aprilJulyStart}
-            y={PADDING_TOP}
-            width={aprilJulyEnd - aprilJulyStart}
-            height={CHART_HEIGHT}
-            fill="#E0E7FF"
-            opacity="0.4"
-            className="dark:fill-blue-900"
-          />
+      <svg
+        viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
+        className="w-full flex-1"
+        preserveAspectRatio="xMidYMid meet"
+      >
+        {/* Axes */}
+        <line
+          x1={PADDING_LEFT}
+          y1={PADDING_TOP}
+          x2={PADDING_LEFT}
+          y2={VIEWBOX_HEIGHT - PADDING_BOTTOM}
+          stroke="#6B7280"
+        />
+        <line
+          x1={PADDING_LEFT}
+          y1={VIEWBOX_HEIGHT - PADDING_BOTTOM}
+          x2={VIEWBOX_WIDTH - PADDING_RIGHT}
+          y2={VIEWBOX_HEIGHT - PADDING_BOTTOM}
+          stroke="#6B7280"
+        />
 
-          {/* October-January shading */}
-          <rect
-            x={octoberJanuaryStart}
-            y={PADDING_TOP}
-            width={octoberJanuaryEnd - octoberJanuaryStart}
-            height={CHART_HEIGHT}
-            fill="#E0E7FF"
-            opacity="0.4"
-            className="dark:fill-blue-900"
-          />
-
-          {/* Y-axis */}
-          <line
-            x1={PADDING_LEFT}
-            y1={PADDING_TOP}
-            x2={PADDING_LEFT}
-            y2={VIEWBOX_HEIGHT - PADDING_BOTTOM}
-            stroke="#6B7280"
-            strokeWidth="2"
-          />
-
-          {/* X-axis */}
-          <line
-            x1={PADDING_LEFT}
-            y1={VIEWBOX_HEIGHT - PADDING_BOTTOM}
-            x2={VIEWBOX_WIDTH - PADDING_RIGHT}
-            y2={VIEWBOX_HEIGHT - PADDING_BOTTOM}
-            stroke="#6B7280"
-            strokeWidth="2"
-          />
-
-          {/* Y-axis gridlines and labels */}
-          {[0, 25, 50, 75, 100].map((percent) => {
-            const y =
-              VIEWBOX_HEIGHT -
-              PADDING_BOTTOM -
-              (percent / maxPercent) * CHART_HEIGHT;
-            return (
-              <g key={`y-${percent}`}>
+        {/* Y grid */}
+        {[0, 25, 50, 75, 100].map((p: number) => {
+          const y = getY(p);
+          return (
+            <g key={p}>
+              <text
+                x={PADDING_LEFT - 10}
+                y={y + 4}
+                textAnchor="end"
+                className="text-xs fill-gray-500"
+              >
+                {p}%
+              </text>
+              {p > 0 && (
                 <line
-                  x1={PADDING_LEFT - 5}
+                  x1={PADDING_LEFT}
                   y1={y}
-                  x2={PADDING_LEFT}
+                  x2={VIEWBOX_WIDTH - PADDING_RIGHT}
                   y2={y}
-                  stroke="#6B7280"
-                  strokeWidth="1"
+                  stroke="#E5E7EB"
+                  strokeDasharray="4 4"
                 />
-                <text
-                  x={PADDING_LEFT - 10}
-                  y={y + 4}
-                  textAnchor="end"
-                  className="text-xs fill-gray-600 dark:fill-gray-400"
-                >
-                  {percent}%
-                </text>
-                {percent > 0 && percent < 100 && (
-                  <line
-                    x1={PADDING_LEFT}
-                    y1={y}
-                    x2={VIEWBOX_WIDTH - PADDING_RIGHT}
-                    y2={y}
-                    stroke="#E5E7EB"
-                    strokeWidth="1"
-                    strokeDasharray="4,4"
-                    className="dark:stroke-gray-700"
-                  />
-                )}
-              </g>
-            );
-          })}
+              )}
+            </g>
+          );
+        })}
 
-          {/* X-axis labels (months with year) */}
-          {displayMonths.map((m, idx) => {
-            const x = getXForMonth(idx);
-            // Add year to January and April
-            const monthLabel = m.number === 1 ? `${m.name} ${januaryYear}` : m.number === 4 ? `${m.name} ${financialYear.start}` : m.name;
-            return (
-              <g key={`x-${m.number}`}>
-                <line
-                  x1={x}
-                  y1={VIEWBOX_HEIGHT - PADDING_BOTTOM}
-                  x2={x}
-                  y2={VIEWBOX_HEIGHT - PADDING_BOTTOM + 5}
-                  stroke="#6B7280"
-                  strokeWidth="1"
-                />
-                <text
-                  x={x}
-                  y={VIEWBOX_HEIGHT - PADDING_BOTTOM + 20}
-                  textAnchor="middle"
-                  className="text-xs fill-gray-600 dark:fill-gray-400"
-                >
-                  {monthLabel}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* 100% reference line */}
-          <line
-            x1={PADDING_LEFT}
-            y1={VIEWBOX_HEIGHT - PADDING_BOTTOM - CHART_HEIGHT}
-            x2={VIEWBOX_WIDTH - PADDING_RIGHT}
-            y2={VIEWBOX_HEIGHT - PADDING_BOTTOM - CHART_HEIGHT}
-            stroke="#001B47"
-            strokeWidth="2"
-            strokeDasharray="6,4"
-            opacity="0.5"
-          />
-
-          {/* Data lines */}
-          {staffChartData.map((staff) => (
+        {/* Lines & points */}
+        {chartData.map((staff) => (
+          <g key={staff.staff_id}>
             <path
-              key={staff.staff_id}
-              d={generatePath(staff.points)}
+              d={staff.points
+                .map(
+                  (p: MonthlyPoint, i: number) =>
+                    `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(
+                      p.percent
+                    )}`
+                )
+                .join(' ')}
               fill="none"
-              stroke={getLineColor(staff.staff_id, staff.color)}
-              strokeWidth={getLineStrokeWidth(staff.staff_id)}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              opacity={getLineOpacity(staff.staff_id)}
-              className="transition-all duration-300 ease-in-out"
+              stroke={strokeColor(staff.staff_id, staff.color)}
+              strokeWidth={strokeWidth(staff.staff_id)}
+              opacity={strokeOpacity(staff.staff_id)}
             />
-          ))}
 
-          {/* Data points (circles) */}
-          {staffChartData.map((staff) => (
-            <g key={`points-${staff.staff_id}`}>
-              {staff.points.map((p, idx) => {
-                const x = getXForMonth(idx);
-                const yScale = CHART_HEIGHT / maxPercent;
-                const y =
-                  VIEWBOX_HEIGHT - PADDING_BOTTOM - p.percent * yScale;
+            {staff.points.map((p: MonthlyPoint, i: number) => {
+              const x = getX(i);
+              const y = getY(p.percent);
 
-                return (
+              return (
+                <g key={i}>
                   <circle
-                    key={`point-${idx}`}
                     cx={x}
                     cy={y}
-                    r="4"
-                    fill={getLineColor(staff.staff_id, staff.color)}
-                    opacity={getPointOpacity(staff.staff_id)}
-                    className="transition-all duration-300 ease-in-out"
+                    r={4}
+                    fill={strokeColor(staff.staff_id, staff.color)}
+                    opacity={strokeOpacity(staff.staff_id)}
                   />
-                );
-              })}
-            </g>
-          ))}
 
-          {/* Staff name and % achieved labels at the end (January) - ONLY when no selection active */}
-          {activeStaffId === null && staffChartData.map((staff) => {
-            const lastPoint = staff.points[staff.points.length - 1];
-            const lastX = getXForMonth(displayMonths.length - 1);
-            const yScale = CHART_HEIGHT / maxPercent;
-            const lastY = VIEWBOX_HEIGHT - PADDING_BOTTOM - lastPoint.percent * yScale;
+                  {activeStaffId === staff.staff_id && (
+                    <text
+                      x={x}
+                      y={y - 10}
+                      textAnchor="middle"
+                      className="text-xs font-medium"
+                      fill={staff.color}
+                    >
+                      {Math.round(p.percent)}%
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </g>
+        ))}
+      </svg>
 
-            return (
-              <g key={`end-label-${staff.staff_id}`} className="transition-opacity duration-300 ease-in-out">
-                {/* Combined label: "Name 99%" on one line */}
-                <text
-                  x={lastX + 12}
-                  y={lastY + 2}
-                  textAnchor="start"
-                  className="text-xs font-semibold fill-gray-700 dark:fill-gray-300"
-                  style={{ pointerEvents: 'none' }}
-                >
-                  {staff.name} {Math.round(lastPoint.percent)}%
-                </text>
-              </g>
-            );
-          })}
-        </svg>
-
-        {/* Interactive Legend - Redesigned as Pill Buttons */}
-        <div className="mt-6 flex flex-wrap gap-3 justify-center px-2">
-          {staffChartData.map((staff) => {
-            const isActive = activeStaffId === staff.staff_id;
-            return (
-              <button
-                key={staff.staff_id}
-                onClick={() => handleLegendClick(staff.staff_id)}
-                className={`
-                  flex items-center gap-2 px-4 py-2 rounded-full
-                  border-2 transition-all duration-200 ease-in-out
-                  cursor-pointer font-medium text-sm
-                  ${
-                    isActive
-                      ? 'text-white shadow-lg ring-2 ring-offset-2 dark:ring-offset-gray-800'
-                      : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                  }
-                `}
-                style={
-                  isActive
-                    ? {
-                        backgroundColor: staff.color,
-                        borderColor: staff.color,
-                        boxShadow: `0 4px 12px ${staff.color}40`,
-                      }
-                    : {}
+      {/* Legend */}
+      <div className="mt-3 flex flex-wrap justify-center gap-3">
+        {chartData.map((staff) => {
+          const active = staff.staff_id === activeStaffId;
+          return (
+            <button
+              key={staff.staff_id}
+              onClick={() => toggleStaff(staff.staff_id)}
+              className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all
+                ${
+                  active
+                    ? 'text-white shadow-md'
+                    : 'bg-white border-gray-300 hover:bg-gray-50'
                 }
-                title={isActive ? 'Click to deselect' : 'Click to highlight'}
-              >
-                {/* Color indicator dot */}
-                <div
-                  className="w-3 h-3 rounded-full flex-shrink-0 transition-all duration-200"
-                  style={{
-                    backgroundColor: staff.color,
-                    opacity: isActive ? 1 : 0.7,
-                  }}
-                />
-                {/* Staff name */}
-                <span className="whitespace-nowrap">
-                  {staff.name}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+              `}
+              style={
+                active
+                  ? {
+                      backgroundColor: staff.color,
+                      borderColor: staff.color,
+                    }
+                  : {}
+              }
+            >
+              {staff.name}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
