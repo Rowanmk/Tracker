@@ -187,7 +187,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           />
         ))}
 
-        {/* % labels for selected staff only */}
+        {/* Monthly % labels - only when a staff member is selected */}
         {activeStaffId &&
           chartData
             .filter(staff => staff.staff_id === activeStaffId)
@@ -204,6 +204,26 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
                 </text>
               ))
             )}
+
+        {/* End-of-line staff name labels - only when no selection is made */}
+        {!activeStaffId &&
+          chartData.map(staff => {
+            const lastPoint = staff.points[staff.points.length - 1];
+            const lastX = getX(staff.points.length - 1);
+            const lastY = getY(lastPoint.percent);
+
+            return (
+              <g key={`end-label-${staff.staff_id}`}>
+                <text
+                  x={lastX + 8}
+                  y={lastY + 4}
+                  className="text-xs font-semibold fill-gray-800"
+                >
+                  {staff.name}
+                </text>
+              </g>
+            );
+          })}
       </svg>
 
       {/* Legend */}
