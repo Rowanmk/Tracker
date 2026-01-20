@@ -79,6 +79,7 @@ export const StaffTracker: React.FC = () => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollPositionRef = useRef<number>(0);
   const isInitialLoadRef = useRef<boolean>(true);
+  const pendingScrollRef = useRef<boolean>(false);
 
   const daysInMonth = new Date(year, selectedMonth, 0).getDate();
 
@@ -151,10 +152,15 @@ export const StaffTracker: React.FC = () => {
     [services]
   );
 
-  // Restore scroll position after render (only when not initial load)
+  // Restore scroll position after render using requestAnimationFrame
   useEffect(() => {
-    if (scrollContainerRef.current && !isInitialLoadRef.current) {
-      scrollContainerRef.current.scrollLeft = scrollPositionRef.current;
+    if (pendingScrollRef.current && scrollContainerRef.current) {
+      requestAnimationFrame(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollLeft = scrollPositionRef.current;
+          pendingScrollRef.current = false;
+        }
+      });
     }
   }, [dailyEntries, localInputState]);
 
@@ -243,6 +249,7 @@ export const StaffTracker: React.FC = () => {
     if (servicesLoading || leaveHolidayLoading) return;
     isInitialLoadRef.current = true;
     scrollPositionRef.current = 0;
+    pendingScrollRef.current = false;
     fetchData();
   }, [
     selectedMonth,
@@ -283,6 +290,7 @@ export const StaffTracker: React.FC = () => {
     // Save scroll position before state update
     if (scrollContainerRef.current) {
       scrollPositionRef.current = scrollContainerRef.current.scrollLeft;
+      pendingScrollRef.current = true;
     }
     
     setLocalInputState((prev) => ({ ...prev, [key]: cleaned }));
@@ -315,6 +323,7 @@ export const StaffTracker: React.FC = () => {
     // Save scroll position before async operation
     if (scrollContainerRef.current) {
       scrollPositionRef.current = scrollContainerRef.current.scrollLeft;
+      pendingScrollRef.current = true;
     }
 
     setSavingKey(key);
@@ -378,7 +387,6 @@ export const StaffTracker: React.FC = () => {
         <div 
           className="overflow-x-auto" 
           ref={scrollContainerRef}
-          style={{ scrollBehavior: 'auto' }}
         >
           <table className="min-w-max w-full border-collapse">
             <thead>
