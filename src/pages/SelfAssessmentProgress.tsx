@@ -131,7 +131,16 @@ export const SelfAssessmentProgress: React.FC = () => {
     (s) => s.fullYearTarget > 0 || s.submitted > 0
   );
 
-  const totals = visibleStaff.reduce(
+  // Sort by % achieved (highest to lowest)
+  const sortedVisibleStaff = useMemo(() => {
+    return [...visibleStaff].sort((a, b) => {
+      const percentA = a.fullYearTarget > 0 ? (a.submitted / a.fullYearTarget) * 100 : 0;
+      const percentB = b.fullYearTarget > 0 ? (b.submitted / b.fullYearTarget) * 100 : 0;
+      return percentB - percentA; // Descending order (highest first)
+    });
+  }, [visibleStaff]);
+
+  const totals = sortedVisibleStaff.reduce(
     (acc, s) => {
       acc.fullYearTarget += s.fullYearTarget;
       acc.submitted += s.submitted;
@@ -204,7 +213,7 @@ export const SelfAssessmentProgress: React.FC = () => {
               </thead>
 
               <tbody>
-                {visibleStaff.map((staff) => {
+                {sortedVisibleStaff.map((staff) => {
                   const pct =
                     staff.fullYearTarget > 0
                       ? (staff.submitted / staff.fullYearTarget) * 100
@@ -261,7 +270,7 @@ export const SelfAssessmentProgress: React.FC = () => {
               </div>
             ) : (
               <SelfAssessmentProgressChart
-                staffProgress={visibleStaff}
+                staffProgress={sortedVisibleStaff}
                 financialYear={localFinancialYear}
                 monthlyData={monthlyData}
                 activeStaffId={activeStaffId}
