@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useDate } from "../context/DateContext";
 import { useAuth } from "../context/AuthContext";
 import { useServices } from "../hooks/useServices";
@@ -75,6 +75,11 @@ export const StaffTracker: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
+  // Scroll position management
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollPositionRef = useRef<number>(0);
+  const isInitialLoadRef = useRef<boolean>(true);
+
   const daysInMonth = new Date(year, selectedMonth, 0).getDate();
 
   const staffIds = useMemo<number[]>(() => {
@@ -145,6 +150,20 @@ export const StaffTracker: React.FC = () => {
     },
     [services]
   );
+
+  // Save scroll position before state changes
+  const saveScrollPosition = () => {
+    if (scrollContainerRef.current) {
+      scrollPositionRef.current = scrollContainerRef.current.scrollLeft;
+    }
+  };
+
+  // Restore scroll position after render
+  useEffect(() => {
+    if (scrollContainerRef.current && !isInitialLoadRef.current) {
+      scrollContainerRef.current.scrollLeft = scrollPositionRef.current;
+    }
+  }, [localInputState, dailyEntries]);
 
   const fetchData = async () => {
     if (services.length === 0 || staffIds.length === 0) {
@@ -220,10 +239,13 @@ export const StaffTracker: React.FC = () => {
 
     setStaffPerformance(perf);
     setLoading(false);
+    isInitialLoadRef.current = false;
   };
 
   useEffect(() => {
     if (servicesLoading || leaveHolidayLoading) return;
+    isInitialLoadRef.current = true;
+    scrollPositionRef.current = 0;
     fetchData();
   }, [
     selectedMonth,
@@ -258,6 +280,7 @@ export const StaffTracker: React.FC = () => {
     day: number,
     raw: string
   ) => {
+    saveScrollPosition();
     const cleaned = raw.replace(/[^\d]/g, "");
     const key = `${serviceId}-${day}`;
     setLocalInputState((prev) => ({ ...prev, [key]: cleaned }));
@@ -281,6 +304,8 @@ export const StaffTracker: React.FC = () => {
 
   const saveCell = async (serviceId: number, day: number) => {
     if (isTeamSelected || !currentStaff) return;
+
+    saveScrollPosition();
 
     const key = `${serviceId}-${day}`;
     const raw = localInputState[key] ?? "0";
@@ -345,7 +370,7 @@ export const StaffTracker: React.FC = () => {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" ref={scrollContainerRef}>
           <table className="min-w-max w-full border-collapse">
             <thead>
               <tr className="bg-gray-50">
@@ -428,9 +453,9 @@ export const StaffTracker: React.FC = () => {
                 </tr>
               ))}
 
-              <tr className="bg-gray-50">
+              <tr className="bg-[#001B47]">
                 <td
-                  className="sticky left-0 bg-gray-50 z-10 px-4 py-2 border-t border-r font-semibold whitespace-nowrap"
+                  className="sticky left-0 bg-[#001B47] z-10 px-4 py-2 border-t border-r font-semibold whitespace-nowrap text-white"
                   style={{ minWidth: 220 }}
                 >
                   Monthly Total
@@ -444,9 +469,7 @@ export const StaffTracker: React.FC = () => {
                   return (
                     <td
                       key={`total-${d.day}`}
-                      className={`px-2 py-2 border-t text-center font-semibold ${columnClass(
-                        d
-                      )}`}
+                      className={`px-2 py-2 border-t text-center font-semibold text-white bg-[#001B47]`}
                     >
                       {dayTotal}
                     </td>
