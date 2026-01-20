@@ -151,19 +151,16 @@ export const StaffTracker: React.FC = () => {
     [services]
   );
 
-  // Save scroll position before state changes
-  const saveScrollPosition = () => {
-    if (scrollContainerRef.current) {
-      scrollPositionRef.current = scrollContainerRef.current.scrollLeft;
-    }
-  };
-
-  // Restore scroll position after render
+  // Restore scroll position after render (only when not initial load)
   useEffect(() => {
     if (scrollContainerRef.current && !isInitialLoadRef.current) {
       scrollContainerRef.current.scrollLeft = scrollPositionRef.current;
     }
-  }, [localInputState, dailyEntries]);
+  }, [dailyEntries, localInputState]);
+
+  const getInputKey = (serviceId: number, day: number): string => {
+    return `${serviceId}-${day}`;
+  };
 
   const fetchData = async () => {
     if (services.length === 0 || staffIds.length === 0) {
@@ -281,7 +278,13 @@ export const StaffTracker: React.FC = () => {
     raw: string
   ) => {
     const cleaned = raw.replace(/[^\d]/g, "");
-    const key = `${serviceId}-${day}`;
+    const key = getInputKey(serviceId, day);
+    
+    // Save scroll position before state update
+    if (scrollContainerRef.current) {
+      scrollPositionRef.current = scrollContainerRef.current.scrollLeft;
+    }
+    
     setLocalInputState((prev) => ({ ...prev, [key]: cleaned }));
 
     const nextValue = cleaned === "" ? 0 : Number(cleaned);
@@ -304,10 +307,15 @@ export const StaffTracker: React.FC = () => {
   const saveCell = async (serviceId: number, day: number) => {
     if (isTeamSelected || !currentStaff) return;
 
-    const key = `${serviceId}-${day}`;
+    const key = getInputKey(serviceId, day);
     const raw = localInputState[key] ?? "0";
     const value = raw === "" ? 0 : Number(raw);
     if (!Number.isFinite(value) || value < 0) return;
+
+    // Save scroll position before async operation
+    if (scrollContainerRef.current) {
+      scrollPositionRef.current = scrollContainerRef.current.scrollLeft;
+    }
 
     setSavingKey(key);
 
@@ -367,7 +375,11 @@ export const StaffTracker: React.FC = () => {
           </div>
         </div>
 
-        <div className="overflow-x-auto" ref={scrollContainerRef}>
+        <div 
+          className="overflow-x-auto" 
+          ref={scrollContainerRef}
+          style={{ scrollBehavior: 'auto' }}
+        >
           <table className="min-w-max w-full border-collapse">
             <thead>
               <tr className="bg-gray-50">
@@ -414,7 +426,7 @@ export const StaffTracker: React.FC = () => {
                   </td>
 
                   {dayMeta.map((d) => {
-                    const key = `${s.service_id}-${d.day}`;
+                    const key = getInputKey(s.service_id, d.day);
                     const disabled = isTeamSelected;
                     const isSaving = savingKey === key;
 
