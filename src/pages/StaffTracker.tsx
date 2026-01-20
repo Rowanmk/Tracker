@@ -280,7 +280,6 @@ export const StaffTracker: React.FC = () => {
     day: number,
     raw: string
   ) => {
-    saveScrollPosition();
     const cleaned = raw.replace(/[^\d]/g, "");
     const key = `${serviceId}-${day}`;
     setLocalInputState((prev) => ({ ...prev, [key]: cleaned }));
@@ -304,8 +303,6 @@ export const StaffTracker: React.FC = () => {
 
   const saveCell = async (serviceId: number, day: number) => {
     if (isTeamSelected || !currentStaff) return;
-
-    saveScrollPosition();
 
     const key = `${serviceId}-${day}`;
     const raw = localInputState[key] ?? "0";
@@ -453,23 +450,27 @@ export const StaffTracker: React.FC = () => {
                 </tr>
               ))}
 
-              <tr className="bg-[#001B47]">
+              <tr className="bg-[#001B47] rounded-b-xl">
                 <td
-                  className="sticky left-0 bg-[#001B47] z-10 px-4 py-2 border-t border-r font-semibold whitespace-nowrap text-white"
+                  className="sticky left-0 bg-[#001B47] z-10 px-4 py-2 border-t border-r font-semibold whitespace-nowrap text-white rounded-bl-xl"
                   style={{ minWidth: 220 }}
                 >
                   Monthly Total
                 </td>
-                {dayMeta.map((d) => {
+                {dayMeta.map((d, idx) => {
                   const dayTotal = services.reduce((sum, s) => {
                     const entry = dailyEntries.find((e) => e.day === d.day);
                     return sum + (entry?.services[s.service_name] || 0);
                   }, 0);
 
+                  const isLastColumn = idx === dayMeta.length - 1;
+
                   return (
                     <td
                       key={`total-${d.day}`}
-                      className={`px-2 py-2 border-t text-center font-semibold text-white bg-[#001B47]`}
+                      className={`px-2 py-2 border-t text-center font-semibold text-white bg-[#001B47] ${
+                        isLastColumn ? "rounded-br-xl" : ""
+                      }`}
                     >
                       {dayTotal}
                     </td>
