@@ -152,17 +152,20 @@ export const StaffTracker: React.FC = () => {
     [services]
   );
 
-  // Restore scroll position after render using requestAnimationFrame
-  useEffect(() => {
-    if (pendingScrollRef.current && scrollContainerRef.current) {
-      requestAnimationFrame(() => {
-        if (scrollContainerRef.current) {
-          scrollContainerRef.current.scrollLeft = scrollPositionRef.current;
-          pendingScrollRef.current = false;
-        }
-      });
-    }
-  }, [dailyEntries, localInputState]);
+// Restore scroll AFTER focus has moved (prevents jump on TAB / ENTER)
+useEffect(() => {
+  if (!pendingScrollRef.current) return;
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollLeft =
+          scrollPositionRef.current;
+        pendingScrollRef.current = false;
+      }
+    });
+  });
+}, [savingKey]);
 
   const getInputKey = (serviceId: number, day: number): string => {
     return `${serviceId}-${day}`;
@@ -446,24 +449,40 @@ export const StaffTracker: React.FC = () => {
                         )}`}
                       >
                         <input
-                          value={localInputState[key] ?? "0"}
-                          onChange={(e) =>
-                            onCellChange(
-                              s.service_id,
-                              s.service_name,
-                              d.day,
-                              e.target.value
-                            )
-                          }
-                          onBlur={() => saveCell(s.service_id, d.day)}
-                          disabled={disabled}
-                          inputMode="numeric"
-                          className={`w-12 text-center rounded-md border px-2 py-1 text-sm ${
-                            disabled
-                              ? "bg-gray-100 text-gray-500 cursor-not-allowed"
-                              : "bg-white"
-                          } ${isSaving ? "opacity-60" : ""}`}
-                        />
+  value={localInputState[key] ?? "0"}
+  onChange={(e) =>
+    onCellChange(
+      s.service_id,
+      s.service_name,
+      d.day,
+      e.target.value
+    )
+  }
+  onBlur={() => saveCell(s.service_id, d.day)}
+  onKeyDown={(e) => {
+    // Capture scroll BEFORE focus moves
+    if (e.key === "Tab" || e.key === "Enter") {
+      if (scrollContainerRef.current) {
+        scrollPositionRef.current =
+          scrollContainerRef.current.scrollLeft;
+        pendingScrollRef.current = true;
+      }
+    }
+
+    // Make ENTER behave predictably
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.currentTarget.blur();
+    }
+  }}
+  disabled={disabled}
+  inputMode="numeric"
+  className={`w-12 text-center rounded-md border px-2 py-1 text-sm ${
+    disabled
+      ? "bg-gray-100 text-gray-500 cursor-not-allowed"
+      : "bg-white"
+  } ${isSaving ? "opacity-60" : ""}`}
+/>
                       </td>
                     );
                   })}
