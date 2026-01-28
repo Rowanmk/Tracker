@@ -29,8 +29,14 @@ export const Dashboard: React.FC = () => {
     showFallbackWarning: servicesWarning,
   } = useServices();
 
+  // Determine dashboard mode based on staff selector
   const isTeamSelected = selectedStaffId === "team" || !selectedStaffId;
   const dashboardMode: "team" | "individual" = isTeamSelected ? "team" : "individual";
+
+  // Get the currently selected staff for individual mode
+  const selectedIndividualStaff = !isTeamSelected && currentStaff
+    ? { staff_id: currentStaff.staff_id, name: currentStaff.name }
+    : null;
 
   const staffIdForWorkingDays =
     !isTeamSelected && currentStaff ? currentStaff.staff_id : undefined;
@@ -51,11 +57,6 @@ export const Dashboard: React.FC = () => {
 
   const effectiveWorkingDays = isTeamSelected ? teamWorkingDays : staffWorkingDays;
 
-  const currentIndividualStaff =
-    !isTeamSelected && currentStaff
-      ? { staff_id: currentStaff.staff_id, name: currentStaff.name }
-      : null;
-
   const performanceSummary = usePerformanceSummary({
     staffPerformance,
     workingDays: effectiveWorkingDays,
@@ -63,7 +64,7 @@ export const Dashboard: React.FC = () => {
     selectedMonth,
     selectedYear,
     dashboardMode,
-    currentStaff: currentIndividualStaff,
+    currentStaff: selectedIndividualStaff,
   });
 
   const variance = performanceSummary.delivered - performanceSummary.expected;
@@ -74,7 +75,9 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-4">Dashboard</h2>
+      <h2 className="text-2xl font-bold mb-4">
+        {dashboardMode === "team" ? "Team Dashboard" : `${currentStaff?.name} Dashboard`}
+      </h2>
 
       {showWarning && (
         <div className="mb-6 p-4 bg-yellow-50 border rounded-xl">
@@ -157,7 +160,7 @@ export const Dashboard: React.FC = () => {
           services={services}
           staffPerformance={staffPerformance}
           dashboardMode={dashboardMode}
-          currentStaff={currentIndividualStaff}
+          currentStaff={selectedIndividualStaff}
           viewMode={viewMode}
           workingDays={effectiveWorkingDays}
           workingDaysUpToToday={workingDaysUpToToday}
@@ -169,7 +172,7 @@ export const Dashboard: React.FC = () => {
           services={services}
           staffPerformance={staffPerformance}
           dashboardMode={dashboardMode}
-          currentStaff={currentIndividualStaff}
+          currentStaff={selectedIndividualStaff}
           viewMode={viewMode}
           workingDays={effectiveWorkingDays}
           workingDaysUpToToday={workingDaysUpToToday}
@@ -185,7 +188,7 @@ export const Dashboard: React.FC = () => {
           month={selectedMonth}
           financialYear={financialYear}
           dashboardMode={dashboardMode}
-          currentStaff={currentIndividualStaff}
+          currentStaff={selectedIndividualStaff}
           viewMode={viewMode}
         />
       </div>
