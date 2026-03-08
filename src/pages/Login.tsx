@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 export const Login: React.FC = () => {
-  const { signInWithCredentials, staffLoaded } = useAuth();
+  const { signInWithCredentials, staffLoaded, allStaff } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -14,6 +14,11 @@ export const Login: React.FC = () => {
 
     if (!staffLoaded) {
       setError('Staff data is still loading. Please wait a moment and try again.');
+      return;
+    }
+
+    if (allStaff.length === 0) {
+      setError('No staff records available. Please contact an administrator.');
       return;
     }
 
@@ -31,6 +36,8 @@ export const Login: React.FC = () => {
 
     setSubmitting(false);
   };
+
+  const isReady = staffLoaded && allStaff.length > 0;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#001B47] via-[#0060B8] to-[#007EE0]">
@@ -59,6 +66,7 @@ export const Login: React.FC = () => {
                 placeholder="Enter your first name"
                 required
                 autoComplete="username"
+                autoFocus
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#001B47] focus:border-transparent text-gray-900"
               />
             </div>
@@ -86,10 +94,10 @@ export const Login: React.FC = () => {
 
             <button
               type="submit"
-              disabled={submitting || !staffLoaded}
+              disabled={submitting || !isReady}
               className="w-full py-3 bg-[#001B47] text-white font-bold rounded-lg hover:bg-[#00245F] transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submitting ? 'Signing in…' : 'Sign In'}
+              {submitting ? 'Signing in…' : !isReady ? 'Loading…' : 'Sign In'}
             </button>
           </form>
         )}

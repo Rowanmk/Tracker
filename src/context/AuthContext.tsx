@@ -41,7 +41,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [showFallbackWarning, setShowFallbackWarning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [sessionRestored, setSessionRestored] = useState<boolean>(false);
+
+  // Use a ref-style approach: store allStaff in a ref so signInWithCredentials
+  // always reads the latest value without stale closure issues
+  const allStaffRef = React.useRef<Staff[]>([]);
 
   useEffect(() => {
     const fetchStaff = async () => {
@@ -77,10 +80,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               created_at: new Date().toISOString(),
             },
           ];
+          allStaffRef.current = mockStaff;
           setAllStaff(mockStaff);
           setStaff(mockStaff.filter(s => !s.is_hidden));
         } else {
           const allStaffData = data || [];
+          allStaffRef.current = allStaffData;
           setAllStaff(allStaffData);
           setStaff(allStaffData.filter(s => !s.is_hidden));
         }
@@ -107,6 +112,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             created_at: new Date().toISOString(),
           },
         ];
+        allStaffRef.current = mockStaff;
         setAllStaff(mockStaff);
         setStaff(mockStaff.filter(s => !s.is_hidden));
       } finally {
@@ -122,8 +128,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (!staffLoaded) return;
 
     const savedStaffId = localStorage.getItem('crew_tracker_staff_id');
-    if (savedStaffId && allStaff.length > 0) {
-      const found = allStaff.find(s => s.staff_id === Number(savedStaffId));
+    if (savedStaffId && allStaffRef.current.length > 0) {
+      const found = allStaffRef.current.find(s => s.staff_id === Number(savedStaffId));
       if (found) {
         setCurrentStaff(found);
         setIsAuthenticated(true);
@@ -138,34 +144,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     }
 
-    setSessionRestored(true);
     setLoading(false);
-  }, [staffLoaded, allStaff]);
+  }, [staffLoaded]);
 
   const signInWithCredentials = async (
     username: string,
     password: string
   ): Promise<{ error?: string }> => {
+    // Always read from the ref to avoid stale closure
+    const currentAllStaff = allStaffRef.current;
+
     if (!staffLoaded) {
-      return { error: 'Still loading staff data. Please try again in a moment.' };
+      return { error: 'Still loading staff data. Please wait a moment and try again.' };
     }
 
-    if (allStaff.length === 0) {
+    if (currentAllStaff.length === 0) {
       return { error: 'No staff records found. Please contact an administrator.' };
     }
 
-    const firstName = username.toLowerCase().trim();
-    const matched = allStaff.find(s => {
-      const staffFirstName = s.name.split(' ')[0].toLowerCase();
-      return staffFirstName === firstName;
+    const enteredUsername = username.toLowerCase().trim();
+    const enteredPassword = password.toLowerCase().trim();
+
+    const matched = currentAllStaff.find(s => {
+      const staffFirstName = s.name.split(' ')[0].toLowerCase().trim();
+      return staffFirstName === enteredUsername;
     });
 
     if (!matched) {
       return { error: 'Invalid username or password.' };
     }
 
-    const staffFirstName = matched.name.split(' ')[0].toLowerCase();
-    if (password.toLowerCase().trim() !== staffFirstName) {
+    const staffFirstName = matched.name.split(' ')[0].toLowerCase().trim();
+    if (enteredPassword !== staffFirstName) {
       return { error: 'Invalid username or password.' };
     }
 
@@ -205,7 +215,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (staffIdOrTeam === "team") {
       setSelectedStaffId("team");
     } else {
-      const selectedStaff = allStaff.find(s => s.staff_id === staffIdOrTeam);
+      const selectedStaff = allStaffRef.current.find(s => s.staff_id === staffIdOrTeam);
       if (selectedStaff) {
         setCurrentStaff(selectedStaff);
         setSelectedStaffId(staffIdOrTeam.toString());
