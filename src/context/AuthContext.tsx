@@ -32,6 +32,7 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState<boolean>(true);
+  const [staffLoaded, setStaffLoaded] = useState<boolean>(false);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [allStaff, setAllStaff] = useState<Staff[]>([]);
   const [currentStaff, setCurrentStaff] = useState<Staff | null>(null);
@@ -107,22 +108,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setAllStaff(mockStaff);
         setStaff(mockStaff.filter(s => !s.is_hidden));
       } finally {
+        setStaffLoaded(true);
         setLoading(false);
       }
     };
 
     fetchStaff();
-
-    // Restore session from localStorage
-    const savedStaffId = localStorage.getItem('crew_tracker_staff_id');
-    if (savedStaffId) {
-      setIsAuthenticated(true);
-    }
   }, []);
 
-  // Once staff is loaded, restore the logged-in staff member
+  // Once staff is loaded, restore the logged-in staff member from localStorage
   useEffect(() => {
-    if (allStaff.length === 0) return;
+    if (!staffLoaded || allStaff.length === 0) return;
 
     const savedStaffId = localStorage.getItem('crew_tracker_staff_id');
     if (savedStaffId) {
@@ -130,26 +126,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (found) {
         setCurrentStaff(found);
         setIsAuthenticated(true);
-        // Non-admin defaults to their own view; admin defaults to team
         if (found.role !== 'admin') {
           setSelectedStaffId(found.staff_id.toString());
         } else {
           setSelectedStaffId("team");
         }
       } else {
-        // Staff no longer exists — clear session
         localStorage.removeItem('crew_tracker_staff_id');
         setIsAuthenticated(false);
       }
     }
-  }, [allStaff]);
+  }, [staffLoaded, allStaff]);
 
   const signInWithCredentials = async (
     username: string,
     password: string
   ): Promise<{ error?: string }> => {
+    // If staff hasn't loaded yet, wait briefly and retry
+    if (!staffLoaded) {
+      return { error: 'Still loading staff data. Please try again in a moment.' };
+    }
+
     if (allStaff.length === 0) {
-      return { error: 'Staff data not loaded yet. Please try again.' };
+      return { error: 'No staff records found. Please contact an administrator.' };
     }
 
     // Match by first name (case-insensitive)
@@ -178,7 +177,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setIsAuthenticated(true);
     localStorage.setItem('crew_tracker_staff_id', matched.staff_id.toString());
 
-    // Non-admin: default to their own view
     if (matched.role !== 'admin') {
       setSelectedStaffId(matched.staff_id.toString());
     } else {
