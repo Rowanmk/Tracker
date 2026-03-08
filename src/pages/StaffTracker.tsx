@@ -75,7 +75,6 @@ export const StaffTracker: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
-  // Scroll position management
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollPositionRef = useRef<number>(0);
   const isInitialLoadRef = useRef<boolean>(true);
@@ -90,7 +89,7 @@ export const StaffTracker: React.FC = () => {
   }, [isTeamSelected, allStaff, currentStaff]);
 
   const getDayName = (day: number) =>
-    ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][
+    ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"][
       new Date(year, selectedMonth - 1, day).getDay()
     ];
 
@@ -152,20 +151,19 @@ export const StaffTracker: React.FC = () => {
     [services]
   );
 
-// Restore scroll AFTER focus has moved (prevents jump on TAB / ENTER)
-useEffect(() => {
-  if (!pendingScrollRef.current) return;
+  useEffect(() => {
+    if (!pendingScrollRef.current) return;
 
-  requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollLeft =
-          scrollPositionRef.current;
-        pendingScrollRef.current = false;
-      }
+      requestAnimationFrame(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollLeft =
+            scrollPositionRef.current;
+          pendingScrollRef.current = false;
+        }
+      });
     });
-  });
-}, [savingKey]);
+  }, [savingKey]);
 
   const getInputKey = (serviceId: number, day: number): string => {
     return `${serviceId}-${day}`;
@@ -289,13 +287,12 @@ useEffect(() => {
   ) => {
     const cleaned = raw.replace(/[^\d]/g, "");
     const key = getInputKey(serviceId, day);
-    
-    // Save scroll position before state update
+
     if (scrollContainerRef.current) {
       scrollPositionRef.current = scrollContainerRef.current.scrollLeft;
       pendingScrollRef.current = true;
     }
-    
+
     setLocalInputState((prev) => ({ ...prev, [key]: cleaned }));
 
     const nextValue = cleaned === "" ? 0 : Number(cleaned);
@@ -323,7 +320,6 @@ useEffect(() => {
     const value = raw === "" ? 0 : Number(raw);
     if (!Number.isFinite(value) || value < 0) return;
 
-    // Save scroll position before async operation
     if (scrollContainerRef.current) {
       scrollPositionRef.current = scrollContainerRef.current.scrollLeft;
       pendingScrollRef.current = true;
@@ -375,7 +371,7 @@ useEffect(() => {
         workingDaysUpToToday={workingDaysUpToToday}
       />
 
-      <div className="border rounded-xl overflow-hidden">
+      <div className="border rounded-xl overflow-hidden w-full">
         <div className="bg-[#001B47] text-white px-4 py-2 flex items-center justify-between">
           <div className="font-semibold">
             {isTeamSelected ? "Team View (read-only)" : "Daily Entry Table"}
@@ -387,25 +383,26 @@ useEffect(() => {
           </div>
         </div>
 
-        <div 
-          className="overflow-x-auto" 
-          ref={scrollContainerRef}
-        >
-          <table className="min-w-max w-full border-collapse">
+        <div className="w-full" ref={scrollContainerRef}>
+          <table className="w-full border-collapse table-fixed">
+            <colgroup>
+              {/* Service name column — fixed width */}
+              <col style={{ width: "140px" }} />
+              {/* Day columns — equal share of remaining space */}
+              {dayMeta.map((d) => (
+                <col key={d.day} />
+              ))}
+            </colgroup>
+
             <thead>
               <tr className="bg-gray-50">
-                <th
-                  className="sticky left-0 bg-gray-50 z-10 text-left px-4 py-2 border-b border-r whitespace-nowrap"
-                  style={{ minWidth: 220 }}
-                >
+                <th className="text-left px-3 py-2 border-b border-r whitespace-nowrap text-sm font-semibold">
                   Service
                 </th>
                 {dayMeta.map((d) => (
                   <th
                     key={d.day}
-                    className={`text-center px-2 py-2 border-b whitespace-nowrap ${columnClass(
-                      d
-                    )}`}
+                    className={`text-center py-2 border-b text-xs font-semibold ${columnClass(d)}`}
                     title={
                       d.isBankHoliday
                         ? d.bankHolidayTitle || "Bank holiday"
@@ -415,10 +412,9 @@ useEffect(() => {
                         ? "Weekend"
                         : ""
                     }
-                    style={{ minWidth: 56 }}
                   >
-                    <div className="font-semibold">{d.day}</div>
-                    <div className="text-xs text-gray-600">
+                    <div className="leading-tight">{d.day}</div>
+                    <div className="text-gray-500 font-normal leading-tight">
                       {getDayName(d.day)}
                     </div>
                   </th>
@@ -429,10 +425,7 @@ useEffect(() => {
             <tbody>
               {services.map((s) => (
                 <tr key={s.service_id} className="hover:bg-gray-50">
-                  <td
-                    className="sticky left-0 bg-white z-10 px-4 py-2 border-b border-r whitespace-nowrap font-medium"
-                    style={{ minWidth: 220 }}
-                  >
+                  <td className="px-3 py-1.5 border-b border-r whitespace-nowrap font-medium text-sm">
                     {s.service_name}
                   </td>
 
@@ -444,56 +437,48 @@ useEffect(() => {
                     return (
                       <td
                         key={key}
-                        className={`px-2 py-2 border-b text-center ${columnClass(
-                          d
-                        )}`}
+                        className={`py-1.5 border-b text-center ${columnClass(d)}`}
                       >
                         <input
-  value={localInputState[key] ?? "0"}
-  onChange={(e) =>
-    onCellChange(
-      s.service_id,
-      s.service_name,
-      d.day,
-      e.target.value
-    )
-  }
-  onBlur={() => saveCell(s.service_id, d.day)}
-  onKeyDown={(e) => {
-    // Capture scroll BEFORE focus moves
-    if (e.key === "Tab" || e.key === "Enter") {
-      if (scrollContainerRef.current) {
-        scrollPositionRef.current =
-          scrollContainerRef.current.scrollLeft;
-        pendingScrollRef.current = true;
-      }
-    }
-
-    // Make ENTER behave predictably
-    if (e.key === "Enter") {
-      e.preventDefault();
-      e.currentTarget.blur();
-    }
-  }}
-  disabled={disabled}
-  inputMode="numeric"
-  className={`w-12 text-center rounded-md border px-2 py-1 text-sm ${
-    disabled
-      ? "bg-gray-100 text-gray-500 cursor-not-allowed"
-      : "bg-white"
-  } ${isSaving ? "opacity-60" : ""}`}
-/>
+                          value={localInputState[key] ?? "0"}
+                          onChange={(e) =>
+                            onCellChange(
+                              s.service_id,
+                              s.service_name,
+                              d.day,
+                              e.target.value
+                            )
+                          }
+                          onBlur={() => saveCell(s.service_id, d.day)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Tab" || e.key === "Enter") {
+                              if (scrollContainerRef.current) {
+                                scrollPositionRef.current =
+                                  scrollContainerRef.current.scrollLeft;
+                                pendingScrollRef.current = true;
+                              }
+                            }
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              e.currentTarget.blur();
+                            }
+                          }}
+                          disabled={disabled}
+                          inputMode="numeric"
+                          className={`w-full text-center rounded border px-0 py-1 text-xs ${
+                            disabled
+                              ? "bg-gray-100 text-gray-500 cursor-not-allowed"
+                              : "bg-white"
+                          } ${isSaving ? "opacity-60" : ""}`}
+                        />
                       </td>
                     );
                   })}
                 </tr>
               ))}
 
-              <tr className="bg-[#001B47] rounded-b-xl">
-                <td
-                  className="sticky left-0 bg-[#001B47] z-10 px-4 py-2 border-t border-r font-semibold whitespace-nowrap text-white rounded-bl-xl"
-                  style={{ minWidth: 220 }}
-                >
+              <tr className="bg-[#001B47]">
+                <td className="px-3 py-2 border-t border-r font-semibold whitespace-nowrap text-white text-sm">
                   Monthly Total
                 </td>
                 {dayMeta.map((d, idx) => {
@@ -502,14 +487,10 @@ useEffect(() => {
                     return sum + (entry?.services[s.service_name] || 0);
                   }, 0);
 
-                  const isLastColumn = idx === dayMeta.length - 1;
-
                   return (
                     <td
                       key={`total-${d.day}`}
-                      className={`px-2 py-2 border-t text-center font-semibold text-white bg-[#001B47] ${
-                        isLastColumn ? "rounded-br-xl" : ""
-                      }`}
+                      className="py-2 border-t text-center font-semibold text-white bg-[#001B47] text-xs"
                     >
                       {dayTotal}
                     </td>
