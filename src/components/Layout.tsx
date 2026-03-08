@@ -60,10 +60,32 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     return currentStaff?.name ?? "Select";
   })();
 
-  // Other staff members (excluding the signed-in user, not hidden)
-  const otherStaff = allStaff.filter(
-    (s) => !s.is_hidden && s.staff_id !== currentStaff?.staff_id
-  );
+  // Is the currently selected item the signed-in user?
+  const signedInUserIsSelected =
+    currentStaff && selectedStaffId === currentStaff.staff_id.toString();
+
+  // The currently selected item when it is NOT the signed-in user
+  const selectedItem: { label: string; id: number | "team" } | null = (() => {
+    if (signedInUserIsSelected) return null;
+    if (selectedStaffId === "team") return { label: "Team View", id: "team" };
+    if (selectedStaffId) {
+      const found = allStaff.find(s => s.staff_id.toString() === selectedStaffId);
+      if (found) return { label: found.name, id: found.staff_id };
+    }
+    return null;
+  })();
+
+  // Other staff members: exclude signed-in user AND the currently selected item
+  const otherStaff = allStaff.filter(s => {
+    if (s.is_hidden) return false;
+    if (s.staff_id === currentStaff?.staff_id) return false;
+    if (selectedStaffId && s.staff_id.toString() === selectedStaffId) return false;
+    return true;
+  });
+
+  // Whether "Team View" should appear in the "other options" section
+  const showTeamViewInOthers =
+    isAdmin && selectedStaffId !== "team";
 
   return (
     <DashboardViewProvider>
@@ -120,9 +142,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                     <button
                       onClick={() => handleSelectStaff(currentStaff.staff_id)}
                       className={`w-full text-left px-4 py-2.5 text-sm font-bold text-[#001B47] hover:bg-blue-50 transition flex items-center gap-2 ${
-                        selectedStaffId === currentStaff.staff_id.toString()
-                          ? "bg-blue-100"
-                          : "bg-white"
+                        signedInUserIsSelected ? "bg-blue-100" : "bg-white"
                       }`}
                     >
                       <span className="w-2 h-2 rounded-full bg-[#001B47] inline-block flex-shrink-0" />
@@ -130,39 +150,46 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                     </button>
                   )}
 
-                  {/* ── Separator between signed-in user and the rest ── */}
-                  {isAdmin && (
-                    <div className="border-t-2 border-gray-300 mx-0 my-0" />
+                  {/* ── Currently selected item (only when it differs from signed-in user) ── */}
+                  {selectedItem && (
+                    <>
+                      <button
+                        onClick={() => handleSelectStaff(selectedItem.id)}
+                        className="w-full text-left px-4 py-2.5 text-sm font-semibold text-[#001B47] bg-blue-50 hover:bg-blue-100 transition flex items-center gap-2"
+                      >
+                        <span className="w-2 h-2 rounded-full bg-blue-400 inline-block flex-shrink-0" />
+                        {selectedItem.label}
+                      </button>
+                      {/* Separator line under the selected item */}
+                      <div className="border-t-2 border-gray-300" />
+                    </>
                   )}
 
-                  {/* ── Admin-only: Team view option ── */}
-                  {isAdmin && (
+                  {/* Separator after signed-in user when they ARE the selected item */}
+                  {signedInUserIsSelected && (
+                    <div className="border-t-2 border-gray-300" />
+                  )}
+
+                  {/* ── Admin-only: Team view option (when not already selected) ── */}
+                  {isAdmin && showTeamViewInOthers && (
                     <button
                       onClick={() => handleSelectStaff("team")}
-                      className={`w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition ${
-                        selectedStaffId === "team" ? "font-semibold bg-gray-100" : ""
-                      }`}
+                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition"
                     >
                       Team View
                     </button>
                   )}
 
                   {/* ── Admin-only: Other staff members ── */}
-                  {isAdmin && otherStaff.length > 0 &&
-                    otherStaff.map((s) => (
-                      <button
-                        key={s.staff_id}
-                        onClick={() => handleSelectStaff(s.staff_id)}
-                        className={`w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition ${
-                          selectedStaffId === s.staff_id.toString()
-                            ? "font-semibold text-[#001B47] bg-gray-100"
-                            : ""
-                        }`}
-                      >
-                        {s.name}
-                      </button>
-                    ))
-                  }
+                  {isAdmin && otherStaff.map((s) => (
+                    <button
+                      key={s.staff_id}
+                      onClick={() => handleSelectStaff(s.staff_id)}
+                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition"
+                    >
+                      {s.name}
+                    </button>
+                  ))}
 
                   {/* ── Log Out — always at the bottom ── */}
                   <div className="border-t border-gray-200" />
