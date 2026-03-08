@@ -42,8 +42,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
-  // Use a ref-style approach: store allStaff in a ref so signInWithCredentials
-  // always reads the latest value without stale closure issues
   const allStaffRef = React.useRef<Staff[]>([]);
 
   useEffect(() => {
@@ -57,64 +55,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           .select('*')
           .order('name');
 
+        console.log('staff query result:', { data, staffError });
+
         if (staffError) {
-          setError('Failed to load staff data');
-          setShowFallbackWarning(true);
-          const mockStaff: Staff[] = [
-            {
-              staff_id: 1,
-              name: 'John Smith',
-              role: 'admin',
-              home_region: 'england-and-wales',
-              is_hidden: false,
-              user_id: null,
-              created_at: new Date().toISOString(),
-            },
-            {
-              staff_id: 2,
-              name: 'Jane Doe',
-              role: 'staff',
-              home_region: 'england-and-wales',
-              is_hidden: false,
-              user_id: null,
-              created_at: new Date().toISOString(),
-            },
-          ];
-          allStaffRef.current = mockStaff;
-          setAllStaff(mockStaff);
-          setStaff(mockStaff.filter(s => !s.is_hidden));
-        } else {
-          const allStaffData = data || [];
-          allStaffRef.current = allStaffData;
-          setAllStaff(allStaffData);
-          setStaff(allStaffData.filter(s => !s.is_hidden));
+          setError(`Failed to load staff data: ${staffError.message}`);
+          allStaffRef.current = [];
+          setAllStaff([]);
+          setStaff([]);
+          return;
         }
-      } catch {
-        setError('Failed to connect to database');
-        setShowFallbackWarning(true);
-        const mockStaff: Staff[] = [
-          {
-            staff_id: 1,
-            name: 'John Smith',
-            role: 'admin',
-            home_region: 'england-and-wales',
-            is_hidden: false,
-            user_id: null,
-            created_at: new Date().toISOString(),
-          },
-          {
-            staff_id: 2,
-            name: 'Jane Doe',
-            role: 'staff',
-            home_region: 'england-and-wales',
-            is_hidden: false,
-            user_id: null,
-            created_at: new Date().toISOString(),
-          },
-        ];
-        allStaffRef.current = mockStaff;
-        setAllStaff(mockStaff);
-        setStaff(mockStaff.filter(s => !s.is_hidden));
+
+        const allStaffData = data || [];
+        allStaffRef.current = allStaffData;
+        setAllStaff(allStaffData);
+        setStaff(allStaffData.filter((s) => !s.is_hidden));
+
+        if (allStaffData.length === 0) {
+          setError(
+            'No staff records were returned from Supabase. Check the table data, RLS policies, and environment variables.'
+          );
+        }
+      } catch (err) {
+        console.error('Unexpected error loading staff:', err);
+        setError('Failed to connect to the database.');
+        allStaffRef.current = [];
+        setAllStaff([]);
+        setStaff([]);
       } finally {
         setStaffLoaded(true);
       }
@@ -123,24 +89,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     fetchStaff();
   }, []);
 
-  // Once staff is loaded, restore session from localStorage, then mark loading done
   useEffect(() => {
     if (!staffLoaded) return;
 
     const savedStaffId = localStorage.getItem('crew_tracker_staff_id');
+
     if (savedStaffId && allStaffRef.current.length > 0) {
-      const found = allStaffRef.current.find(s => s.staff_id === Number(savedStaffId));
+      const found = allStaffRef.current.find(
+        (s) => s.staff_id === Number(savedStaffId) && !s.is_hidden
+      );
+
       if (found) {
         setCurrentStaff(found);
         setIsAuthenticated(true);
-        if (found.role !== 'admin') {
-          setSelectedStaffId(found.staff_id.toString());
-        } else {
-          setSelectedStaffId("team");
-        }
+        setSelectedStaffId(found.role !== 'admin' ? found.staff_id.toString() : 'team');
       } else {
         localStorage.removeItem('crew_tracker_staff_id');
         setIsAuthenticated(false);
+        setCurrentStaff(null);
+        setSelectedStaffId('team');
       }
     }
 
@@ -151,7 +118,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     username: string,
     password: string
   ): Promise<{ error?: string }> => {
-    // Always read from the ref to avoid stale closure
     const currentAllStaff = allStaffRef.current;
 
     if (!staffLoaded) {
@@ -159,13 +125,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
 
     if (currentAllStaff.length === 0) {
-      return { error: 'No staff records found. Please contact an administrator.' };
+      return {
+        error:
+          'No staff records found. Please check the staff table, RLS policies, or Supabase connection.',
+      };
     }
 
     const enteredUsername = username.toLowerCase().trim();
     const enteredPassword = password.toLowerCase().trim();
 
-    const matched = currentAllStaff.find(s => {
+    const activeStaff = currentAllStaff.filter((s) => !s.is_hidden && !!s.name?.trim());
+
+    const matched = activeStaff.find((s) => {
       const staffFirstName = s.name.split(' ')[0].toLowerCase().trim();
       return staffFirstName === enteredUsername;
     });
@@ -175,23 +146,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
 
     const staffFirstName = matched.name.split(' ')[0].toLowerCase().trim();
+
     if (enteredPassword !== staffFirstName) {
       return { error: 'Invalid username or password.' };
-    }
-
-    if (matched.is_hidden) {
-      return { error: 'This account is inactive. Please contact an administrator.' };
     }
 
     setCurrentStaff(matched);
     setIsAuthenticated(true);
     localStorage.setItem('crew_tracker_staff_id', matched.staff_id.toString());
-
-    if (matched.role !== 'admin') {
-      setSelectedStaffId(matched.staff_id.toString());
-    } else {
-      setSelectedStaffId("team");
-    }
+    setSelectedStaffId(matched.role !== 'admin' ? matched.staff_id.toString() : 'team');
 
     return {};
   };
@@ -199,7 +162,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signOut = async (): Promise<void> => {
     setCurrentStaff(null);
     setIsAuthenticated(false);
-    setSelectedStaffId("team");
+    setSelectedStaffId('team');
     localStorage.removeItem('crew_tracker_staff_id');
   };
 
@@ -212,14 +175,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signInWithGitHub = async () => signInWithOAuth('github');
 
   const onStaffChange = (staffIdOrTeam: number | "team") => {
-    if (staffIdOrTeam === "team") {
-      setSelectedStaffId("team");
-    } else {
-      const selectedStaff = allStaffRef.current.find(s => s.staff_id === staffIdOrTeam);
-      if (selectedStaff) {
-        setCurrentStaff(selectedStaff);
-        setSelectedStaffId(staffIdOrTeam.toString());
-      }
+    if (staffIdOrTeam === 'team') {
+      setSelectedStaffId('team');
+      return;
+    }
+
+    const selectedStaff = allStaffRef.current.find(
+      (s) => s.staff_id === staffIdOrTeam && !s.is_hidden
+    );
+
+    if (selectedStaff) {
+      setCurrentStaff(selectedStaff);
+      setSelectedStaffId(staffIdOrTeam.toString());
     }
   };
 
@@ -246,11 +213,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     staffLoaded,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = (): AuthContextType => useContext(AuthContext);
