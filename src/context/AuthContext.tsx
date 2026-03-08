@@ -22,6 +22,7 @@ interface AuthContextType {
   onStaffChange: (staffId: number | "team") => void;
   showFallbackWarning: boolean;
   error: string | null;
+  staffLoaded: boolean;
 }
 
 interface AuthProviderProps {
@@ -40,6 +41,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [showFallbackWarning, setShowFallbackWarning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [sessionRestored, setSessionRestored] = useState<boolean>(false);
 
   useEffect(() => {
     const fetchStaff = async () => {
@@ -82,7 +84,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           setAllStaff(allStaffData);
           setStaff(allStaffData.filter(s => !s.is_hidden));
         }
-      } catch (err) {
+      } catch {
         setError('Failed to connect to database');
         setShowFallbackWarning(true);
         const mockStaff: Staff[] = [
@@ -109,19 +111,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setStaff(mockStaff.filter(s => !s.is_hidden));
       } finally {
         setStaffLoaded(true);
-        setLoading(false);
       }
     };
 
     fetchStaff();
   }, []);
 
-  // Once staff is loaded, restore the logged-in staff member from localStorage
+  // Once staff is loaded, restore session from localStorage, then mark loading done
   useEffect(() => {
-    if (!staffLoaded || allStaff.length === 0) return;
+    if (!staffLoaded) return;
 
     const savedStaffId = localStorage.getItem('crew_tracker_staff_id');
-    if (savedStaffId) {
+    if (savedStaffId && allStaff.length > 0) {
       const found = allStaff.find(s => s.staff_id === Number(savedStaffId));
       if (found) {
         setCurrentStaff(found);
@@ -136,13 +137,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsAuthenticated(false);
       }
     }
+
+    setSessionRestored(true);
+    setLoading(false);
   }, [staffLoaded, allStaff]);
 
   const signInWithCredentials = async (
     username: string,
     password: string
   ): Promise<{ error?: string }> => {
-    // If staff hasn't loaded yet, wait briefly and retry
     if (!staffLoaded) {
       return { error: 'Still loading staff data. Please try again in a moment.' };
     }
@@ -151,7 +154,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return { error: 'No staff records found. Please contact an administrator.' };
     }
 
-    // Match by first name (case-insensitive)
     const firstName = username.toLowerCase().trim();
     const matched = allStaff.find(s => {
       const staffFirstName = s.name.split(' ')[0].toLowerCase();
@@ -162,7 +164,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return { error: 'Invalid username or password.' };
     }
 
-    // Password = first name (case-insensitive)
     const staffFirstName = matched.name.split(' ')[0].toLowerCase();
     if (password.toLowerCase().trim() !== staffFirstName) {
       return { error: 'Invalid username or password.' };
@@ -172,7 +173,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return { error: 'This account is inactive. Please contact an administrator.' };
     }
 
-    // Successful login
     setCurrentStaff(matched);
     setIsAuthenticated(true);
     localStorage.setItem('crew_tracker_staff_id', matched.staff_id.toString());
@@ -233,6 +233,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     onStaffChange,
     showFallbackWarning,
     error,
+    staffLoaded,
   };
 
   return (

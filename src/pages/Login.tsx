@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 export const Login: React.FC = () => {
-  const { signInWithCredentials, loading } = useAuth();
+  const { signInWithCredentials, staffLoaded } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -12,13 +12,17 @@ export const Login: React.FC = () => {
     e.preventDefault();
     setError(null);
 
+    if (!staffLoaded) {
+      setError('Staff data is still loading. Please wait a moment and try again.');
+      return;
+    }
+
     if (!username.trim() || !password.trim()) {
       setError('Please enter your username and password.');
       return;
     }
 
     setSubmitting(true);
-
     const result = await signInWithCredentials(username.trim(), password.trim());
 
     if (result.error) {
@@ -38,7 +42,7 @@ export const Login: React.FC = () => {
           <p className="text-sm text-gray-500">Sign in to your account</p>
         </div>
 
-        {loading ? (
+        {!staffLoaded ? (
           <div className="text-center py-6 text-gray-500 text-sm">
             Loading staff data…
           </div>
@@ -82,7 +86,7 @@ export const Login: React.FC = () => {
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || !staffLoaded}
               className="w-full py-3 bg-[#001B47] text-white font-bold rounded-lg hover:bg-[#00245F] transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting ? 'Signing in…' : 'Sign In'}
