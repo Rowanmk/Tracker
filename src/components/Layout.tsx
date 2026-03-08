@@ -30,7 +30,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
 
   const isActivePath = (path: string) => location.pathname === path;
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -61,7 +60,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     return currentStaff?.name ?? "Select";
   })();
 
-  // Other staff members (excluding the signed-in user)
+  // Other staff members (excluding the signed-in user, not hidden)
   const otherStaff = allStaff.filter(
     (s) => !s.is_hidden && s.staff_id !== currentStaff?.staff_id
   );
@@ -115,12 +114,15 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
 
               {dropdownOpen && (
                 <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden z-50">
-                  {/* Current user — highlighted */}
+
+                  {/* ── Signed-in user — always pinned at top ── */}
                   {currentStaff && (
                     <button
                       onClick={() => handleSelectStaff(currentStaff.staff_id)}
-                      className={`w-full text-left px-4 py-2.5 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition flex items-center gap-2 ${
-                        selectedStaffId === currentStaff.staff_id.toString() ? "bg-blue-100" : "bg-blue-50"
+                      className={`w-full text-left px-4 py-2.5 text-sm font-bold text-[#001B47] hover:bg-blue-50 transition flex items-center gap-2 ${
+                        selectedStaffId === currentStaff.staff_id.toString()
+                          ? "bg-blue-100"
+                          : "bg-white"
                       }`}
                     >
                       <span className="w-2 h-2 rounded-full bg-[#001B47] inline-block flex-shrink-0" />
@@ -128,7 +130,12 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                     </button>
                   )}
 
-                  {/* Admin-only: Team view option */}
+                  {/* ── Separator between signed-in user and the rest ── */}
+                  {isAdmin && (
+                    <div className="border-t-2 border-gray-300 mx-0 my-0" />
+                  )}
+
+                  {/* ── Admin-only: Team view option ── */}
                   {isAdmin && (
                     <button
                       onClick={() => handleSelectStaff("team")}
@@ -140,26 +147,25 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                     </button>
                   )}
 
-                  {/* Other staff — admin only */}
-                  {isAdmin && otherStaff.length > 0 && (
-                    <>
-                      <div className="border-t border-gray-100 mx-3 my-1" />
-                      {otherStaff.map((s) => (
-                        <button
-                          key={s.staff_id}
-                          onClick={() => handleSelectStaff(s.staff_id)}
-                          className={`w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition ${
-                            selectedStaffId === s.staff_id.toString() ? "font-semibold text-[#001B47] bg-gray-100" : ""
-                          }`}
-                        >
-                          {s.name}
-                        </button>
-                      ))}
-                    </>
-                  )}
+                  {/* ── Admin-only: Other staff members ── */}
+                  {isAdmin && otherStaff.length > 0 &&
+                    otherStaff.map((s) => (
+                      <button
+                        key={s.staff_id}
+                        onClick={() => handleSelectStaff(s.staff_id)}
+                        className={`w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition ${
+                          selectedStaffId === s.staff_id.toString()
+                            ? "font-semibold text-[#001B47] bg-gray-100"
+                            : ""
+                        }`}
+                      >
+                        {s.name}
+                      </button>
+                    ))
+                  }
 
-                  {/* Log Out */}
-                  <div className="border-t border-gray-200 mt-1" />
+                  {/* ── Log Out — always at the bottom ── */}
+                  <div className="border-t border-gray-200" />
                   <button
                     onClick={handleSignOut}
                     className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition font-semibold"
