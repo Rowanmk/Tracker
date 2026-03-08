@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useDate } from "../context/DateContext";
 import { useAuth } from "../context/AuthContext";
@@ -6,10 +6,9 @@ import { DashboardViewProvider } from "../context/DashboardViewContext";
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
   const { selectedMonth, selectedYear } = useDate();
-  const { currentStaff, allStaff, onStaffChange, isAdmin, selectedStaffId } = useAuth();
+  const { currentStaff, allStaff, onStaffChange, isAdmin, selectedStaffId, signOut } = useAuth();
   const location = useLocation();
 
-  // Base navigation links visible to all staff
   const baseNavigationLinks = [
     { path: "/", label: "Dashboard" },
     { path: "/tracker", label: "My Tracker" },
@@ -18,20 +17,16 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     { path: "/annual", label: "Annual Summary" },
   ];
 
-  // Admin-only navigation links
   const adminNavigationLinks = [
     { path: "/targets", label: "Targets Control" },
     { path: "/settings", label: "Settings" },
   ];
 
-  // Combine navigation links based on role
   const navigationLinks = isAdmin
     ? [...baseNavigationLinks, ...adminNavigationLinks]
     : baseNavigationLinks;
 
-  const isActivePath = (path: string) => {
-    return location.pathname === path;
-  };
+  const isActivePath = (path: string) => location.pathname === path;
 
   const handleStaffChange = (value: string) => {
     if (value === "team") {
@@ -39,6 +34,10 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     } else {
       onStaffChange(Number(value));
     }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
   };
 
   return (
@@ -55,7 +54,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
             <h1 className="text-4xl font-extrabold text-white tracking-wide">
               Crew Tracker
             </h1>
-            
+
             <nav className="hidden md:flex items-center space-x-6 ml-10">
               {navigationLinks.map((link) => (
                 <Link
@@ -63,10 +62,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                   to={link.path}
                   className={`
                     text-xl font-semibold text-white hover:opacity-80 transition
-                    ${isActivePath(link.path)
-                      ? "opacity-100"
-                      : "opacity-90"
-                    }
+                    ${isActivePath(link.path) ? "opacity-100" : "opacity-90"}
                   `}
                 >
                   {link.label}
@@ -75,34 +71,42 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
             </nav>
 
             <div className="flex items-center space-x-3">
-              <select
-                className="bg-white text-gray-900 px-2 py-1 rounded-md shadow cursor-pointer"
-                value={selectedStaffId === "team" ? "team" : selectedStaffId || currentStaff?.staff_id || ""}
-                onChange={(e) => handleStaffChange(e.target.value)}
+              {/* Staff selector — admin only */}
+              {isAdmin && (
+                <select
+                  className="bg-white text-gray-900 px-2 py-1 rounded-md shadow cursor-pointer"
+                  value={selectedStaffId === "team" ? "team" : selectedStaffId || currentStaff?.staff_id || ""}
+                  onChange={(e) => handleStaffChange(e.target.value)}
+                >
+                  <option value="team">Team</option>
+                  {allStaff.map((staff) => (
+                    <option key={staff.staff_id} value={staff.staff_id}>
+                      {staff.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {/* Logged-in user display */}
+              {currentStaff && (
+                <span className="text-white text-sm font-medium hidden md:block">
+                  {currentStaff.name}
+                </span>
+              )}
+
+              {/* Sign out button */}
+              <button
+                onClick={handleSignOut}
+                className="bg-white/20 hover:bg-white/30 text-white text-sm font-semibold px-3 py-1 rounded-md transition"
               >
-                <option value="team">Team</option>
-                {allStaff.map((staff) => (
-                  <option key={staff.staff_id} value={staff.staff_id}>
-                    {staff.name}
-                  </option>
-                ))}
-              </select>
+                Sign Out
+              </button>
             </div>
 
             <div className="md:hidden">
               <button className="text-white p-2">
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 6h16M4 12h16M4 18h16"
-                  />
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
             </div>

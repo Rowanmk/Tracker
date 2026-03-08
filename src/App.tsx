@@ -11,8 +11,24 @@ import { StaffTracker } from './pages/StaffTracker';
 import { SelfAssessmentProgress } from './pages/SelfAssessmentProgress';
 import { TargetsControl } from './pages/TargetsControl';
 import { Settings } from './pages/Settings';
+import { Login } from './pages/Login';
+import { useAuth } from './context/AuthContext';
 
-const AppContent: React.FC = () => {
+const ProtectedApp: React.FC = () => {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-gray-500 text-lg">Loading…</div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
   return (
     <Layout>
       <Routes>
@@ -35,7 +51,7 @@ const App: React.FC = () => {
       <AuthProvider>
         <DateProvider>
           <Router>
-            <AppContent />
+            <ProtectedApp />
           </Router>
         </DateProvider>
       </AuthProvider>

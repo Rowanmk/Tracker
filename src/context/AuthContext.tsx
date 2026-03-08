@@ -1,22 +1,23 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, AuthError } from '@supabase/supabase-js';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
 
 interface AuthContextType {
-  user: User | null;
+  user: null;
   loading: boolean;
   signOut: () => Promise<void>;
-  signInWithOAuth: (provider: string) => Promise<{ error?: AuthError }>;
-  signInWithGoogle: () => Promise<{ error?: AuthError }>;
-  signInWithFacebook: () => Promise<{ error?: AuthError }>;
-  signInWithGitHub: () => Promise<{ error?: AuthError }>;
+  signInWithOAuth: (provider: string) => Promise<{ error?: any }>;
+  signInWithGoogle: () => Promise<{ error?: any }>;
+  signInWithFacebook: () => Promise<{ error?: any }>;
+  signInWithGitHub: () => Promise<{ error?: any }>;
+  signInWithCredentials: (username: string, password: string) => Promise<{ error?: string }>;
   staff: Staff[];
   allStaff: Staff[];
   currentStaff: Staff | null;
   isAdmin: boolean;
+  isAuthenticated: boolean;
   selectedStaffId: string | null;
   onStaffChange: (staffId: number | "team") => void;
   showFallbackWarning: boolean;
@@ -30,7 +31,6 @@ interface AuthProviderProps {
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [allStaff, setAllStaff] = useState<Staff[]>([]);
@@ -38,45 +38,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>("team");
   const [showFallbackWarning, setShowFallbackWarning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Get initial session
-    const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      setLoading(false);
-    };
-
-    getSession();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
-
-    return () => subscription.unsubscribe();
-  }, []);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
   useEffect(() => {
     const fetchStaff = async () => {
       try {
         setError(null);
         setShowFallbackWarning(false);
-        
+
         const { data, error: staffError } = await supabase
           .from('staff')
           .select('*')
           .order('name');
-        
+
         if (staffError) {
-          console.error('Error fetching staff:', staffError);
           setError('Failed to load staff data');
           setShowFallbackWarning(true);
-          
-          // Create mock staff for demo
           const mockStaff: Staff[] = [
             {
               staff_id: 1,
@@ -105,11 +82,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           setStaff(allStaffData.filter(s => !s.is_hidden));
         }
       } catch (err) {
-        console.error('Error in fetchStaff:', err);
         setError('Failed to connect to database');
         setShowFallbackWarning(true);
-        
-        // Fallback to mock data
         const mockStaff: Staff[] = [
           {
             staff_id: 1,
@@ -132,47 +106,97 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         ];
         setAllStaff(mockStaff);
         setStaff(mockStaff.filter(s => !s.is_hidden));
+      } finally {
+        setLoading(false);
       }
     };
 
     fetchStaff();
+
+    // Restore session from localStorage
+    const savedStaffId = localStorage.getItem('crew_tracker_staff_id');
+    if (savedStaffId) {
+      setIsAuthenticated(true);
+    }
   }, []);
 
+  // Once staff is loaded, restore the logged-in staff member
   useEffect(() => {
-    if (user && staff.length > 0) {
-      // Try to find staff member linked to this user
-      const linkedStaff = staff.find(s => s.user_id === user.id);
-      if (linkedStaff) {
-        setCurrentStaff(linkedStaff);
-      } else {
-        // Default to first staff member if no link found
-        setCurrentStaff(staff[0]);
-      }
-    } else if (staff.length > 0) {
-      // No user logged in, default to first staff member
-      setCurrentStaff(staff[0]);
-    }
-  }, [user, staff]);
+    if (allStaff.length === 0) return;
 
-  const signOut = async (): Promise<void> => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error('Error signing out:', error.message);
+    const savedStaffId = localStorage.getItem('crew_tracker_staff_id');
+    if (savedStaffId) {
+      const found = allStaff.find(s => s.staff_id === Number(savedStaffId));
+      if (found) {
+        setCurrentStaff(found);
+        setIsAuthenticated(true);
+        // Non-admin defaults to their own view; admin defaults to team
+        if (found.role !== 'admin') {
+          setSelectedStaffId(found.staff_id.toString());
+        } else {
+          setSelectedStaffId("team");
+        }
+      } else {
+        // Staff no longer exists — clear session
+        localStorage.removeItem('crew_tracker_staff_id');
+        setIsAuthenticated(false);
+      }
     }
+  }, [allStaff]);
+
+  const signInWithCredentials = async (
+    username: string,
+    password: string
+  ): Promise<{ error?: string }> => {
+    if (allStaff.length === 0) {
+      return { error: 'Staff data not loaded yet. Please try again.' };
+    }
+
+    // Match by first name (case-insensitive)
+    const firstName = username.toLowerCase().trim();
+    const matched = allStaff.find(s => {
+      const staffFirstName = s.name.split(' ')[0].toLowerCase();
+      return staffFirstName === firstName;
+    });
+
+    if (!matched) {
+      return { error: 'Invalid username or password.' };
+    }
+
+    // Password = first name (case-insensitive)
+    const staffFirstName = matched.name.split(' ')[0].toLowerCase();
+    if (password.toLowerCase().trim() !== staffFirstName) {
+      return { error: 'Invalid username or password.' };
+    }
+
+    if (matched.is_hidden) {
+      return { error: 'This account is inactive. Please contact an administrator.' };
+    }
+
+    // Successful login
+    setCurrentStaff(matched);
+    setIsAuthenticated(true);
+    localStorage.setItem('crew_tracker_staff_id', matched.staff_id.toString());
+
+    // Non-admin: default to their own view
+    if (matched.role !== 'admin') {
+      setSelectedStaffId(matched.staff_id.toString());
+    } else {
+      setSelectedStaffId("team");
+    }
+
+    return {};
   };
 
-  const signInWithOAuth = async (provider: string): Promise<{ error?: AuthError }> => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: provider as any,
-      options: {
-        redirectTo: `${window.location.origin}/`
-      }
-    });
-    if (error) {
-      console.error(`Error signing in with ${provider}:`, error.message);
-      return { error };
-    }
-    return {};
+  const signOut = async (): Promise<void> => {
+    setCurrentStaff(null);
+    setIsAuthenticated(false);
+    setSelectedStaffId("team");
+    localStorage.removeItem('crew_tracker_staff_id');
+  };
+
+  const signInWithOAuth = async (_provider: string): Promise<{ error?: any }> => {
+    return { error: 'OAuth not supported in this version.' };
   };
 
   const signInWithGoogle = async () => signInWithOAuth('google');
@@ -194,17 +218,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const isAdmin = currentStaff?.role === 'admin';
 
   const value: AuthContextType = {
-    user,
+    user: null,
     loading,
     signOut,
     signInWithOAuth,
     signInWithGoogle,
     signInWithFacebook,
     signInWithGitHub,
+    signInWithCredentials,
     staff,
     allStaff,
     currentStaff,
     isAdmin,
+    isAuthenticated,
     selectedStaffId,
     onStaffChange,
     showFallbackWarning,
