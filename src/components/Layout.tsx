@@ -51,8 +51,15 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     await signOut();
   };
 
-  // The label shown on the dropdown button — always the signed-in user's name
-  const buttonLabel = currentStaff?.name ?? "Select";
+  // The label shown on the dropdown button — reflects the currently selected view
+  const buttonLabel = (() => {
+    if (selectedStaffId === "team") return "Team View";
+    if (selectedStaffId) {
+      const found = allStaff.find(s => s.staff_id.toString() === selectedStaffId);
+      if (found) return found.name;
+    }
+    return currentStaff?.name ?? "Select";
+  })();
 
   // Other staff members (excluding the signed-in user)
   const otherStaff = allStaff.filter(
@@ -111,10 +118,10 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                   {/* Current user — highlighted */}
                   {currentStaff && (
                     <button
-                      onClick={() => {
-                        handleSelectStaff(currentStaff.staff_id);
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-sm font-bold text-[#001B47] bg-blue-50 hover:bg-blue-100 transition flex items-center gap-2"
+                      onClick={() => handleSelectStaff(currentStaff.staff_id)}
+                      className={`w-full text-left px-4 py-2.5 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition flex items-center gap-2 ${
+                        selectedStaffId === currentStaff.staff_id.toString() ? "bg-blue-100" : "bg-blue-50"
+                      }`}
                     >
                       <span className="w-2 h-2 rounded-full bg-[#001B47] inline-block flex-shrink-0" />
                       {currentStaff.name}
@@ -126,7 +133,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                     <button
                       onClick={() => handleSelectStaff("team")}
                       className={`w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition ${
-                        selectedStaffId === "team" ? "font-semibold" : ""
+                        selectedStaffId === "team" ? "font-semibold bg-gray-100" : ""
                       }`}
                     >
                       Team View
@@ -142,7 +149,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                           key={s.staff_id}
                           onClick={() => handleSelectStaff(s.staff_id)}
                           className={`w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition ${
-                            selectedStaffId === s.staff_id.toString() ? "font-semibold text-[#001B47]" : ""
+                            selectedStaffId === s.staff_id.toString() ? "font-semibold text-[#001B47] bg-gray-100" : ""
                           }`}
                         >
                           {s.name}
