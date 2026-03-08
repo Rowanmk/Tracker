@@ -37,7 +37,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [allStaff, setAllStaff] = useState<Staff[]>([]);
   const [currentStaff, setCurrentStaff] = useState<Staff | null>(null);
-  const [selectedStaffId, setSelectedStaffId] = useState<string | null>("team");
+  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [showFallbackWarning, setShowFallbackWarning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -54,8 +54,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           .from('staff')
           .select('*')
           .order('name');
-
-        console.log('staff query result:', { data, staffError });
 
         if (staffError) {
           setError(`Failed to load staff data: ${staffError.message}`);
@@ -76,7 +74,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           );
         }
       } catch (err) {
-        console.error('Unexpected error loading staff:', err);
         setError('Failed to connect to the database.');
         allStaffRef.current = [];
         setAllStaff([]);
@@ -102,12 +99,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (found) {
         setCurrentStaff(found);
         setIsAuthenticated(true);
-        setSelectedStaffId(found.role !== 'admin' ? found.staff_id.toString() : 'team');
+        // Default selected staff to the signed-in user (not "team")
+        setSelectedStaffId(found.staff_id.toString());
       } else {
         localStorage.removeItem('crew_tracker_staff_id');
         setIsAuthenticated(false);
         setCurrentStaff(null);
-        setSelectedStaffId('team');
+        setSelectedStaffId(null);
       }
     }
 
@@ -154,7 +152,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setCurrentStaff(matched);
     setIsAuthenticated(true);
     localStorage.setItem('crew_tracker_staff_id', matched.staff_id.toString());
-    setSelectedStaffId(matched.role !== 'admin' ? matched.staff_id.toString() : 'team');
+    // Default to the signed-in user's own view
+    setSelectedStaffId(matched.staff_id.toString());
 
     return {};
   };
@@ -162,7 +161,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signOut = async (): Promise<void> => {
     setCurrentStaff(null);
     setIsAuthenticated(false);
-    setSelectedStaffId('team');
+    setSelectedStaffId(null);
     localStorage.removeItem('crew_tracker_staff_id');
   };
 
