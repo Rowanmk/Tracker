@@ -34,10 +34,23 @@ interface StaffPerformance {
 
 type LocalInputState = Record<string, string>;
 
+const SERVICE_ORDER = ["Accounts", "VAT", "Self Assessments"];
+
 export const StaffTracker: React.FC = () => {
   const { selectedMonth, selectedFinancialYear } = useDate();
   const { currentStaff, selectedStaffId, allStaff } = useAuth();
-  const { services, loading: servicesLoading } = useServices();
+  const { services: rawServices, loading: servicesLoading } = useServices();
+
+  // Sort services into the required order: Accounts, VAT, Self Assessments
+  const services = useMemo(() => {
+    return [...rawServices].sort((a, b) => {
+      const ai = SERVICE_ORDER.indexOf(a.service_name);
+      const bi = SERVICE_ORDER.indexOf(b.service_name);
+      const aIdx = ai === -1 ? SERVICE_ORDER.length : ai;
+      const bIdx = bi === -1 ? SERVICE_ORDER.length : bi;
+      return aIdx - bIdx;
+    });
+  }, [rawServices]);
 
   const isTeamSelected = selectedStaffId === "team" || !selectedStaffId;
 
@@ -481,7 +494,7 @@ export const StaffTracker: React.FC = () => {
                 <td className="px-3 py-2 border-t border-r font-semibold whitespace-nowrap text-white text-sm">
                   Monthly Total
                 </td>
-                {dayMeta.map((d, idx) => {
+                {dayMeta.map((d) => {
                   const dayTotal = services.reduce((sum, s) => {
                     const entry = dailyEntries.find((e) => e.day === d.day);
                     return sum + (entry?.services[s.service_name] || 0);
