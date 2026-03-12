@@ -1,32 +1,28 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useDate } from "../context/DateContext";
 import { useAuth } from "../context/AuthContext";
 import { DashboardViewProvider } from "../context/DashboardViewContext";
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
   const { selectedMonth, selectedYear } = useDate();
-  const { currentStaff, allStaff, onStaffChange, isAdmin, selectedStaffId, signOut } = useAuth();
+  const { currentStaff, allStaff, onStaffChange, isAdmin, selectedStaffId, signOut, hasPermission } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const baseNavigationLinks = [
+  const allNavigationLinks = [
     { path: "/", label: "Dashboard" },
     { path: "/tracker", label: "My Tracker" },
     { path: "/sa-progress", label: "Self Assessment Progress" },
     { path: "/team", label: "Team View" },
     { path: "/annual", label: "Annual Summary" },
-  ];
-
-  const adminNavigationLinks = [
     { path: "/targets", label: "Targets Control" },
     { path: "/settings", label: "Settings" },
   ];
 
-  const navigationLinks = isAdmin
-    ? [...baseNavigationLinks, ...adminNavigationLinks]
-    : baseNavigationLinks;
+  const navigationLinks = allNavigationLinks.filter(link => hasPermission(link.path));
 
   const isActivePath = (path: string) => location.pathname === path;
 
@@ -40,6 +36,13 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Redirect if user lands on a page they don't have permission for
+  useEffect(() => {
+    if (currentStaff && !hasPermission(location.pathname)) {
+      navigate("/");
+    }
+  }, [location.pathname, currentStaff, permissions]);
+
   const handleSelectStaff = (staffId: number | "team") => {
     onStaffChange(staffId);
     setDropdownOpen(false);
@@ -50,7 +53,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     await signOut();
   };
 
-  // The label shown on the dropdown button — reflects the currently selected view
   const buttonLabel = (() => {
     if (selectedStaffId === "team") return "Team View";
     if (selectedStaffId) {
@@ -60,11 +62,9 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     return currentStaff?.name ?? "Select";
   })();
 
-  // Is the currently selected item the signed-in user?
   const signedInUserIsSelected =
     currentStaff && selectedStaffId === currentStaff.staff_id.toString();
 
-  // The currently selected item when it is NOT the signed-in user
   const selectedItem: { label: string; id: number | "team" } | null = (() => {
     if (signedInUserIsSelected) return null;
     if (selectedStaffId === "team") return { label: "Team View", id: "team" };
@@ -75,7 +75,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     return null;
   })();
 
-  // Other staff members: exclude signed-in user AND the currently selected item
   const otherStaff = allStaff.filter(s => {
     if (s.is_hidden) return false;
     if (s.staff_id === currentStaff?.staff_id) return false;
@@ -83,9 +82,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     return true;
   });
 
-  // Whether "Team View" should appear in the "other options" section
-  const showTeamViewInOthers =
-    isAdmin && selectedStaffId !== "team";
+  const showTeamViewInOthers = isAdmin && selectedStaffId !== "team";
 
   return (
     <DashboardViewProvider>
@@ -117,7 +114,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
               ))}
             </nav>
 
-            {/* User dropdown */}
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setDropdownOpen((prev) => !prev)}
@@ -136,8 +132,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
 
               {dropdownOpen && (
                 <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden z-50">
-
-                  {/* ── Signed-in user — always pinned at top ── */}
                   {currentStaff && (
                     <button
                       onClick={() => handleSelectStaff(currentStaff.staff_id)}
@@ -150,7 +144,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                     </button>
                   )}
 
-                  {/* ── Currently selected item (only when it differs from signed-in user) ── */}
                   {selectedItem && (
                     <>
                       <button
@@ -160,17 +153,14 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                         <span className="w-2 h-2 rounded-full bg-blue-400 inline-block flex-shrink-0" />
                         {selectedItem.label}
                       </button>
-                      {/* Separator line under the selected item */}
                       <div className="border-t-2 border-gray-300" />
                     </>
                   )}
 
-                  {/* Separator after signed-in user when they ARE the selected item */}
                   {signedInUserIsSelected && (
                     <div className="border-t-2 border-gray-300" />
                   )}
 
-                  {/* ── Admin-only: Team view option (when not already selected) ── */}
                   {isAdmin && showTeamViewInOthers && (
                     <button
                       onClick={() => handleSelectStaff("team")}
@@ -180,7 +170,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                     </button>
                   )}
 
-                  {/* ── Admin-only: Other staff members ── */}
                   {isAdmin && otherStaff.map((s) => (
                     <button
                       key={s.staff_id}
@@ -191,7 +180,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                     </button>
                   ))}
 
-                  {/* ── Log Out — always at the bottom ── */}
                   <div className="border-t border-gray-200" />
                   <button
                     onClick={handleSignOut}
@@ -201,34 +189,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                   </button>
                 </div>
               )}
-            </div>
-
-            <div className="md:hidden">
-              <button className="text-white p-2">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <div className="md:hidden bg-black/10 border-t border-white/20">
-            <div className="px-6 py-2 space-y-1">
-              {navigationLinks.map((link) => (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  className={`
-                    block px-3 py-2 rounded-md text-sm font-medium transition-all duration-200
-                    ${isActivePath(link.path)
-                      ? "bg-white/20 text-white"
-                      : "text-white/80 hover:text-white hover:bg-white/10"
-                    }
-                  `}
-                >
-                  {link.label}
-                </Link>
-              ))}
             </div>
           </div>
         </header>
