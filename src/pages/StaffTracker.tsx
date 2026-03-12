@@ -54,6 +54,18 @@ export const StaffTracker: React.FC = () => {
 
   const isTeamSelected = selectedStaffId === "team" || !selectedStaffId;
 
+  // Dynamic page title based on selection
+  const pageTitle = useMemo(() => {
+    if (isTeamSelected) return "My Team's Tracker";
+    
+    const selectedStaff = allStaff.find(s => s.staff_id.toString() === selectedStaffId);
+    const name = selectedStaff?.name || currentStaff?.name || "Staff";
+    
+    // Handle possessive (Rowan's vs James')
+    const suffix = name.endsWith('s') ? "'" : "'s";
+    return `${name}${suffix} Tracker`;
+  }, [isTeamSelected, selectedStaffId, allStaff, currentStaff]);
+
   const year =
     selectedMonth >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
 
@@ -372,7 +384,7 @@ export const StaffTracker: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl lg:text-3xl font-bold">My Tracker</h2>
+      <h2 className="text-2xl lg:text-3xl font-bold">{pageTitle}</h2>
 
       <StaffPerformanceBar staffPerformance={staffPerformance} />
 
