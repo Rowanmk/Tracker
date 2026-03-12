@@ -10,6 +10,8 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   signInWithCredentials: (username: string, password: string) => Promise<{ error?: string }>;
+  getSecurityQuestion: (username: string) => Promise<{ question?: string; error?: string }>;
+  resetPasswordWithSecurityAnswer: (username: string, answer: string, newPassword: string) => Promise<{ error?: string }>;
   staff: Staff[];
   allStaff: Staff[];
   currentStaff: Staff | null;
@@ -22,6 +24,7 @@ interface AuthContextType {
   staffLoaded: boolean;
   permissions: Permission[];
   hasPermission: (path: string) => boolean;
+  refreshStaff: () => Promise<void>;
 }
 
 interface AuthProviderProps {
@@ -53,33 +56,40 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  useEffect(() => {
-    const fetchStaff = async () => {
-      try {
-        setError(null);
-        const { data, error: staffError } = await supabase
-          .from('staff')
-          .select('*')
-          .order('name');
+  const fetchStaff = async () => {
+    try {
+      setError(null);
+      const { data, error: staffError } = await supabase
+        .from('staff')
+        .select('*')
+        .order('name');
 
-        if (staffError) {
-          setError(`Failed to load staff data: ${staffError.message}`);
-          return;
-        }
-
-        const allStaffData = data || [];
-        allStaffRef.current = allStaffData;
-        setAllStaff(allStaffData);
-        setStaff(allStaffData.filter((s) => !s.is_hidden));
-        
-        await fetchPermissions();
-      } catch (err) {
-        setError('Failed to connect to the database.');
-      } finally {
-        setStaffLoaded(true);
+      if (staffError) {
+        setError(`Failed to load staff data: ${staffError.message}`);
+        return;
       }
-    };
 
+      const allStaffData = data || [];
+      allStaffRef.current = allStaffData;
+      setAllStaff(allStaffData);
+      setStaff(allStaffData.filter((s) => !s.is_hidden));
+      
+      // Update current staff if already logged in
+      const savedStaffId = localStorage.getItem('crew_tracker_staff_id');
+      if (savedStaffId) {
+        const found = allStaffData.find(s => s.staff_id === Number(savedStaffId));
+        if (found) setCurrentStaff(found);
+      }
+
+      await fetchPermissions();
+    } catch (err) {
+      setError('Failed to connect to the database.');
+    } finally {
+      setStaffLoaded(true);
+    }
+  };
+
+  useEffect(() => {
     fetchStaff();
   }, []);
 
@@ -123,7 +133,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     if (!matched) return { error: 'Invalid username or password.' };
 
-    // Check password field from DB. Fallback to first name if field is empty (legacy)
     const dbPassword = matched.password || matched.name.split(' ')[0].toLowerCase().trim();
     
     if (enteredPassword !== dbPassword) {
@@ -135,6 +144,47 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     localStorage.setItem('crew_tracker_staff_id', matched.staff_id.toString());
     setSelectedStaffId(matched.staff_id.toString());
 
+    return {};
+  };
+
+  const getSecurityQuestion = async (username: string): Promise<{ question?: string; error?: string }> => {
+    const enteredUsername = username.toLowerCase().trim();
+    const matched = allStaffRef.current.find((s) => {
+      const staffFirstName = s.name.split(' ')[0].toLowerCase().trim();
+      return staffFirstName === enteredUsername && !s.is_hidden;
+    });
+
+    if (!matched) return { error: 'User not found.' };
+    if (!matched.security_question) return { error: 'No security question set for this user. Please contact an admin.' };
+
+    return { question: matched.security_question };
+  };
+
+  const resetPasswordWithSecurityAnswer = async (
+    username: string,
+    answer: string,
+    newPassword: string
+  ): Promise<{ error?: string }> => {
+    const enteredUsername = username.toLowerCase().trim();
+    const matched = allStaffRef.current.find((s) => {
+      const staffFirstName = s.name.split(' ')[0].toLowerCase().trim();
+      return staffFirstName === enteredUsername && !s.is_hidden;
+    });
+
+    if (!matched) return { error: 'User not found.' };
+    
+    if (!matched.security_answer || matched.security_answer.toLowerCase().trim() !== answer.toLowerCase().trim()) {
+      return { error: 'Incorrect security answer.' };
+    }
+
+    const { error: updateError } = await supabase
+      .from('staff')
+      .update({ password: newPassword.trim() })
+      .eq('staff_id', matched.staff_id);
+
+    if (updateError) return { error: 'Failed to update password.' };
+
+    await fetchStaff();
     return {};
   };
 
@@ -161,7 +211,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const hasPermission = (path: string): boolean => {
     if (!currentStaff) return false;
     const perm = permissions.find(p => p.role === currentStaff.role && p.page_path === path);
-    return perm ? perm.is_visible : true; // Default to true if not explicitly set
+    return perm ? perm.is_visible : true;
   };
 
   const isAdmin = currentStaff?.role === 'admin';
@@ -171,6 +221,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     loading,
     signOut,
     signInWithCredentials,
+    getSecurityQuestion,
+    resetPasswordWithSecurityAnswer,
     staff,
     allStaff,
     currentStaff,
@@ -182,7 +234,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     error,
     staffLoaded,
     permissions,
-    hasPermission
+    hasPermission,
+    refreshStaff: fetchStaff
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -12,6 +12,7 @@ import { SelfAssessmentProgress } from './pages/SelfAssessmentProgress';
 import { TargetsControl } from './pages/TargetsControl';
 import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
+import { ForgotPassword } from './pages/ForgotPassword';
 import { useAuth } from './context/AuthContext';
 
 const ProtectedApp: React.FC = () => {
@@ -26,7 +27,13 @@ const ProtectedApp: React.FC = () => {
   }
 
   if (!isAuthenticated) {
-    return <Login />;
+    return (
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    );
   }
 
   return (

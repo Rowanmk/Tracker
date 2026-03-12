@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export const Login: React.FC = () => {
@@ -99,6 +100,15 @@ export const Login: React.FC = () => {
             >
               {submitting ? 'Signing in…' : !isReady ? 'Loading…' : 'Sign In'}
             </button>
+
+            <div className="text-center">
+              <Link 
+                to="/forgot-password" 
+                className="text-sm text-[#001B47] hover:underline font-medium"
+              >
+                Forgot Password?
+              </Link>
+            </div>
           </form>
         )}
 
