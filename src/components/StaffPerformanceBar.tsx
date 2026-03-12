@@ -3,6 +3,7 @@ import { loadTargets } from "../utils/loadTargets";
 import { useAuth } from "../context/AuthContext";
 import { useDate } from "../context/DateContext";
 import { useWorkingDays } from "../hooks/useWorkingDays";
+import { getFinancialYears, getFinancialYearFromMonth } from "../utils/financialYear";
 
 interface StaffPerformance {
   staff_id: number;
@@ -27,22 +28,26 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
     setSelectedMonth,
     setSelectedYear,
     selectedFinancialYear,
+    setSelectedFinancialYear,
   } = useDate();
 
   // Team is a pseudo-staff selection
   const isTeam = selectedStaffId === "team" || !selectedStaffId;
 
-  // Financial year month options (Apr → Mar)
+  // Financial year month options for all supported years (25/26 and 26/27)
   const monthYearOptions = useMemo(() => {
-    const fyStart = selectedFinancialYear.start;
-    const fyEnd = selectedFinancialYear.end;
+    const allFYs = getFinancialYears();
     const order = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
 
-    return order.map((m) => ({
-      value: `${m}-${m >= 4 ? fyStart : fyEnd}`,
-      label: `${MONTHS[m - 1]} ${m >= 4 ? fyStart : fyEnd}`,
-    }));
-  }, [selectedFinancialYear]);
+    return allFYs.flatMap((fy) => {
+      const fyStart = fy.start;
+      const fyEnd = fy.end;
+      return order.map((m) => ({
+        value: `${m}-${m >= 4 ? fyStart : fyEnd}`,
+        label: `${MONTHS[m - 1]} ${m >= 4 ? fyStart : fyEnd}`,
+      }));
+    });
+  }, []);
 
   const selectedValue = `${selectedMonth}-${selectedYear}`;
 
@@ -123,6 +128,8 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
     if (!Number.isNaN(m) && !Number.isNaN(y)) {
       setSelectedMonth(m);
       setSelectedYear(y);
+      // Update the financial year state to match the selected month/year
+      setSelectedFinancialYear(getFinancialYearFromMonth(m, y));
     }
   };
 
