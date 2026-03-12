@@ -37,15 +37,11 @@ export const TargetsControl: React.FC = () => {
   const { allStaff, loading: authLoading, error: authError } = useAuth();
   const { services, loading: servicesLoading, error: servicesError } = useServices();
 
-  const [selectedFinancialYear, setSelectedFinancialYear] = useState<FinancialYear>(() => {
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
-    if (month >= 4) {
-      return { label: `${year}/${(year + 1).toString().slice(-2)}`, start: year, end: year + 1 };
-    } else {
-      return { label: `${year - 1}/${year.toString().slice(-2)}`, start: year - 1, end: year };
-    }
+  // Force default to 25/26
+  const [selectedFinancialYear, setSelectedFinancialYear] = useState<FinancialYear>({
+    label: '2025/26',
+    start: 2025,
+    end: 2026
   });
 
   const [targetData, setTargetData] = useState<TargetData[]>([]);
@@ -91,13 +87,8 @@ export const TargetsControl: React.FC = () => {
             services.forEach((s) => (targets[m.number][s.service_name] = 0));
           });
 
-          // CRITICAL: Only apply targets that belong to this financial year
           dbTargets?.forEach((t) => {
-            // Validate month-year pairing
             if (!isTargetInFinancialYear(t.month, t.year, fy)) {
-              console.warn(
-                `Skipping target for staff ${staff.staff_id}: month=${t.month}, year=${t.year} not in FY ${fy.label}`
-              );
               return;
             }
 
@@ -125,17 +116,14 @@ export const TargetsControl: React.FC = () => {
 
   useEffect(() => {
     fetchTargets(selectedFinancialYear);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFinancialYear, allStaff.length, services.length]);
 
-  // Save scroll position before any state change that might cause re-render
   const saveScrollPosition = () => {
     if (scrollContainerRef.current) {
       scrollPositionRef.current = scrollContainerRef.current.scrollLeft;
     }
   };
 
-  // Restore scroll position after render
   useEffect(() => {
     if (scrollContainerRef.current && scrollPositionRef.current > 0) {
       scrollContainerRef.current.scrollLeft = scrollPositionRef.current;
@@ -281,33 +269,14 @@ export const TargetsControl: React.FC = () => {
     setError(null);
 
     try {
-      // Save targets for each staff member using the new saveTargets function
       await Promise.all(
         targetData.map(async (staff) => {
-          // Collect all service targets for this staff
-          const allServiceTargets: Record<number, number> = {};
-          
-          Object.entries(staff.targets).forEach(([monthStr, monthTargets]) => {
-            const month = Number(monthStr);
-            
-            Object.entries(monthTargets).forEach(([serviceName, value]) => {
-              const service = services.find((s) => s.service_name === serviceName);
-              if (service) {
-                // For each month, save targets individually
-                // This ensures proper month-year pairing
-                allServiceTargets[service.service_id] = value ?? 0;
-              }
-            });
-          });
-
-          // Delete all existing targets for this staff in this financial year
           await supabase
             .from('monthlytargets')
             .delete()
             .eq('staff_id', staff.staff_id)
             .in('year', [selectedFinancialYear.start, selectedFinancialYear.end]);
 
-          // Insert targets month by month with correct year pairing
           const inserts: any[] = [];
           Object.entries(staff.targets).forEach(([monthStr, monthTargets]) => {
             const month = Number(monthStr);
@@ -320,7 +289,7 @@ export const TargetsControl: React.FC = () => {
                   staff_id: staff.staff_id,
                   service_id: service.service_id,
                   month,
-                  year, // CRITICAL: Correct year for this month
+                  year,
                   target_value: value ?? 0,
                 });
               }
@@ -405,7 +374,6 @@ export const TargetsControl: React.FC = () => {
     setPendingAction(null);
   };
 
-  // Prevent page navigation if unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (hasUnsavedChanges) {
@@ -540,7 +508,7 @@ export const TargetsControl: React.FC = () => {
           <button
             onClick={handleSaveTargets}
             disabled={!hasUnsavedChanges}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             💾 Save Targets
           </button>
@@ -564,16 +532,13 @@ export const TargetsControl: React.FC = () => {
               className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800"
               style={{ scrollBehavior: 'smooth' }}
             >
-              {/* HEADER ROW */}
               <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-                {/* Service Column - Fixed Width w-40 */}
                 <div className="w-40 flex-shrink-0 px-4 py-3 border-r border-gray-200 dark:border-gray-600">
                   <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                     Service
                   </span>
                 </div>
 
-                {/* Months Container - Flex 1 to expand */}
                 <div className="flex flex-1 w-full">
                   {monthData.map((m) => (
                     <div key={m.number} className="flex-1 min-w-0 px-1 py-3 text-center border-r border-gray-200 dark:border-gray-600">
@@ -584,7 +549,6 @@ export const TargetsControl: React.FC = () => {
                   ))}
                 </div>
 
-                {/* Total Column - Fixed Width */}
                 <div className="w-24 flex-shrink-0 px-3 py-3 text-center border-l border-gray-200 dark:border-gray-600">
                   <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                     Total
@@ -592,7 +556,6 @@ export const TargetsControl: React.FC = () => {
                 </div>
               </div>
 
-              {/* SERVICE ROWS */}
               <div className="divide-y divide-gray-200 dark:divide-gray-700">
                 {services.map((service, serviceIdx) => {
                   const annualTotal = calculateAnnualTotal(staff.staff_id, service.service_name);
@@ -606,14 +569,12 @@ export const TargetsControl: React.FC = () => {
                           : 'bg-gray-50 dark:bg-gray-750'
                       } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
                     >
-                      {/* Service Column - Fixed Width w-40 */}
                       <div className="w-40 flex-shrink-0 px-4 py-2 border-r border-gray-200 dark:border-gray-600 flex items-center">
                         <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
                           {service.service_name}
                         </span>
                       </div>
 
-                      {/* Months Container - Flex 1 to expand */}
                       <div className="flex flex-1 w-full">
                         {monthData.map((m) => {
                           const inputKey = getInputKey(staff.staff_id, m.number, service.service_name);
@@ -665,7 +626,6 @@ export const TargetsControl: React.FC = () => {
                         })}
                       </div>
 
-                      {/* Total Column - Fixed Width */}
                       <div className="w-24 flex-shrink-0 px-3 py-2 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center">
                         <div className="px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white w-full">
                           {annualTotal}
@@ -675,16 +635,13 @@ export const TargetsControl: React.FC = () => {
                   );
                 })}
 
-                {/* MONTHLY TOTALS ROW */}
                 <div className="flex w-full bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500">
-                  {/* Service Column - Fixed Width w-40 */}
                   <div className="w-40 flex-shrink-0 px-4 py-3 border-r border-gray-300 dark:border-gray-500 flex items-center">
                     <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
                       Monthly Total
                     </span>
                   </div>
 
-                  {/* Months Container - Flex 1 to expand */}
                   <div className="flex flex-1 w-full">
                     {monthData.map((m) => {
                       const monthTotal = calculateMonthlyTotal(staff.staff_id, m.number);
@@ -698,7 +655,6 @@ export const TargetsControl: React.FC = () => {
                     })}
                   </div>
 
-                  {/* Total Column - Fixed Width */}
                   <div className="w-24 flex-shrink-0 px-3 py-2 border-l border-gray-300 dark:border-gray-500 flex items-center justify-center">
                     <div className="px-2 py-2 bg-blue-600 dark:bg-blue-700 border border-blue-700 dark:border-blue-800 rounded-md text-center text-sm font-bold text-white w-full">
                       {monthData.reduce((sum, m) => sum + calculateMonthlyTotal(staff.staff_id, m.number), 0)}
@@ -711,7 +667,6 @@ export const TargetsControl: React.FC = () => {
         ))}
       </div>
 
-      {/* SERVICE TOTALS SECTION */}
       <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden mt-8">
         <div className="bg-gradient-to-r from-purple-600 to-purple-700 dark:from-purple-700 dark:to-purple-800 px-6 py-4">
           <h4 className="text-lg font-bold text-white">
@@ -726,16 +681,13 @@ export const TargetsControl: React.FC = () => {
           className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800"
           style={{ scrollBehavior: 'smooth' }}
         >
-          {/* HEADER ROW */}
           <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-            {/* Service Column - Fixed Width w-40 */}
             <div className="w-40 flex-shrink-0 px-4 py-3 border-r border-gray-200 dark:border-gray-600">
               <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                 Service
               </span>
             </div>
 
-            {/* Months Container - Flex 1 to expand */}
             <div className="flex flex-1 w-full">
               {monthData.map((m) => (
                 <div key={m.number} className="flex-1 min-w-0 px-1 py-3 text-center border-r border-gray-200 dark:border-gray-600">
@@ -746,7 +698,6 @@ export const TargetsControl: React.FC = () => {
               ))}
             </div>
 
-            {/* Total Column - Fixed Width */}
             <div className="w-24 flex-shrink-0 px-3 py-3 text-center border-l border-gray-200 dark:border-gray-600">
               <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                 Total
@@ -754,7 +705,6 @@ export const TargetsControl: React.FC = () => {
             </div>
           </div>
 
-          {/* SERVICE ROWS */}
           <div className="divide-y divide-gray-200 dark:divide-gray-700">
             {services.map((service, serviceIdx) => {
               const annualTotal = calculateServiceAnnualTotal(service.service_name);
@@ -768,14 +718,12 @@ export const TargetsControl: React.FC = () => {
                       : 'bg-gray-50 dark:bg-gray-750'
                   } hover:bg-purple-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
                 >
-                  {/* Service Column - Fixed Width w-40 */}
                   <div className="w-40 flex-shrink-0 px-4 py-2 border-r border-gray-200 dark:border-gray-600 flex items-center">
                     <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
                       {service.service_name}
                     </span>
                   </div>
 
-                  {/* Months Container - Flex 1 to expand */}
                   <div className="flex flex-1 w-full">
                     {monthData.map((m) => {
                       const monthTotal = calculateServiceMonthlyTotal(m.number, service.service_name);
@@ -789,7 +737,6 @@ export const TargetsControl: React.FC = () => {
                     })}
                   </div>
 
-                  {/* Total Column - Fixed Width */}
                   <div className="w-24 flex-shrink-0 px-3 py-2 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center">
                     <div className="px-2 py-2 bg-purple-100 dark:bg-purple-900/30 border border-purple-300 dark:border-purple-700 rounded-md text-center text-sm font-bold text-purple-900 dark:text-purple-200 w-full">
                       {annualTotal}
@@ -799,16 +746,13 @@ export const TargetsControl: React.FC = () => {
               );
             })}
 
-            {/* GRAND TOTAL ROW */}
             <div className="flex w-full bg-purple-200 dark:bg-purple-900/50 border-t-2 border-purple-300 dark:border-purple-700">
-              {/* Service Column - Fixed Width w-40 */}
               <div className="w-40 flex-shrink-0 px-4 py-3 border-r border-purple-300 dark:border-purple-700 flex items-center">
                 <span className="text-sm font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
                   Grand Total
                 </span>
               </div>
 
-              {/* Months Container - Flex 1 to expand */}
               <div className="flex flex-1 w-full">
                 {monthData.map((m) => {
                   const monthGrandTotal = services.reduce((sum, service) => {
@@ -824,7 +768,6 @@ export const TargetsControl: React.FC = () => {
                 })}
               </div>
 
-              {/* Total Column - Fixed Width */}
               <div className="w-24 flex-shrink-0 px-3 py-2 border-l border-purple-300 dark:border-purple-700 flex items-center justify-center">
                 <div className="px-2 py-2 bg-purple-600 dark:bg-purple-700 border border-purple-700 dark:border-purple-800 rounded-md text-center text-sm font-bold text-white w-full">
                   {services.reduce((sum, service) => sum + calculateServiceAnnualTotal(service.service_name), 0)}

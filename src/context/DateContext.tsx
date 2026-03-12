@@ -15,23 +15,24 @@ interface DateContextType {
 const DateContext = createContext<DateContextType>({} as DateContextType);
 
 export const DateProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const today = new Date();
-
-  const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(today.getFullYear());
-  const [selectedFinancialYear, setSelectedFinancialYear] = useState<FinancialYear>(() => {
-    const fy = getFinancialYearFromMonth(today.getMonth() + 1, today.getFullYear());
-    return fy;
+  // Default to April 2025 (start of FY 25/26)
+  const [selectedMonth, setSelectedMonth] = useState(4);
+  const [selectedYear, setSelectedYear] = useState(2025);
+  
+  const [selectedFinancialYear, setSelectedFinancialYear] = useState<FinancialYear>({
+    label: '2025/26',
+    start: 2025,
+    end: 2026,
   });
 
   const financialYear = useMemo(
-    () => getFinancialYearFromMonth(selectedMonth, selectedYear),
-    [selectedMonth, selectedYear]
+    () => ({ label: '2025/26', start: 2025, end: 2026 }),
+    []
   );
 
   const derivedFinancialYear = useMemo(
-    () => getFinancialYearFromMonth(selectedMonth, selectedYear),
-    [selectedMonth, selectedYear]
+    () => ({ label: '2025/26', start: 2025, end: 2026 }),
+    []
   );
 
   return (
