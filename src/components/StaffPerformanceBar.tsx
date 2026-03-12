@@ -177,7 +177,7 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
 
   return (
     <div
-      className="rounded-lg px-6 py-4 relative min-h-[56px] flex items-center justify-center"
+      className="rounded-lg px-6 py-4 relative min-h-[56px] flex items-center justify-center z-20"
       style={{ backgroundColor: "#001B47" }}
     >
       {/* Custom Month selector */}
