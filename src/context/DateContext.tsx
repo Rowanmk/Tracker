@@ -26,13 +26,13 @@ export const DateProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   });
 
   const financialYear = useMemo(
-    () => ({ label: '2025/26', start: 2025, end: 2026 }),
-    []
+    () => getFinancialYearFromMonth(selectedMonth, selectedYear),
+    [selectedMonth, selectedYear]
   );
 
   const derivedFinancialYear = useMemo(
-    () => ({ label: '2025/26', start: 2025, end: 2026 }),
-    []
+    () => getFinancialYearFromMonth(selectedMonth, selectedYear),
+    [selectedMonth, selectedYear]
   );
 
   return (

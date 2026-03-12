@@ -11,16 +11,16 @@ export interface FinancialYear {
  * Jan–Mar → FY starts previous year
  */
 export const getFinancialYearFromMonth = (month: number, year: number): FinancialYear => {
-  // Even if called with other dates, we now strictly return 25/26 as per requirement
+  const startYear = month >= 4 ? year : year - 1;
   return {
-    label: '2025/26',
-    start: 2025,
-    end: 2026,
+    label: `${startYear}/${String(startYear + 1).slice(-2)}`,
+    start: startYear,
+    end: startYear + 1,
   };
 };
 
 /**
- * Returns only the 2025/26 financial year as per requirement.
+ * Returns the supported financial years: 2025/26 and 2026/27.
  */
 export const getFinancialYears = (): FinancialYear[] => {
   return [
@@ -28,16 +28,25 @@ export const getFinancialYears = (): FinancialYear[] => {
       label: '2025/26',
       start: 2025,
       end: 2026,
+    },
+    {
+      label: '2026/27',
+      start: 2026,
+      end: 2027,
     }
   ];
 };
 
 export const getCurrentFinancialYear = (): FinancialYear => {
-  return {
-    label: '2025/26',
-    start: 2025,
-    end: 2026,
-  };
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+  const fy = getFinancialYearFromMonth(month, year);
+  
+  // Clamp to supported range if outside
+  if (fy.start < 2025) return { label: '2025/26', start: 2025, end: 2026 };
+  if (fy.start > 2026) return { label: '2026/27', start: 2026, end: 2027 };
+  return fy;
 };
 
 export const getFinancialYearDateRange = (fy: FinancialYear) => {
@@ -70,9 +79,5 @@ export const isDateInFinancialYear = (date: Date, fy: FinancialYear): boolean =>
 };
 
 export const getFinancialYearFromDate = (date: Date): FinancialYear => {
-  return {
-    label: '2025/26',
-    start: 2025,
-    end: 2026,
-  };
+  return getFinancialYearFromMonth(date.getMonth() + 1, date.getFullYear());
 };
