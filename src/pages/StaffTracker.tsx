@@ -189,16 +189,16 @@ export const StaffTracker: React.FC = () => {
       <div className="border rounded-xl overflow-hidden shadow-sm bg-white dark:bg-gray-800">
         <div className="bg-[#001B47] text-white px-4 py-2 font-semibold">Daily Activity Entry</div>
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
+          <table className="w-full border-collapse table-fixed">
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-700">
-                <th className="text-left px-3 py-2 border-b border-r dark:border-gray-600 text-sm text-gray-700 dark:text-gray-200 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10">Service</th>
+                <th className="text-left px-3 py-2 border-b border-r dark:border-gray-600 text-sm text-gray-700 dark:text-gray-200 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10 w-40">Service</th>
                 {dailyEntries.map(e => {
                   const weekend = isWeekend(e.date);
                   return (
                     <th 
                       key={e.day} 
-                      className={`text-center py-2 border-b dark:border-gray-600 text-xs min-w-[40px] transition-colors ${
+                      className={`text-center py-2 border-b border-r last:border-r-0 dark:border-gray-600 text-xs transition-colors px-0 ${
                         weekend 
                           ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-bold' 
                           : 'text-gray-600 dark:text-gray-300'
@@ -213,7 +213,7 @@ export const StaffTracker: React.FC = () => {
             <tbody>
               {services.map(s => (
                 <tr key={s.service_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                  <td className="px-3 py-1.5 border-b border-r dark:border-gray-600 text-sm font-medium text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800 z-10">
+                  <td className="px-3 py-1.5 border-b border-r dark:border-gray-600 text-sm font-medium text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800 z-10 truncate">
                     {s.service_name}
                   </td>
                   {dailyEntries.map(e => {
@@ -222,7 +222,7 @@ export const StaffTracker: React.FC = () => {
                     return (
                       <td 
                         key={e.day} 
-                        className={`py-1.5 border-b dark:border-gray-600 text-center transition-colors ${
+                        className={`p-0 border-b border-r last:border-r-0 dark:border-gray-600 text-center transition-colors ${
                           weekend ? 'bg-red-50/50 dark:bg-red-900/10' : ''
                         }`}
                       >
@@ -237,7 +237,7 @@ export const StaffTracker: React.FC = () => {
                           onChange={(ev) => handleInputChange(s.service_id, e.day, ev.target.value)}
                           onBlur={(ev) => handleInputBlur(s.service_id, e.day, ev.target.value)}
                           onKeyDown={(ev) => handleKeyDown(ev, s.service_id, e.day)}
-                          className={`w-10 text-center border dark:border-gray-600 rounded text-xs no-spinner focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-colors ${
+                          className={`w-full h-10 text-center border-0 dark:bg-gray-700 text-xs no-spinner focus:ring-2 focus:ring-inset focus:ring-blue-500 outline-none transition-colors ${
                             weekend 
                               ? 'bg-red-50/80 dark:bg-red-900/20 text-red-900 dark:text-red-100' 
                               : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white'
