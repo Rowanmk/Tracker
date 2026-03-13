@@ -33,7 +33,6 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Financial year month options for all supported years (25/26 and 26/27)
   const monthYearOptions = useMemo(() => {
     const allFYs = getFinancialYears();
     const order = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
@@ -56,7 +55,6 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
     return found ? found.label : `${MONTHS[selectedMonth - 1]} ${selectedYear}`;
   }, [selectedValue, monthYearOptions, selectedMonth, selectedYear]);
 
-  // Identify "Today" for highlighting
   const today = new Date();
   const todayValue = `${today.getMonth() + 1}-${today.getFullYear()}`;
 
@@ -66,11 +64,8 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
       month: selectedMonth,
     });
 
-  // Use team working days for the aggregate performance bar to match dashboard logic
   const workingDays = teamWorkingDays;
 
-  // Calculate Actuals and Targets directly from the staffPerformance prop
-  // This ensures consistency with the Dashboard graphs which use the same source data
   const { actualTotal, targetTotal } = useMemo(() => {
     return staffPerformance.reduce(
       (acc, s) => ({
@@ -81,7 +76,6 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
     );
   }, [staffPerformance]);
 
-  // Expected (pro-rated)
   const expectedByNow =
     workingDays > 0
       ? (targetTotal / workingDays) *
@@ -110,7 +104,6 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
     }
   };
 
-  // Close dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -121,7 +114,6 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Scroll "Today" to middle when dropdown opens
   useEffect(() => {
     if (isDropdownOpen && listRef.current) {
       const todayIndex = monthYearOptions.findIndex(opt => opt.value === todayValue);
@@ -129,7 +121,7 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
         const container = listRef.current;
         const items = container.querySelectorAll('.dropdown-item');
         const todayItem = items[todayIndex] as HTMLElement;
-        
+
         if (todayItem) {
           const scrollPos = todayItem.offsetTop - (container.offsetHeight / 2) + (todayItem.offsetHeight / 2);
           container.scrollTop = scrollPos;
@@ -140,10 +132,9 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
 
   return (
     <div
-      className="rounded-lg px-6 py-4 relative min-h-[56px] flex items-center justify-center z-20"
+      className="rounded-lg px-6 py-5 relative min-h-[72px] flex items-center justify-center z-20"
       style={{ backgroundColor: "#001B47" }}
     >
-      {/* Custom Month selector */}
       <div className="absolute left-4 top-1/2 -translate-y-1/2" ref={dropdownRef}>
         <button
           onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -168,16 +159,16 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
             {monthYearOptions.map((opt) => {
               const isToday = opt.value === todayValue;
               const isSelected = opt.value === selectedValue;
-              
+
               return (
                 <button
                   key={opt.value}
                   onClick={() => handleMonthYearChange(opt.value)}
                   className={`dropdown-item w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between ${
-                    isSelected 
-                      ? "bg-blue-50 text-blue-700 font-bold" 
-                      : isToday 
-                        ? "bg-orange-50 text-orange-700 font-semibold" 
+                    isSelected
+                      ? "bg-blue-50 text-blue-700 font-bold"
+                      : isToday
+                        ? "bg-orange-50 text-orange-700 font-semibold"
                         : "text-gray-700 hover:bg-gray-50"
                   }`}
                 >
@@ -194,7 +185,6 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
         )}
       </div>
 
-      {/* Center text */}
       <div className="text-white font-semibold text-center leading-tight">
         {statusText}
         {" | "}Delivered: {Math.round(actualTotal)}
