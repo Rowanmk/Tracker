@@ -4,6 +4,8 @@ import { useAuth } from "../context/AuthContext";
 import { useServices } from "../hooks/useServices";
 import { useWorkingDays } from "../hooks/useWorkingDays";
 import { MyTrackerProgressTiles } from "../components/MyTrackerProgressTiles";
+import { StaffPerformanceBar } from "../components/StaffPerformanceBar";
+import { useStaffPerformance } from "../hooks/useStaffPerformance";
 import { supabase } from "../supabase/client";
 import { loadTargets } from "../utils/loadTargets";
 
@@ -17,6 +19,8 @@ export const StaffTracker: React.FC = () => {
   const { selectedMonth, selectedFinancialYear } = useDate();
   const { currentStaff } = useAuth();
   const { services } = useServices();
+  const { staffPerformance } = useStaffPerformance("desc");
+  
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
   const [personalTargets, setPersonalTargets] = useState<Record<string, number>>({});
   const [personalTotals, setPersonalTotals] = useState<Record<string, number>>({});
@@ -97,8 +101,13 @@ export const StaffTracker: React.FC = () => {
   if (loading) return <div className="py-6 text-center text-gray-500">Loading tracker…</div>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <h2 className="text-2xl lg:text-3xl font-bold">My Progress</h2>
+      
+      <div className="mb-6">
+        <StaffPerformanceBar staffPerformance={staffPerformance} />
+      </div>
+
       <MyTrackerProgressTiles
         services={services}
         serviceTotals={personalTotals}
@@ -106,27 +115,34 @@ export const StaffTracker: React.FC = () => {
         workingDays={staffWorkingDays}
         workingDaysUpToToday={workingDaysUpToToday}
       />
-      <div className="border rounded-xl overflow-hidden">
+      
+      <div className="border rounded-xl overflow-hidden shadow-sm bg-white dark:bg-gray-800">
         <div className="bg-[#001B47] text-white px-4 py-2 font-semibold">Daily Activity Entry</div>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
-              <tr className="bg-gray-50">
-                <th className="text-left px-3 py-2 border-b border-r text-sm">Service</th>
-                {dailyEntries.map(e => <th key={e.day} className="text-center py-2 border-b text-xs">{e.day}</th>)}
+              <tr className="bg-gray-50 dark:bg-gray-700">
+                <th className="text-left px-3 py-2 border-b border-r dark:border-gray-600 text-sm text-gray-700 dark:text-gray-200">Service</th>
+                {dailyEntries.map(e => (
+                  <th key={e.day} className="text-center py-2 border-b dark:border-gray-600 text-xs text-gray-600 dark:text-gray-300 min-w-[40px]">
+                    {e.day}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {services.map(s => (
-                <tr key={s.service_id}>
-                  <td className="px-3 py-1.5 border-b border-r text-sm">{s.service_name}</td>
+                <tr key={s.service_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                  <td className="px-3 py-1.5 border-b border-r dark:border-gray-600 text-sm font-medium text-gray-900 dark:text-white">
+                    {s.service_name}
+                  </td>
                   {dailyEntries.map(e => (
-                    <td key={e.day} className="py-1.5 border-b text-center">
+                    <td key={e.day} className="py-1.5 border-b dark:border-gray-600 text-center">
                       <input
                         type="number"
                         value={e.services[s.service_name]}
                         onChange={(ev) => onCellChange(s.service_id, s.service_name, e.day, ev.target.value)}
-                        className="w-10 text-center border rounded text-xs no-spinner"
+                        className="w-10 text-center border dark:border-gray-600 rounded text-xs no-spinner bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                       />
                     </td>
                   ))}
