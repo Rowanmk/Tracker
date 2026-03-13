@@ -94,6 +94,8 @@ export const Dashboard: React.FC = () => {
           workingDaysUpToToday={workingDaysUpToToday}
           month={selectedMonth}
           financialYear={financialYear}
+          selectedTeamId={selectedTeamId}
+          teams={teams}
         />
         <RunRateTile
           workingDays={teamWorkingDays}
