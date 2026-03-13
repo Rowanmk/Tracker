@@ -3,233 +3,98 @@ import { useDate } from '../context/DateContext';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { useWorkingDays } from '../hooks/useWorkingDays';
-import { PerformancePrediction } from '../components/PerformancePrediction';
 import { supabase } from '../supabase/client';
 import { getFinancialYearDateRange, getFinancialYearMonths } from '../utils/financialYear';
 
-interface AnnualData {
-  staff_id: number;
+interface AnnualTeamData {
+  team_id: number | 'unassigned';
   name: string;
   months: {
     [key: number]: {
       total: number;
-      services: {
-        [key: string]: number;
-      };
+      services: { [key: string]: number };
     };
   };
   totalDeliveries: number;
-  busiestDay: { day: number; count: number } | null;
-  averageMonthlyDeliveries: number;
 }
 
-const getRolling12MonthRange = (month: number, year: number) => {
-  const endDate = new Date(year, month - 1, 1);
-  endDate.setMonth(endDate.getMonth() + 1);
-  endDate.setDate(0);
-
-  const startDate = new Date(endDate);
-  startDate.setMonth(startDate.getMonth() - 11);
-  startDate.setDate(1);
-
-  return { startDate, endDate };
-};
-
 export const AnnualSummary: React.FC = () => {
-  const { selectedMonth, selectedFinancialYear } = useDate();
-  const { allStaff, currentStaff, isAdmin, selectedStaffId, loading: authLoading } = useAuth();
-  const { services, loading: servicesLoading } = useServices();
-
-  const [annualData, setAnnualData] = useState<AnnualData[]>([]);
-  const [showServiceBreakdown, setShowServiceBreakdown] = useState(false);
+  const { selectedFinancialYear } = useDate();
+  const { allStaff, teams } = useAuth();
+  const { services } = useServices();
+  const [annualData, setAnnualData] = useState<AnnualTeamData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const currentMonth = selectedMonth;
-  const currentYear =
-    selectedMonth >= 4
-      ? selectedFinancialYear.start
-      : selectedFinancialYear.end;
-
-  const { teamWorkingDays, workingDaysUpToToday } = useWorkingDays({
-    financialYear: selectedFinancialYear,
-    month: selectedMonth,
-  });
-
-  const workingDays = teamWorkingDays;
 
   const fetchAnnualData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+    setLoading(true);
+    const { startDate, endDate } = getFinancialYearDateRange(selectedFinancialYear);
+    const monthData = getFinancialYearMonths();
 
-      const { startDate, endDate } = getFinancialYearDateRange(selectedFinancialYear);
-      const { startDate: rollingStart, endDate: rollingEnd } =
-        getRolling12MonthRange(selectedMonth, currentYear);
+    const results = await Promise.all(
+      [...teams, { id: 'unassigned', name: 'Unassigned' }].map(async (team) => {
+        const teamStaff = allStaff.filter(s => team.id === 'unassigned' ? !s.team_id : s.team_id === team.id);
+        if (teamStaff.length === 0) return null;
 
-      const rows = await Promise.all(
-        allStaff.map(async staff => {
-          const { data: fyActivities } = await supabase
-            .from('dailyactivity')
-            .select('month, day, service_id, delivered_count, date')
-            .eq('staff_id', staff.staff_id)
-            .gte('date', startDate.toISOString().slice(0, 10))
-            .lte('date', endDate.toISOString().slice(0, 10));
+        const { data: activities } = await supabase
+          .from('dailyactivity')
+          .select('month, service_id, delivered_count')
+          .in('staff_id', teamStaff.map(s => s.staff_id))
+          .gte('date', startDate.toISOString().slice(0, 10))
+          .lte('date', endDate.toISOString().slice(0, 10));
 
-          const { data: rollingActivities } = await supabase
-            .from('dailyactivity')
-            .select('delivered_count')
-            .eq('staff_id', staff.staff_id)
-            .gte('date', rollingStart.toISOString().slice(0, 10))
-            .lte('date', rollingEnd.toISOString().slice(0, 10));
+        const months: AnnualTeamData['months'] = {};
+        monthData.forEach(m => {
+          months[m.number] = { total: 0, services: {} };
+          services.forEach(s => months[m.number].services[s.service_name] = 0);
+        });
 
-          const months: AnnualData['months'] = {};
-          for (let m = 1; m <= 12; m++) {
-            months[m] = { total: 0, services: {} };
-            services.forEach(s => {
-              months[m].services[s.service_name] = 0;
-            });
-          }
-
-          const dailyTotals: Record<number, number> = {};
-
-          fyActivities?.forEach(a => {
-            if (!a.service_id || !months[a.month]) return;
-
+        activities?.forEach(a => {
+          if (months[a.month]) {
             months[a.month].total += a.delivered_count;
+            const svc = services.find(s => s.service_id === a.service_id);
+            if (svc) months[a.month].services[svc.service_name] += a.delivered_count;
+          }
+        });
 
-            const serviceName = services.find(s => s.service_id === a.service_id)?.service_name;
-            if (serviceName) {
-              months[a.month].services[serviceName] += a.delivered_count;
-            }
+        return {
+          team_id: team.id as number | 'unassigned',
+          name: team.name,
+          months,
+          totalDeliveries: Object.values(months).reduce((s, m) => s + m.total, 0)
+        };
+      })
+    );
 
-            dailyTotals[a.day] = (dailyTotals[a.day] || 0) + a.delivered_count;
-          });
-
-          const busiestDay = Object.entries(dailyTotals).reduce(
-            (max, [d, c]) => (c > max.count ? { day: Number(d), count: c } : max),
-            { day: 0, count: 0 }
-          );
-
-          return {
-            staff_id: staff.staff_id,
-            name: staff.name,
-            months,
-            totalDeliveries: Object.values(months).reduce((s, m) => s + m.total, 0),
-            busiestDay: busiestDay.count ? busiestDay : null,
-            averageMonthlyDeliveries:
-              (rollingActivities?.reduce((s, a) => s + a.delivered_count, 0) || 0) / 12,
-          };
-        })
-      );
-
-      setAnnualData(rows);
-    } catch {
-      setError('Failed to load annual summary data');
-    } finally {
-      setLoading(false);
-    }
+    setAnnualData(results.filter((r): r is AnnualTeamData => r !== null));
+    setLoading(false);
   };
 
   useEffect(() => {
     fetchAnnualData();
-  }, [selectedFinancialYear, selectedMonth, allStaff.length, services.length]);
+  }, [selectedFinancialYear, allStaff.length, services.length]);
+
+  if (loading) return <div className="py-6 text-center text-gray-500">Loading annual summary…</div>;
 
   const monthData = getFinancialYearMonths();
 
-  const displayStaff =
-    isAdmin && selectedStaffId
-      ? allStaff.find(s => s.staff_id.toString() === selectedStaffId) || currentStaff
-      : currentStaff;
-
-  const getCurrentMonthData = () => {
-    if (!displayStaff) return { currentDelivered: 0, historicalAverage: 0 };
-
-    const staffData = annualData.find(s => s.staff_id === displayStaff.staff_id);
-    if (!staffData) return { currentDelivered: 0, historicalAverage: 0 };
-
-    return {
-      currentDelivered: staffData.months[currentMonth]?.total || 0,
-      historicalAverage: staffData.averageMonthlyDeliveries,
-    };
-  };
-
-  const { currentDelivered, historicalAverage } = getCurrentMonthData();
-
-  if (loading || authLoading || servicesLoading) {
-    return <div className="py-6 text-center text-gray-500">Loading annual summary…</div>;
-  }
-
-  if (error) {
-    return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded-md">
-        <p className="text-red-800">⚠️ {error}</p>
-      </div>
-    );
-  }
-
   return (
     <div>
-      <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">
-        Annual Summary
-      </h2>
-
-      {displayStaff && (
-        <div className="mb-8">
-          <PerformancePrediction
-            currentDelivered={currentDelivered}
-            target={0}
-            workingDays={workingDays}
-            workingDaysUpToToday={workingDaysUpToToday}
-            historicalAverage={historicalAverage}
-            staffName={displayStaff.name}
-          />
-        </div>
-      )}
-
-      <div className="flex items-center mb-6">
-        <button
-          onClick={() => setShowServiceBreakdown(!showServiceBreakdown)}
-          className="btn-primary"
-        >
-          {showServiceBreakdown ? 'Show Totals' : 'Show Service Breakdown'}
-        </button>
-      </div>
-
+      <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">Annual Team Summary</h2>
       <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-100 dark:bg-gray-700">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-bold uppercase">Staff</th>
-              {monthData.map(m => (
-                <th key={m.number} className="px-4 py-3 text-center text-xs font-bold uppercase">
-                  {m.name}
-                </th>
-              ))}
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase">Team</th>
+              {monthData.map(m => <th key={m.number} className="px-4 py-3 text-center text-xs font-bold uppercase">{m.name}</th>)}
               <th className="px-4 py-3 text-center text-xs font-bold uppercase">FY Total</th>
             </tr>
           </thead>
           <tbody>
-            {annualData.map((staff, idx) => (
-              <tr
-                key={staff.staff_id}
-                className={idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}
-              >
-                <td className="px-4 py-3 font-medium">{staff.name}</td>
-                {monthData.map(m => (
-                  <td key={m.number} className="px-4 py-3 text-center">
-                    {showServiceBreakdown
-                      ? services.map(s => (
-                          <div key={s.service_id} className="text-xs">
-                            {s.service_name}: {staff.months[m.number]?.services[s.service_name] || 0}
-                          </div>
-                        ))
-                      : staff.months[m.number]?.total || 0}
-                  </td>
-                ))}
-                <td className="px-4 py-3 font-bold text-center">
-                  {staff.totalDeliveries}
-                </td>
+            {annualData.map((team, idx) => (
+              <tr key={team.team_id} className={idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}>
+                <td className="px-4 py-3 font-medium">{team.name}</td>
+                {monthData.map(m => <td key={m.number} className="px-4 py-3 text-center">{team.months[m.number]?.total || 0}</td>)}
+                <td className="px-4 py-3 font-bold text-center">{team.totalDeliveries}</td>
               </tr>
             ))}
           </tbody>
