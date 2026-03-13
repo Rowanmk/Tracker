@@ -1,34 +1,30 @@
-import React, { useState, useEffect } from 'react';
-import { loadTargets } from '../utils/loadTargets';
+import React from 'react';
 import type { FinancialYear } from '../utils/financialYear';
+
+interface RunRateTileProps {
+  workingDays: number;
+  workingDaysUpToToday: number;
+  dailyActivities: any[];
+  month: number;
+  financialYear: FinancialYear;
+  target: number;
+  viewMode?: "percent" | "numbers";
+}
 
 const VIEWBOX_HEIGHT = 300;
 const BASELINE_Y = 250;
 const TOP_MARGIN = 20;
 const BAR_AREA_HEIGHT = BASELINE_Y - TOP_MARGIN;
 
-export const RunRateTile = ({
+export const RunRateTile: React.FC<RunRateTileProps> = ({
   workingDays,
   workingDaysUpToToday,
   dailyActivities,
   month,
   financialYear,
+  target,
   viewMode = "numbers",
 }) => {
-  const [runRateTarget, setRunRateTarget] = useState(0);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const { totalTarget } = await loadTargets(month, financialYear);
-        setRunRateTarget(totalTarget);
-      } catch {
-        setRunRateTarget(0);
-      }
-    };
-    load();
-  }, [month, financialYear]);
-
   const selectedYear = month >= 4 ? financialYear.start : financialYear.end;
   const daysInSelectedMonth = new Date(selectedYear, month, 0).getDate();
   
@@ -38,7 +34,7 @@ export const RunRateTile = ({
   const currentYear = today.getFullYear();
   const isCurrentMonth = (month === currentMonth && selectedYear === currentYear);
 
-  const dailyTarget = workingDays > 0 ? runRateTarget / workingDays : 0;
+  const dailyTarget = workingDays > 0 ? target / workingDays : 0;
 
   const workingDaysList = [];
   for (let d = 1; d <= daysInSelectedMonth; d++) {
@@ -63,8 +59,8 @@ export const RunRateTile = ({
   }
 
   const rawExpectedEnd = expectedCumulative[expectedCumulative.length - 1] || 0;
-  if (rawExpectedEnd > 0 && runRateTarget > 0) {
-    const scaleFactor = runRateTarget / rawExpectedEnd;
+  if (rawExpectedEnd > 0 && target > 0) {
+    const scaleFactor = target / rawExpectedEnd;
     expectedCumulative = expectedCumulative.map(value => value * scaleFactor);
   }
 
@@ -75,8 +71,8 @@ export const RunRateTile = ({
   if (viewMode === "percent") {
     maxValue = 100;
     for (let d = 1; d <= daysInSelectedMonth; d++) {
-      const actualPercent = runRateTarget > 0 ? Math.min((actualCumulative[d - 1] / runRateTarget) * 100, 100) : 0;
-      const expectedPercent = runRateTarget > 0 ? Math.min((expectedCumulative[d - 1] / runRateTarget) * 100, 100) : 0;
+      const actualPercent = target > 0 ? Math.min((actualCumulative[d - 1] / target) * 100, 100) : 0;
+      const expectedPercent = target > 0 ? Math.min((expectedCumulative[d - 1] / target) * 100, 100) : 0;
       barValues.push(actualPercent);
       expectedValues.push(expectedPercent);
     }

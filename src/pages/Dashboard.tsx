@@ -100,10 +100,10 @@ export const Dashboard: React.FC = () => {
         <RunRateTile
           workingDays={teamWorkingDays}
           workingDaysUpToToday={workingDaysUpToToday}
-          totalActual={performanceSummary.delivered}
           dailyActivities={dailyActivities}
           month={selectedMonth}
           financialYear={financialYear}
+          target={performanceSummary.target}
           viewMode={viewMode}
         />
       </div>
