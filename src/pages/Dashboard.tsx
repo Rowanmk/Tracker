@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { TeamProgressTile } from "../components/TeamProgressTile";
 import { EmployeeProgressChart } from "../components/EmployeeProgressChart";
 import { RunRateTile } from "../components/RunRateTile";
@@ -12,21 +12,12 @@ import { useStaffPerformance } from "../hooks/useStaffPerformance";
 import { usePerformanceSummary } from "../hooks/usePerformanceSummary";
 
 export const Dashboard: React.FC = () => {
-  const { viewMode, dashboardMode, setDashboardMode } = useDashboardView();
+  const { viewMode } = useDashboardView();
   const { selectedMonth, selectedYear, financialYear } = useDate();
-  const { selectedTeamId, teams, currentStaff, allStaff } = useAuth();
+  const { selectedTeamId, teams } = useAuth();
 
   const { services } = useServices();
   const { staffPerformance, dailyActivities } = useStaffPerformance("desc");
-
-  const [selectedIndividual, setSelectedIndividual] = useState<{ staff_id: number; name: string } | null>(null);
-
-  // Initialize selected individual to current user or first available staff
-  useEffect(() => {
-    if (!selectedIndividual && currentStaff) {
-      setSelectedIndividual({ staff_id: currentStaff.staff_id, name: currentStaff.name });
-    }
-  }, [currentStaff]);
 
   const isAllTeams = selectedTeamId === "all";
   const selectedTeam = !isAllTeams ? teams.find(t => t.id.toString() === selectedTeamId) : null;
@@ -34,13 +25,6 @@ export const Dashboard: React.FC = () => {
   const { teamWorkingDays, workingDaysUpToToday } = useWorkingDays({
     financialYear,
     month: selectedMonth,
-  });
-
-  // Filter staff for the selector based on team selection
-  const availableStaff = allStaff.filter(s => {
-    if (s.is_hidden) return false;
-    if (isAllTeams) return true;
-    return String(s.team_id) === selectedTeamId;
   });
 
   const performanceSummary = usePerformanceSummary({
@@ -56,59 +40,13 @@ export const Dashboard: React.FC = () => {
   const variance = performanceSummary.delivered - performanceSummary.expected;
   const isAhead = variance >= 0;
 
-  const handleStaffChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const id = Number(e.target.value);
-    const staff = allStaff.find(s => s.staff_id === id);
-    if (staff) {
-      setSelectedIndividual({ staff_id: staff.staff_id, name: staff.name });
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
           {isAllTeams ? "All Teams Dashboard" : `${selectedTeam?.name} Dashboard`}
         </h2>
-
-        <div className="flex items-center gap-3 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg border border-gray-200 dark:border-gray-700">
-          <button
-            onClick={() => setDashboardMode("team")}
-            className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${
-              dashboardMode === "team"
-                ? "bg-[#001B47] text-white shadow-sm"
-                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-            }`}
-          >
-            Team View
-          </button>
-          <button
-            onClick={() => setDashboardMode("individual")}
-            className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${
-              dashboardMode === "individual"
-                ? "bg-[#001B47] text-white shadow-sm"
-                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-            }`}
-          >
-            Individual View
-          </button>
-        </div>
       </div>
-
-      {dashboardMode === "individual" && (
-        <div className="flex items-center gap-3 animate-fade-in">
-          <label className="text-sm font-bold text-gray-700 dark:text-gray-300">Select Staff:</label>
-          <select
-            value={selectedIndividual?.staff_id || ""}
-            onChange={handleStaffChange}
-            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
-          >
-            {availableStaff.map(s => (
-              <option key={s.staff_id} value={s.staff_id}>{s.name}</option>
-            ))}
-          </select>
-        </div>
-      )}
 
       <div className="mb-6">
         <StaffPerformanceBar staffPerformance={staffPerformance} />
@@ -142,8 +80,6 @@ export const Dashboard: React.FC = () => {
         <TeamProgressTile
           services={services}
           staffPerformance={staffPerformance}
-          dashboardMode={dashboardMode}
-          currentStaff={selectedIndividual}
           viewMode={viewMode}
           workingDays={teamWorkingDays}
           workingDaysUpToToday={workingDaysUpToToday}
@@ -153,8 +89,6 @@ export const Dashboard: React.FC = () => {
         <EmployeeProgressChart
           services={services}
           staffPerformance={staffPerformance}
-          dashboardMode={dashboardMode}
-          currentStaff={selectedIndividual}
           viewMode={viewMode}
           workingDays={teamWorkingDays}
           workingDaysUpToToday={workingDaysUpToToday}
@@ -168,8 +102,6 @@ export const Dashboard: React.FC = () => {
           dailyActivities={dailyActivities}
           month={selectedMonth}
           financialYear={financialYear}
-          dashboardMode={dashboardMode}
-          currentStaff={selectedIndividual}
           viewMode={viewMode}
         />
       </div>

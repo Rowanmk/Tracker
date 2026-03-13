@@ -17,8 +17,6 @@ interface TeamProgressTileProps {
     historicalAverage: number;
     previousMonthRatio?: number;
   }>;
-  dashboardMode?: "team" | "individual";
-  currentStaff?: { staff_id: number; name: string } | null;
   viewMode: 'percent' | 'numbers';
   workingDays: number;
   workingDaysUpToToday: number;
@@ -29,9 +27,6 @@ interface TeamProgressTileProps {
 export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
   services,
   staffPerformance,
-  dashboardMode = "team",
-  currentStaff,
-  viewMode,
   workingDays,
   workingDaysUpToToday,
   month,
@@ -40,37 +35,18 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
   const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(false);
 
-  const effectiveStaffPerformance =
-    dashboardMode === "individual" && currentStaff
-      ? staffPerformance.filter(s => s.staff_id === currentStaff.staff_id)
-      : staffPerformance;
-
-  const totalDelivered = effectiveStaffPerformance.reduce((sum, s) => sum + s.total, 0);
-
   useEffect(() => {
     const fetchServiceTargets = async () => {
       setLoading(true);
       try {
         const targetMap: Record<number, number> = {};
-
-        if (dashboardMode === "individual" && currentStaff) {
-          // Individual View: load targets ONLY for currentStaff.staff_id
-          const { perService } = await loadTargets(month, financialYear, currentStaff.staff_id);
+        for (const staff of staffPerformance) {
+          const { perService } = await loadTargets(month, financialYear, staff.staff_id);
           Object.entries(perService).forEach(([serviceId, value]) => {
-            targetMap[parseInt(serviceId)] = value;
+            const sid = parseInt(serviceId);
+            targetMap[sid] = (targetMap[sid] || 0) + value;
           });
-        } else {
-          // Team View: load targets for every staff member in staffPerformance
-          // This ensures SA targets are properly calculated for each staff member
-          for (const staff of effectiveStaffPerformance) {
-            const { perService } = await loadTargets(month, financialYear, staff.staff_id);
-            Object.entries(perService).forEach(([serviceId, value]) => {
-              const sid = parseInt(serviceId);
-              targetMap[sid] = (targetMap[sid] || 0) + value;
-            });
-          }
         }
-
         setServiceTargets(targetMap);
       } catch (error) {
         console.error('Error fetching service targets:', error);
@@ -80,10 +56,10 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
       }
     };
 
-    if (effectiveStaffPerformance.length > 0) {
+    if (staffPerformance.length > 0) {
       fetchServiceTargets();
     }
-  }, [dashboardMode, currentStaff?.staff_id, month, financialYear, effectiveStaffPerformance.length]);
+  }, [month, financialYear, staffPerformance.length]);
 
   const getBarColor = (delivered: number, target: number) => {
     const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
@@ -126,12 +102,11 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
   };
 
   const renderServiceRow = (serviceId: number, serviceName: string) => {
-    const delivered = effectiveStaffPerformance.reduce((sum, staff) => sum + (staff.services[serviceName] || 0), 0);
+    const delivered = staffPerformance.reduce((sum, staff) => sum + (staff.services[serviceName] || 0), 0);
     const target = serviceTargets[serviceId] || 0;
     const percentage = target > 0 ? (delivered / target) * 100 : 0;
     const barColor = getBarColor(delivered, target);
 
-    // Calculate today's expected percentage for the marker
     const todayExpectedPercentage = workingDays > 0 ? (workingDaysUpToToday / workingDays) * 100 : 0;
 
     return (
@@ -155,7 +130,6 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
                 }}
                 title={`${serviceName}: ${delivered}/${Math.round(target)} (${Math.round(percentage)}%)`}
               />
-              {/* Today Progress Marker */}
               <div
                 className="absolute top-0 h-8 w-0.5 bg-[#001B47] transition-all duration-300 ease-in-out"
                 style={{ left: `${Math.min(todayExpectedPercentage, 100)}%` }}
@@ -163,7 +137,6 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
               />
             </div>
           </div>
-          {/* Ahead/Behind Badge positioned to the right of the today marker */}
           <div className="ml-3 flex items-center" style={{ minWidth: '40px' }}>
             {getAheadBehindBadge(delivered, target)}
           </div>
@@ -172,12 +145,10 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     );
   };
 
-  const progressTitle = dashboardMode === "team" ? "Team Progress" : `${currentStaff?.name || "My"} Progress`;
-
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
       <div className="tile-header px-4 py-1.5">
-        {progressTitle}
+        Team Progress
       </div>
 
       <div className="flex-1 flex flex-col justify-end p-3 pb-4">

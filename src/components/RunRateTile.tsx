@@ -10,46 +10,28 @@ const BAR_AREA_HEIGHT = BASELINE_Y - TOP_MARGIN;
 export const RunRateTile = ({
   workingDays,
   workingDaysUpToToday,
-  totalActual,
   dailyActivities,
   month,
   financialYear,
-  dashboardMode = "team",
-  currentStaff,
   viewMode = "numbers",
 }) => {
-
   const [runRateTarget, setRunRateTarget] = useState(0);
-
-  const filteredActivities =
-    dashboardMode === "individual" && currentStaff?.staff_id
-      ? dailyActivities.filter(a => a.staff_id === currentStaff.staff_id)
-      : dailyActivities;
-
-  const runRateActual = filteredActivities.reduce(
-    (s, a) => s + a.delivered_count, 0
-  );
 
   useEffect(() => {
     const load = async () => {
       try {
-        const id = dashboardMode === "individual" ? currentStaff?.staff_id : undefined;
-        const { totalTarget } = await loadTargets(month, financialYear, id);
+        const { totalTarget } = await loadTargets(month, financialYear);
         setRunRateTarget(totalTarget);
       } catch {
         setRunRateTarget(0);
       }
     };
     load();
-  }, [dashboardMode, month, financialYear, currentStaff?.staff_id]);
+  }, [month, financialYear]);
 
-  // Use selected month/year consistently
   const selectedYear = month >= 4 ? financialYear.start : financialYear.end;
-  
-  // Calendar-correct days in month calculation (leap-year safe)
   const daysInSelectedMonth = new Date(selectedYear, month, 0).getDate();
   
-  // Today's date only used to determine if selected month is current month
   const today = new Date();
   const currentDay = today.getDate();
   const currentMonth = today.getMonth() + 1;
@@ -57,9 +39,7 @@ export const RunRateTile = ({
   const isCurrentMonth = (month === currentMonth && selectedYear === currentYear);
 
   const dailyTarget = workingDays > 0 ? runRateTarget / workingDays : 0;
-  const expectedByToday = dailyTarget * Math.min(workingDaysUpToToday, workingDays);
 
-  // Working days calculation using selected month/year
   const workingDaysList = [];
   for (let d = 1; d <= daysInSelectedMonth; d++) {
     const dow = new Date(selectedYear, month - 1, d).getDay();
@@ -67,7 +47,7 @@ export const RunRateTile = ({
   }
 
   const deliveredByDay: Record<number, number> = {};
-  filteredActivities.forEach(a => {
+  dailyActivities.forEach(a => {
     deliveredByDay[a.day] = (deliveredByDay[a.day] || 0) + a.delivered_count;
   });
 
@@ -75,7 +55,6 @@ export const RunRateTile = ({
   const actualCumulative = [];
   let eSum = 0, aSum = 0;
 
-  // Loop using selected month's days for full month axis
   for (let d = 1; d <= daysInSelectedMonth; d++) {
     if (workingDaysList.includes(d)) eSum += dailyTarget;
     expectedCumulative.push(eSum);
@@ -83,46 +62,38 @@ export const RunRateTile = ({
     actualCumulative.push(aSum);
   }
 
-  // NORMALIZE expectedCumulative so its final value equals runRateTarget
   const rawExpectedEnd = expectedCumulative[expectedCumulative.length - 1] || 0;
   if (rawExpectedEnd > 0 && runRateTarget > 0) {
     const scaleFactor = runRateTarget / rawExpectedEnd;
     expectedCumulative = expectedCumulative.map(value => value * scaleFactor);
   }
 
-  // Calculate values based on viewMode
   let maxValue;
   let barValues = [];
   let expectedValues = [];
 
   if (viewMode === "percent") {
-    // % View: Convert to percentages relative to full monthly target
-    maxValue = 100; // Cap at 100%
-    
+    maxValue = 100;
     for (let d = 1; d <= daysInSelectedMonth; d++) {
       const actualPercent = runRateTarget > 0 ? Math.min((actualCumulative[d - 1] / runRateTarget) * 100, 100) : 0;
       const expectedPercent = runRateTarget > 0 ? Math.min((expectedCumulative[d - 1] / runRateTarget) * 100, 100) : 0;
-      
       barValues.push(actualPercent);
       expectedValues.push(expectedPercent);
     }
   } else {
-    // Numbers View: Use actual values
     maxValue = Math.max(...actualCumulative, ...expectedCumulative, 1);
-    
     for (let d = 1; d <= daysInSelectedMonth; d++) {
       barValues.push(actualCumulative[d - 1]);
       expectedValues.push(expectedCumulative[d - 1]);
     }
   }
 
-  // Determine which days to render bars for (only up to today for current month, all days for past months)
   const daysToRenderBars = isCurrentMonth ? Math.min(currentDay, daysInSelectedMonth) : daysInSelectedMonth;
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
       <div className="tile-header px-4 py-1.5">
-        {dashboardMode === "team" ? "Run Rate" : `${currentStaff?.name} Run Rate`}
+        Run Rate
       </div>
 
       <div className="flex-1 flex flex-col justify-end p-3 pb-4 overflow-hidden">
@@ -141,19 +112,13 @@ export const RunRateTile = ({
             const x = day * 15 + 40;
             return (
               <g key={day}>
-                <text
-                  x={x}
-                  y={BASELINE_Y + 15}
-                  textAnchor="middle"
-                  className="text-xs fill-gray-600"
-                >
+                <text x={x} y={BASELINE_Y + 15} textAnchor="middle" className="text-xs fill-gray-600">
                   {day}
                 </text>
               </g>
             );
           })}
 
-          {/* Render target line for full month with smooth transitions */}
           <polyline
             points={expectedValues
               .map((v, i) => {
@@ -169,7 +134,6 @@ export const RunRateTile = ({
             className="transition-all duration-300 ease-in-out"
           />
 
-          {/* Render bars only for today and past dates with smooth transitions */}
           {barValues.slice(0, daysToRenderBars).map((value, idx) => {
             const day = idx + 1;
             const ratio = value / maxValue;
