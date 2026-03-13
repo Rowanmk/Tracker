@@ -35,20 +35,14 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(false);
 
-  const effectiveStaffPerformance = staffPerformance;
-
-  const sortedStaff = [...effectiveStaffPerformance].sort((a, b) => b.total - a.total);
-
   useEffect(() => {
     const fetchTargets = async () => {
       setLoading(true);
       try {
         if (dashboardMode === "individual" && currentStaff) {
-          // Individual mode: fetch service targets for current staff
           const { perService } = await loadTargets(month, financialYear, currentStaff.staff_id);
           setServiceTargets(perService);
         } else {
-          // Team mode: fetch staff targets
           const tMap: Record<number, number> = {};
           for (const staff of staffPerformance) {
             const { totalTarget } = await loadTargets(month, financialYear, staff.staff_id);
@@ -56,16 +50,16 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
           }
           setStaffTargets(tMap);
         }
-      } catch (e) { console.error(e); }
-      finally { setLoading(false); }
+      } catch (e) { 
+        console.error(e); 
+      } finally { 
+        setLoading(false); 
+      }
     };
     fetchTargets();
   }, [dashboardMode, month, financialYear, staffPerformance.length, currentStaff?.staff_id]);
 
-  const getBarColor = (percentage, staffId) => {
-    if (dashboardMode === "individual" && currentStaff && staffId !== currentStaff.staff_id)
-      return "#C7C7C7"; // grey-out others
-    
+  const getBarColor = (percentage: number) => {
     if (percentage >= 90) return "#008A00";     // dark green  
     if (percentage >= 75) return "#FF8A2A";     // orange  
     return "#FF3B30";                           // red  
@@ -80,29 +74,25 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
     );
   }
 
-  // Determine bar count and data based on mode
-  const barCount = dashboardMode === "individual" ? services.length : sortedStaff.length;
-  
-  // Calculate dynamic spacing
+  const barCount = dashboardMode === "individual" ? services.length : staffPerformance.length;
   const FIXED_LEFT_MARGIN = 60;
-  const CHART_WIDTH = 800; // Total available width
-  const AVAILABLE_WIDTH = CHART_WIDTH - FIXED_LEFT_MARGIN - 40; // Right margin
-  const BAR_SLOT_WIDTH = AVAILABLE_WIDTH / barCount;
-  const BAR_WIDTH = BAR_SLOT_WIDTH * 0.65; // 65% of slot width for consistent density
+  const CHART_WIDTH = 800;
+  const AVAILABLE_WIDTH = CHART_WIDTH - FIXED_LEFT_MARGIN - 40;
+  const BAR_SLOT_WIDTH = AVAILABLE_WIDTH / Math.max(barCount, 1);
+  const BAR_WIDTH = Math.min(BAR_SLOT_WIDTH * 0.65, 60);
 
   if (dashboardMode === "individual" && currentStaff) {
-    // Individual mode: render one bar per service
     const currentStaffData = staffPerformance.find(s => s.staff_id === currentStaff.staff_id);
+    
     if (!currentStaffData) {
       return (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
           <div className="tile-header px-4 py-1.5">Employee Progress Chart</div>
-          <div className="flex-1 flex items-center justify-center text-gray-500">No data available</div>
+          <div className="flex-1 flex items-center justify-center text-gray-500">No data available for {currentStaff.name}</div>
         </div>
       );
     }
 
-    // Calculate run-rate values for individual services
     const serviceRunRateData = services.map(service => {
       const delivered = currentStaffData.services[service.service_name] || 0;
       const target = serviceTargets[service.service_id] || 0;
@@ -118,18 +108,17 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
       };
     });
 
-    // Calculate Y-axis max from run-rate values
     const maxRunRatePercent = Math.max(...serviceRunRateData.map(d => d.runRatePercent), 1);
     const maxDelivered = Math.max(...serviceRunRateData.map(d => d.delivered), 1);
     const maxExpected = Math.max(...serviceRunRateData.map(d => d.expectedByToday), 1);
 
     const maxValue = viewMode === "percent" ? maxRunRatePercent : Math.max(maxDelivered, maxExpected);
-    const yMax = maxValue * 1.20;
+    const yMax = Math.max(maxValue * 1.20, 1);
 
     return (
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
         <div className="tile-header px-4 py-1.5">
-          Employee Progress Chart
+          {currentStaff.name} - Service Progress
         </div>
 
         <div className="flex-1 flex flex-col justify-end p-3 pb-4">
@@ -138,7 +127,6 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
             preserveAspectRatio="none"
             className="w-full h-full"
           >
-            {/* Horizontal X-axis baseline */}
             <line
               x1={FIXED_LEFT_MARGIN}
               y1={BASELINE_Y}
@@ -151,18 +139,17 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
             {serviceRunRateData.map((data, i) => {
               const { service, delivered, expectedByToday, runRatePercent } = data;
               
-              // Bar height and label based on view mode
               let display, barHeight;
               if (viewMode === "percent") {
                 display = runRatePercent;
-                barHeight = yMax > 0 ? Math.min((runRatePercent / yMax) * BAR_AREA_HEIGHT, BAR_AREA_HEIGHT) : 0;
+                barHeight = (runRatePercent / yMax) * BAR_AREA_HEIGHT;
               } else {
                 display = Math.min(delivered, expectedByToday);
-                barHeight = yMax > 0 ? Math.min((display / yMax) * BAR_AREA_HEIGHT, BAR_AREA_HEIGHT) : 0;
+                barHeight = (display / yMax) * BAR_AREA_HEIGHT;
               }
 
               const x = FIXED_LEFT_MARGIN + (i * BAR_SLOT_WIDTH) + (BAR_SLOT_WIDTH / 2);
-              const barColor = getBarColor(runRatePercent, currentStaff.staff_id);
+              const barColor = getBarColor(runRatePercent);
 
               return (
                 <g key={service.service_id}>
@@ -178,10 +165,9 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
 
                   <text
                     x={x}
-                    y={BASELINE_Y - barHeight + 20}
+                    y={BASELINE_Y - barHeight - 8}
                     textAnchor="middle"
-                    fill="#FFF"
-                    className="text-sm font-bold transition-all duration-300 ease-in-out"
+                    className="text-xs font-bold fill-gray-700 dark:fill-gray-300 transition-all duration-300 ease-in-out"
                   >
                     {viewMode === "percent" ? `${Math.round(runRatePercent)}%` : Math.round(display)}
                   </text>
@@ -190,7 +176,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                     x={x}
                     y={BASELINE_Y + 15}
                     textAnchor="middle"
-                    className="text-xs fill-gray-700 dark:fill-gray-300 transition-all duration-300 ease-in-out"
+                    className="text-[10px] font-medium fill-gray-600 dark:fill-gray-400 transition-all duration-300 ease-in-out"
                   >
                     {service.service_name}
                   </text>
@@ -198,7 +184,6 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
               );
             })}
 
-            {/* % View - Horizontal Run Rate Line positioned at exactly 100% */}
             {viewMode === "percent" && (
               <line
                 x1={FIXED_LEFT_MARGIN}
@@ -217,7 +202,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
     );
   }
 
-  // Team mode: render one bar per staff member using run-rate calculations
+  const sortedStaff = [...staffPerformance].sort((a, b) => b.total - a.total);
   const staffRunRateData = sortedStaff.map(staff => {
     const target = staffTargets[staff.staff_id] || 0;
     const delivered = staff.total;
@@ -233,13 +218,12 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
     };
   });
 
-  // Calculate Y-axis max from run-rate values
   const maxRunRatePercent = Math.max(...staffRunRateData.map(d => d.runRatePercent), 1);
   const maxDelivered = Math.max(...staffRunRateData.map(d => d.delivered), 1);
   const maxExpected = Math.max(...staffRunRateData.map(d => d.expectedByToday), 1);
 
   const maxValue = viewMode === "percent" ? maxRunRatePercent : Math.max(maxDelivered, maxExpected);
-  const yMax = maxValue * 1.10;
+  const yMax = Math.max(maxValue * 1.10, 1);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
@@ -253,7 +237,6 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
           preserveAspectRatio="none"
           className="w-full h-full"
         >
-          {/* Horizontal X-axis baseline */}
           <line
             x1={FIXED_LEFT_MARGIN}
             y1={BASELINE_Y}
@@ -266,18 +249,17 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
           {staffRunRateData.map((data, i) => {
             const { staff, delivered, expectedByToday, runRatePercent } = data;
             
-            // Bar height and label based on view mode
             let display, barHeight;
             if (viewMode === "percent") {
               display = runRatePercent;
-              barHeight = yMax > 0 ? (runRatePercent / yMax) * BAR_AREA_HEIGHT : 0;
+              barHeight = (runRatePercent / yMax) * BAR_AREA_HEIGHT;
             } else {
               display = Math.min(delivered, expectedByToday);
-              barHeight = yMax > 0 ? (display / yMax) * BAR_AREA_HEIGHT : 0;
+              barHeight = (display / yMax) * BAR_AREA_HEIGHT;
             }
 
             const x = FIXED_LEFT_MARGIN + (i * BAR_SLOT_WIDTH) + (BAR_SLOT_WIDTH / 2);
-            const barColor = getBarColor(runRatePercent, staff.staff_id);
+            const barColor = getBarColor(runRatePercent);
 
             return (
               <g key={staff.staff_id}>
@@ -293,10 +275,9 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
 
                 <text
                   x={x}
-                  y={BASELINE_Y - barHeight + 20}
+                  y={BASELINE_Y - barHeight - 8}
                   textAnchor="middle"
-                  fill={barColor === "#C7C7C7" ? "#333" : "#FFF"}
-                  className="text-sm font-bold transition-all duration-300 ease-in-out"
+                  className="text-[10px] font-bold fill-gray-700 dark:fill-gray-300 transition-all duration-300 ease-in-out"
                 >
                   {viewMode === "percent" ? `${Math.round(runRatePercent)}%` : Math.round(display)}
                 </text>
@@ -305,7 +286,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                   x={x}
                   y={BASELINE_Y + 15}
                   textAnchor="middle"
-                  className="text-xs fill-gray-700 dark:fill-gray-300 transition-all duration-300 ease-in-out"
+                  className="text-[10px] font-medium fill-gray-600 dark:fill-gray-400 transition-all duration-300 ease-in-out"
                 >
                   {staff.name}
                 </text>
@@ -313,7 +294,6 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
             );
           })}
 
-          {/* % View - Horizontal Run Rate Line positioned at exactly 100% */}
           {viewMode === "percent" && (
             <line
               x1={FIXED_LEFT_MARGIN}
