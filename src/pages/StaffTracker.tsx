@@ -162,6 +162,12 @@ export const StaffTracker: React.FC = () => {
     }
   };
 
+  const isWeekend = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const day = d.getDay();
+    return day === 0 || day === 6;
+  };
+
   if (loading) return <div className="py-6 text-center text-gray-500">Loading tracker…</div>;
 
   return (
@@ -187,11 +193,21 @@ export const StaffTracker: React.FC = () => {
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-700">
                 <th className="text-left px-3 py-2 border-b border-r dark:border-gray-600 text-sm text-gray-700 dark:text-gray-200 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10">Service</th>
-                {dailyEntries.map(e => (
-                  <th key={e.day} className="text-center py-2 border-b dark:border-gray-600 text-xs text-gray-600 dark:text-gray-300 min-w-[40px]">
-                    {e.day}
-                  </th>
-                ))}
+                {dailyEntries.map(e => {
+                  const weekend = isWeekend(e.date);
+                  return (
+                    <th 
+                      key={e.day} 
+                      className={`text-center py-2 border-b dark:border-gray-600 text-xs min-w-[40px] transition-colors ${
+                        weekend 
+                          ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-bold' 
+                          : 'text-gray-600 dark:text-gray-300'
+                      }`}
+                    >
+                      {e.day}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -202,8 +218,14 @@ export const StaffTracker: React.FC = () => {
                   </td>
                   {dailyEntries.map(e => {
                     const cellKey = getCellKey(s.service_id, e.day);
+                    const weekend = isWeekend(e.date);
                     return (
-                      <td key={e.day} className="py-1.5 border-b dark:border-gray-600 text-center">
+                      <td 
+                        key={e.day} 
+                        className={`py-1.5 border-b dark:border-gray-600 text-center transition-colors ${
+                          weekend ? 'bg-red-50/50 dark:bg-red-900/10' : ''
+                        }`}
+                      >
                         <input
                           ref={(el) => {
                             if (el) inputRefs.current.set(cellKey, el);
@@ -215,7 +237,11 @@ export const StaffTracker: React.FC = () => {
                           onChange={(ev) => handleInputChange(s.service_id, e.day, ev.target.value)}
                           onBlur={(ev) => handleInputBlur(s.service_id, e.day, ev.target.value)}
                           onKeyDown={(ev) => handleKeyDown(ev, s.service_id, e.day)}
-                          className="w-10 text-center border dark:border-gray-600 rounded text-xs no-spinner bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                          className={`w-10 text-center border dark:border-gray-600 rounded text-xs no-spinner focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-colors ${
+                            weekend 
+                              ? 'bg-red-50/80 dark:bg-red-900/20 text-red-900 dark:text-red-100' 
+                              : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white'
+                          }`}
                         />
                       </td>
                     );
