@@ -17,7 +17,7 @@ interface DailyEntry {
 
 export const StaffTracker: React.FC = () => {
   const { selectedMonth, selectedFinancialYear } = useDate();
-  const { currentStaff } = useAuth();
+  const { currentStaff, selectedTeamId, teams } = useAuth();
   const { services } = useServices();
   const { staffPerformance } = useStaffPerformance("desc");
   
@@ -168,11 +168,15 @@ export const StaffTracker: React.FC = () => {
     return day === 0 || day === 6;
   };
 
+  const teamName = selectedTeamId === "all" 
+    ? "All Teams" 
+    : teams.find(t => t.id.toString() === selectedTeamId)?.name || "My";
+
   if (loading) return <div className="py-6 text-center text-gray-500">Loading tracker…</div>;
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl lg:text-3xl font-bold">My Progress</h2>
+      <h2 className="text-2xl lg:text-3xl font-bold">{teamName} Tracker</h2>
       
       <div className="mb-6">
         <StaffPerformanceBar staffPerformance={staffPerformance} />
