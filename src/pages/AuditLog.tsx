@@ -115,9 +115,9 @@ export const AuditLog: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Audit Log</h2>
-        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+      <div className="page-header">
+        <h2 className="page-title">Audit Log</h2>
+        <p className="page-subtitle">
           View recorded changes by page, user, team, date and time.
         </p>
       </div>

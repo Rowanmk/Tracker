@@ -37,7 +37,6 @@ export const TargetsControl: React.FC = () => {
   const { allStaff, loading: authLoading, error: authError } = useAuth();
   const { services, loading: servicesLoading, error: servicesError } = useServices();
 
-  // Force default to 25/26
   const [selectedFinancialYear, setSelectedFinancialYear] = useState<FinancialYear>({
     label: '2025/26',
     start: 2025,
@@ -77,10 +76,6 @@ export const TargetsControl: React.FC = () => {
             .eq('staff_id', staff.staff_id)
             .in('year', [fy.start, fy.end]);
 
-          if (dbErr) {
-            console.error('Error fetching monthlytargets:', dbErr);
-          }
-
           const targets: TargetData['targets'] = {};
           monthData.forEach((m) => {
             targets[m.number] = {};
@@ -106,8 +101,7 @@ export const TargetsControl: React.FC = () => {
       setLocalInputState({});
       setHasUnsavedChanges(false);
       inputRefs.current.clear();
-    } catch (err) {
-      console.error('Error fetching targets:', err);
+    } catch {
       setError('Failed to load targets data');
     } finally {
       setLoading(false);
@@ -156,7 +150,7 @@ export const TargetsControl: React.FC = () => {
     value: string
   ) => {
     const key = getInputKey(staffId, month, serviceName);
-    
+
     let numValue = 0;
     if (value.trim() !== '') {
       const parsed = parseInt(value, 10);
@@ -253,7 +247,7 @@ export const TargetsControl: React.FC = () => {
 
     if (nextStaff && nextService && nextMonth) {
       const nextKey = getInputKey(nextStaff.staff_id, nextMonth.number, nextService.service_name);
-      
+
       requestAnimationFrame(() => {
         const nextInput = inputRefs.current.get(nextKey);
         if (nextInput) {
@@ -309,8 +303,7 @@ export const TargetsControl: React.FC = () => {
       setHasUnsavedChanges(false);
       setSaveMessage('✅ Targets saved successfully');
       setTimeout(() => setSaveMessage(null), 3000);
-    } catch (err) {
-      console.error('Error saving targets:', err);
+    } catch {
       setError('Failed to save targets');
     }
   };
@@ -408,7 +401,7 @@ export const TargetsControl: React.FC = () => {
   const calculateMonthlyTotal = (staffId: number, month: number): number => {
     const staff = targetData.find(s => s.staff_id === staffId);
     if (!staff) return 0;
-    
+
     return services.reduce((sum, service) => {
       return sum + (staff.targets[month]?.[service.service_name] ?? 0);
     }, 0);
@@ -417,7 +410,7 @@ export const TargetsControl: React.FC = () => {
   const calculateAnnualTotal = (staffId: number, serviceName: string): number => {
     const staff = targetData.find(s => s.staff_id === staffId);
     if (!staff) return 0;
-    
+
     return monthData.reduce((sum, m) => {
       return sum + (staff.targets[m.number]?.[serviceName] ?? 0);
     }, 0);
@@ -437,11 +430,11 @@ export const TargetsControl: React.FC = () => {
 
   const getInputValue = (staffId: number, month: number, serviceName: string): string => {
     const key = getInputKey(staffId, month, serviceName);
-    
+
     if (localInputState.hasOwnProperty(key)) {
       return localInputState[key];
     }
-    
+
     const staff = targetData.find(s => s.staff_id === staffId);
     const value = staff?.targets[month]?.[serviceName] ?? 0;
     return value.toString();
@@ -449,11 +442,9 @@ export const TargetsControl: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          Targets Control
-        </h2>
-        <p className="text-gray-600 dark:text-gray-400">
+      <div className="page-header">
+        <h2 className="page-title">Targets Control</h2>
+        <p className="page-subtitle">
           Set monthly targets for {selectedFinancialYear.label}
         </p>
       </div>
@@ -527,7 +518,7 @@ export const TargetsControl: React.FC = () => {
               </h4>
             </div>
 
-            <div 
+            <div
               ref={scrollContainerRef}
               className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800"
               style={{ scrollBehavior: 'smooth' }}
@@ -559,7 +550,7 @@ export const TargetsControl: React.FC = () => {
               <div className="divide-y divide-gray-200 dark:divide-gray-700">
                 {services.map((service, serviceIdx) => {
                   const annualTotal = calculateAnnualTotal(staff.staff_id, service.service_name);
-                  
+
                   return (
                     <div
                       key={service.service_id}
@@ -677,7 +668,7 @@ export const TargetsControl: React.FC = () => {
           </p>
         </div>
 
-        <div 
+        <div
           className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800"
           style={{ scrollBehavior: 'smooth' }}
         >
@@ -708,7 +699,7 @@ export const TargetsControl: React.FC = () => {
           <div className="divide-y divide-gray-200 dark:divide-gray-700">
             {services.map((service, serviceIdx) => {
               const annualTotal = calculateServiceAnnualTotal(service.service_name);
-              
+
               return (
                 <div
                   key={`service-total-${service.service_id}`}

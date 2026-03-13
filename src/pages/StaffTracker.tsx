@@ -27,7 +27,6 @@ export const StaffTracker: React.FC = () => {
   const [personalTotals, setPersonalTotals] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   
-  // Local state for input values to prevent re-renders while typing
   const [localValues, setLocalValues] = useState<Record<string, string>>({});
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
@@ -51,7 +50,6 @@ export const StaffTracker: React.FC = () => {
     if (!currentStaff) return;
     if (isInitial) setLoading(true);
 
-    // 1. Fetch Personal Activities
     const { data: activities } = await supabase
       .from("dailyactivity")
       .select("service_id, delivered_count, day")
@@ -59,7 +57,6 @@ export const StaffTracker: React.FC = () => {
       .eq("year", year)
       .eq("staff_id", currentStaff.staff_id);
 
-    // 2. Fetch Personal Targets
     const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, currentStaff.staff_id);
     
     const targetTotals: Record<string, number> = {};
@@ -69,7 +66,6 @@ export const StaffTracker: React.FC = () => {
       currentTotals[s.service_name] = 0;
     });
 
-    // 3. Build Entry Table
     const entries: DailyEntry[] = Array.from({ length: daysInMonth }, (_, i) => ({
       date: `${year}-${String(selectedMonth).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`,
       day: i + 1,
@@ -122,22 +118,19 @@ export const StaffTracker: React.FC = () => {
       date, day, month: selectedMonth, year
     }, { onConflict: "staff_id,service_id,date" });
 
-    // Refresh totals in background without full loading state
     fetchPersonalData(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, serviceId: number, day: number) => {
     if (e.key !== 'Tab') return;
 
-    // Find current indices
     const serviceIndex = services.findIndex(s => s.service_id === serviceId);
-    const dayIndex = day - 1; // 0-based
+    const dayIndex = day - 1;
 
     let nextServiceIndex = serviceIndex;
     let nextDayIndex = dayIndex;
 
     if (e.shiftKey) {
-      // Move left
       nextDayIndex--;
       if (nextDayIndex < 0) {
         nextDayIndex = daysInMonth - 1;
@@ -147,7 +140,6 @@ export const StaffTracker: React.FC = () => {
         }
       }
     } else {
-      // Move right
       nextDayIndex++;
       if (nextDayIndex >= daysInMonth) {
         nextDayIndex = 0;
@@ -188,7 +180,9 @@ export const StaffTracker: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl lg:text-3xl font-bold">{teamName} Tracker</h2>
+      <div className="page-header">
+        <h2 className="page-title">{teamName} Tracker</h2>
+      </div>
       
       <div className="mb-6">
         <StaffPerformanceBar staffPerformance={staffPerformance} />
@@ -212,11 +206,11 @@ export const StaffTracker: React.FC = () => {
                 {dailyEntries.map(e => {
                   const highlight = isWeekend(e.date) || isPublicHoliday(e.date);
                   return (
-                    <th 
-                      key={e.day} 
+                    <th
+                      key={e.day}
                       className={`text-center py-2 border-b border-r last:border-r-0 dark:border-gray-600 text-xs transition-colors px-0 ${
-                        highlight 
-                          ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-bold' 
+                        highlight
+                          ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-bold'
                           : 'text-gray-600 dark:text-gray-300'
                       }`}
                     >
@@ -236,8 +230,8 @@ export const StaffTracker: React.FC = () => {
                     const cellKey = getCellKey(s.service_id, e.day);
                     const highlight = isWeekend(e.date) || isPublicHoliday(e.date);
                     return (
-                      <td 
-                        key={e.day} 
+                      <td
+                        key={e.day}
                         className={`p-0 border-b border-r last:border-r-0 dark:border-gray-600 text-center transition-colors ${
                           highlight ? 'bg-red-50/50 dark:bg-red-900/10' : ''
                         }`}
@@ -254,8 +248,8 @@ export const StaffTracker: React.FC = () => {
                           onBlur={(ev) => handleInputBlur(s.service_id, e.day, ev.target.value)}
                           onKeyDown={(ev) => handleKeyDown(ev, s.service_id, e.day)}
                           className={`w-full h-10 text-center border-0 dark:bg-gray-700 text-xs no-spinner focus:ring-2 focus:ring-inset focus:ring-blue-500 outline-none transition-colors ${
-                            highlight 
-                              ? 'bg-red-50/80 dark:bg-red-900/20 text-red-900 dark:text-red-100' 
+                            highlight
+                              ? 'bg-red-50/80 dark:bg-red-900/20 text-red-900 dark:text-red-100'
                               : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white'
                           }`}
                         />
@@ -277,11 +271,11 @@ export const StaffTracker: React.FC = () => {
                   }, 0);
                   const highlight = isWeekend(e.date) || isPublicHoliday(e.date);
                   return (
-                    <td 
-                      key={e.day} 
+                    <td
+                      key={e.day}
                       className={`text-center py-2 border-r last:border-r-0 dark:border-gray-600 text-xs transition-colors ${
-                        highlight 
-                          ? 'bg-red-200/50 dark:bg-red-900/60 text-red-800 dark:text-red-200' 
+                        highlight
+                          ? 'bg-red-200/50 dark:bg-red-900/60 text-red-800 dark:text-red-200'
                           : 'text-gray-900 dark:text-white'
                       }`}
                     >

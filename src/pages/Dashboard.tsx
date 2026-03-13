@@ -42,8 +42,8 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+      <div className="page-header">
+        <h2 className="page-title">
           {isAllTeams ? "All Teams Dashboard" : `${selectedTeam?.name} Dashboard`}
         </h2>
       </div>
@@ -62,13 +62,13 @@ export const Dashboard: React.FC = () => {
           </span>
         </div>
         <div className="relative w-full h-6 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner">
-          <div 
-            className={`h-6 rounded-full transition-all duration-500 ease-in-out ${isAhead ? "bg-green-600" : "bg-red-600"}`} 
-            style={{ width: `${performanceSummary.target > 0 ? Math.min((performanceSummary.delivered / performanceSummary.target) * 100, 100) : 0}%` }} 
+          <div
+            className={`h-6 rounded-full transition-all duration-500 ease-in-out ${isAhead ? "bg-green-600" : "bg-red-600"}`}
+            style={{ width: `${performanceSummary.target > 0 ? Math.min((performanceSummary.delivered / performanceSummary.target) * 100, 100) : 0}%` }}
           />
-          <div 
-            className="absolute top-0 h-6 w-0.5 bg-[#001B47] transition-all duration-300" 
-            style={{ left: `${performanceSummary.target > 0 ? Math.min((performanceSummary.expected / performanceSummary.target) * 100, 100) : 0}%` }} 
+          <div
+            className="absolute top-0 h-6 w-0.5 bg-[#001B47] transition-all duration-300"
+            style={{ left: `${performanceSummary.target > 0 ? Math.min((performanceSummary.expected / performanceSummary.target) * 100, 100) : 0}%` }}
           />
           <div className={`absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold ${isAhead ? "text-green-700" : "text-red-700"}`}>
             {isAhead ? "+" : "-"}{Math.abs(Math.round(variance))}

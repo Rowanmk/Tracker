@@ -89,7 +89,10 @@ export const AnnualSummary: React.FC = () => {
 
   return (
     <div>
-      <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">Annual Staff Summary</h2>
+      <div className="page-header">
+        <h2 className="page-title">Annual Staff Summary</h2>
+      </div>
+
       <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-100 dark:bg-gray-700">
