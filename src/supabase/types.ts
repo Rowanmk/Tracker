@@ -167,6 +167,30 @@ export type Database = {
         }
         Relationships: []
       }
+      role_permissions: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_visible: boolean | null
+          page_path: string
+          role: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_visible?: boolean | null
+          page_path: string
+          role: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_visible?: boolean | null
+          page_path?: string
+          role?: string
+        }
+        Relationships: []
+      }
       sa_annual_targets: {
         Row: {
           annual_target: number
@@ -250,7 +274,10 @@ export type Database = {
           home_region: string | null
           is_hidden: boolean | null
           name: string
+          password: string | null
           role: string
+          security_answer: string | null
+          security_question: string | null
           staff_id: number
           user_id: string | null
         }
@@ -259,7 +286,10 @@ export type Database = {
           home_region?: string | null
           is_hidden?: boolean | null
           name: string
+          password?: string | null
           role?: string
+          security_answer?: string | null
+          security_question?: string | null
           staff_id?: number
           user_id?: string | null
         }
@@ -268,7 +298,10 @@ export type Database = {
           home_region?: string | null
           is_hidden?: boolean | null
           name?: string
+          password?: string | null
           role?: string
+          security_answer?: string | null
+          security_question?: string | null
           staff_id?: number
           user_id?: string | null
         }
