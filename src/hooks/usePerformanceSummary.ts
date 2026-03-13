@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
 interface PerformanceData {
-  staff_id: number | string; // Repurposed as team_id
+  team_id: number | string;
   total: number;
   target?: number;
 }
@@ -13,7 +13,7 @@ interface Params {
   selectedMonth: number;
   selectedYear: number;
   dashboardMode: 'team' | 'individual';
-  currentStaff: { staff_id: number | string } | null;
+  currentStaff: { team_id: number | string } | null;
 }
 
 export const usePerformanceSummary = ({
@@ -31,11 +31,11 @@ export const usePerformanceSummary = ({
 
     const delivered = dashboardMode === 'team'
       ? staffPerformance.reduce((s, p) => s + p.total, 0)
-      : staffPerformance.find(p => String(p.staff_id) === String(currentStaff?.staff_id))?.total || 0;
+      : staffPerformance.find(p => String(p.team_id) === String(currentStaff?.team_id))?.total || 0;
 
     const target = dashboardMode === 'team'
       ? staffPerformance.reduce((s, p) => s + (p.target || 0), 0)
-      : staffPerformance.find(p => String(p.staff_id) === String(currentStaff?.staff_id))?.target || 0;
+      : staffPerformance.find(p => String(p.team_id) === String(currentStaff?.team_id))?.target || 0;
 
     let expected = 0;
     if (target > 0) {

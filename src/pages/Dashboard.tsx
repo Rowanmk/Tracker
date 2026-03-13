@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React from "react";
 import { TeamProgressTile } from "../components/TeamProgressTile";
 import { EmployeeProgressChart } from "../components/EmployeeProgressChart";
 import { RunRateTile } from "../components/RunRateTile";
@@ -17,7 +17,7 @@ export const Dashboard: React.FC = () => {
   const { selectedTeamId, teams } = useAuth();
 
   const { services } = useServices();
-  const { staffPerformance, dailyActivities, loading, error } = useStaffPerformance("desc");
+  const { staffPerformance, dailyActivities } = useStaffPerformance("desc");
 
   const isAllTeams = selectedTeamId === "all";
   const dashboardMode: "team" | "individual" = isAllTeams ? "team" : "individual";
@@ -36,7 +36,7 @@ export const Dashboard: React.FC = () => {
     selectedMonth,
     selectedYear,
     dashboardMode,
-    currentStaff: selectedTeam ? { staff_id: selectedTeam.id } : null, // Repurposed staff_id as team_id
+    currentStaff: selectedTeam ? { team_id: selectedTeam.id } : null,
   });
 
   const variance = performanceSummary.delivered - performanceSummary.expected;

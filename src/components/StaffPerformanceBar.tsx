@@ -6,7 +6,7 @@ import { useWorkingDays } from "../hooks/useWorkingDays";
 import { getFinancialYears, getFinancialYearFromMonth } from "../utils/financialYear";
 
 interface StaffPerformance {
-  staff_id: number;
+  team_id: number | 'unassigned';
   name: string;
   total: number;
 }
@@ -21,7 +21,7 @@ const MONTHS = [
 ];
 
 export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
-  const { selectedStaffId, currentStaff, staff } = useAuth();
+  const { selectedTeamId, teams, staff } = useAuth();
   const {
     selectedMonth,
     selectedYear,
@@ -35,10 +35,8 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Team is a pseudo-staff selection
-  const isTeam = selectedStaffId === "team" || !selectedStaffId;
+  const isAllTeams = selectedTeamId === "all";
 
-  // Financial year month options for all supported years (25/26 and 26/27)
   const monthYearOptions = useMemo(() => {
     const allFYs = getFinancialYears();
     const order = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
@@ -61,68 +59,56 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
     return found ? found.label : `${MONTHS[selectedMonth - 1]} ${selectedYear}`;
   }, [selectedValue, monthYearOptions, selectedMonth, selectedYear]);
 
-  // Identify "Today" for highlighting
   const today = new Date();
   const todayValue = `${today.getMonth() + 1}-${today.getFullYear()}`;
 
-  const { teamWorkingDays, staffWorkingDays, workingDaysUpToToday } =
+  const { teamWorkingDays, workingDaysUpToToday } =
     useWorkingDays({
       financialYear: selectedFinancialYear,
       month: selectedMonth,
-      staffId: isTeam ? undefined : currentStaff?.staff_id,
     });
-
-  const workingDays = isTeam ? teamWorkingDays : staffWorkingDays;
 
   const [targetTotal, setTargetTotal] = useState<number>(0);
 
-  // Actuals
   const actualTotal = useMemo(() => {
-    if (isTeam) {
+    if (isAllTeams) {
       return staffPerformance.reduce((sum, s) => sum + (s.total || 0), 0);
     }
-    return staffPerformance[0]?.total ?? 0;
-  }, [isTeam, staffPerformance]);
+    const found = staffPerformance.find(p => p.team_id.toString() === selectedTeamId);
+    return found?.total ?? 0;
+  }, [isAllTeams, selectedTeamId, staffPerformance]);
 
-  // Targets
   useEffect(() => {
     let cancelled = false;
 
     const load = async () => {
-      if (isTeam) {
-        let total = 0;
-        for (const s of staff) {
-          const { totalTarget } = await loadTargets(
-            selectedMonth,
-            selectedFinancialYear,
-            s.staff_id
-          );
-          total += totalTarget;
-        }
-        if (!cancelled) setTargetTotal(total);
-      } else if (currentStaff) {
+      const filteredStaff = isAllTeams 
+        ? staff 
+        : staff.filter(s => s.team_id?.toString() === selectedTeamId);
+
+      let total = 0;
+      for (const s of filteredStaff) {
         const { totalTarget } = await loadTargets(
           selectedMonth,
           selectedFinancialYear,
-          currentStaff.staff_id
+          s.staff_id
         );
-        if (!cancelled) setTargetTotal(totalTarget);
-      } else {
-        if (!cancelled) setTargetTotal(0);
+        total += totalTarget;
       }
+      
+      if (!cancelled) setTargetTotal(total);
     };
 
     load();
     return () => {
       cancelled = true;
     };
-  }, [isTeam, staff, currentStaff, selectedMonth, selectedFinancialYear]);
+  }, [isAllTeams, selectedTeamId, staff, selectedMonth, selectedFinancialYear]);
 
-  // Expected (pro-rated)
   const expectedByNow =
-    workingDays > 0
-      ? (targetTotal / workingDays) *
-        Math.min(workingDaysUpToToday, workingDays)
+    teamWorkingDays > 0
+      ? (targetTotal / teamWorkingDays) *
+        Math.min(workingDaysUpToToday, teamWorkingDays)
       : 0;
 
   const variance = actualTotal - expectedByNow;
@@ -147,7 +133,6 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
     }
   };
 
-  // Close dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -158,7 +143,6 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Scroll "Today" to middle when dropdown opens
   useEffect(() => {
     if (isDropdownOpen && listRef.current) {
       const todayIndex = monthYearOptions.findIndex(opt => opt.value === todayValue);
@@ -180,7 +164,6 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
       className="rounded-lg px-6 py-4 relative min-h-[56px] flex items-center justify-center z-20"
       style={{ backgroundColor: "#001B47" }}
     >
-      {/* Custom Month selector */}
       <div className="absolute left-4 top-1/2 -translate-y-1/2" ref={dropdownRef}>
         <button
           onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -231,7 +214,6 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
         )}
       </div>
 
-      {/* Center text */}
       <div className="text-white font-semibold text-center leading-tight">
         {statusText}
         {" | "}Delivered: {Math.round(actualTotal)}
