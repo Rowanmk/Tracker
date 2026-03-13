@@ -33,8 +33,10 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 const PERMANENT_ADMIN_NAME = 'rowan';
 
+const normalizeFirstName = (name: string) => name.split(' ')[0]?.trim().toLowerCase() || '';
+
 const enforcePermanentAdmin = (staffMember: Staff): Staff => {
-  const firstName = staffMember.name.split(' ')[0]?.trim().toLowerCase();
+  const firstName = normalizeFirstName(staffMember.name);
   if (firstName === PERMANENT_ADMIN_NAME && staffMember.role !== 'admin') {
     return { ...staffMember, role: 'admin' };
   }
@@ -58,13 +60,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const [staffRes, teamsRes, permsRes] = await Promise.all([
         supabase.from('staff').select('*').order('name'),
         supabase.from('teams').select('*').order('name'),
-        supabase.from('role_permissions').select('*')
+        supabase.from('role_permissions').select('*'),
       ]);
 
       if (staffRes.error) throw staffRes.error;
       if (teamsRes.error) throw teamsRes.error;
 
-      const normalizedStaff = staffRes.data.map(enforcePermanentAdmin);
+      const normalizedStaff = (staffRes.data || []).map(enforcePermanentAdmin);
       setAllStaff(normalizedStaff);
       setStaff(normalizedStaff.filter(s => !s.is_hidden));
       setTeams(teamsRes.data || []);
@@ -76,12 +78,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (found) {
           setCurrentStaff(found);
           setIsAuthenticated(true);
-          // Default selection to user's team
           setSelectedTeamId(found.team_id ? found.team_id.toString() : 'all');
         }
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load staff data');
     } finally {
       setStaffLoaded(true);
       setLoading(false);
@@ -94,10 +95,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signInWithCredentials = async (username: string, password: string) => {
     const enteredUsername = username.toLowerCase().trim();
-    const matched = allStaff.find(s => s.name.split(' ')[0].toLowerCase().trim() === enteredUsername && !s.is_hidden);
+    const matched = allStaff.find(
+      s => normalizeFirstName(s.name) === enteredUsername && !s.is_hidden
+    );
 
     if (!matched) return { error: 'Invalid username or password.' };
-    const dbPassword = matched.password || matched.name.split(' ')[0].toLowerCase().trim();
+
+    const dbPassword = matched.password || normalizeFirstName(matched.name);
     if (password.trim() !== dbPassword) return { error: 'Invalid username or password.' };
 
     setCurrentStaff(matched);
@@ -114,8 +118,63 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.removeItem('crew_tracker_staff_id');
   };
 
-  const onTeamChange = (teamId: number | "all") => {
+  const onTeamChange = (teamId: number | 'all') => {
     setSelectedTeamId(teamId.toString());
+  };
+
+  const getSecurityQuestion = async (username: string) => {
+    const enteredUsername = username.toLowerCase().trim();
+    const matched = allStaff.find(
+      s => normalizeFirstName(s.name) === enteredUsername && !s.is_hidden
+    );
+
+    if (!matched) {
+      return { error: 'No user found with that username.' };
+    }
+
+    if (!matched.security_question?.trim()) {
+      return { error: 'No security question is set for this user.' };
+    }
+
+    return { question: matched.security_question };
+  };
+
+  const resetPasswordWithSecurityAnswer = async (
+    username: string,
+    answer: string,
+    newPassword: string
+  ) => {
+    const enteredUsername = username.toLowerCase().trim();
+    const matched = allStaff.find(
+      s => normalizeFirstName(s.name) === enteredUsername && !s.is_hidden
+    );
+
+    if (!matched) {
+      return { error: 'No user found with that username.' };
+    }
+
+    const storedAnswer = matched.security_answer?.trim().toLowerCase();
+    const providedAnswer = answer.trim().toLowerCase();
+
+    if (!storedAnswer) {
+      return { error: 'No security answer is set for this user.' };
+    }
+
+    if (storedAnswer !== providedAnswer) {
+      return { error: 'Incorrect security answer.' };
+    }
+
+    const { error: updateError } = await supabase
+      .from('staff')
+      .update({ password: newPassword.trim() })
+      .eq('staff_id', matched.staff_id);
+
+    if (updateError) {
+      return { error: 'Failed to reset password.' };
+    }
+
+    await fetchStaff();
+    return {};
   };
 
   const hasPermission = useCallback((path: string): boolean => {
@@ -129,8 +188,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     loading,
     signOut,
     signInWithCredentials,
-    getSecurityQuestion: async (u) => ({ question: allStaff.find(s => s.name.split(' ')[0].toLowerCase() === u.toLowerCase())?.security_question }),
-    resetPasswordWithSecurityAnswer: async (u, a, p) => ({}), // Simplified for brevity
+    getSecurityQuestion,
+    resetPasswordWithSecurityAnswer,
     staff,
     allStaff,
     teams,
@@ -144,7 +203,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     staffLoaded,
     permissions,
     hasPermission,
-    refreshStaff: fetchStaff
+    refreshStaff: fetchStaff,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

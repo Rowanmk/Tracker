@@ -1,13 +1,11 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useDate } from "../context/DateContext";
+import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { DashboardViewProvider } from "../context/DashboardViewContext";
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
-  const { currentStaff, teams, onTeamChange, isAdmin, selectedTeamId, signOut, hasPermission } = useAuth();
+  const { currentStaff, teams, onTeamChange, selectedTeamId, signOut, hasPermission } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -45,7 +43,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     return found ? found.name : "Select Team";
   })();
 
-  // Logic for reordering teams to prioritize the user's team
   const userTeamId = currentStaff?.team_id;
   const userTeam = userTeamId ? teams.find(t => t.id === userTeamId) : null;
   const otherTeams = teams.filter(t => t.id !== userTeamId);
@@ -72,26 +69,24 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
               </button>
               {dropdownOpen && (
                 <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden z-50">
-                  {/* Priority Section: Logged in user context */}
                   <div className="bg-blue-50/50 border-b border-blue-100">
                     {userTeam && (
-                      <button 
-                        onClick={() => handleSelectTeam(userTeam.id)} 
+                      <button
+                        onClick={() => handleSelectTeam(userTeam.id)}
                         className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === userTeam.id.toString() ? "bg-blue-100" : ""}`}
                       >
                         <span className="truncate">{userTeam.name}</span>
                       </button>
                     )}
-                    
-                    <button 
-                      onClick={() => handleSelectTeam("all")} 
+
+                    <button
+                      onClick={() => handleSelectTeam("all")}
                       className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === "all" ? "bg-blue-100" : ""}`}
                     >
                       All Teams
                     </button>
                   </div>
-                  
-                  {/* Other Teams Section */}
+
                   <div className="max-h-64 overflow-y-auto">
                     {otherTeams.length > 0 && (
                       <div className="px-4 py-2 bg-gray-50/50 border-b border-gray-100">
@@ -99,16 +94,16 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                       </div>
                     )}
                     {otherTeams.map((t) => (
-                      <button 
-                        key={t.id} 
-                        onClick={() => handleSelectTeam(t.id)} 
+                      <button
+                        key={t.id}
+                        onClick={() => handleSelectTeam(t.id)}
                         className={`w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition ${selectedTeamId === t.id.toString() ? "bg-blue-50" : ""}`}
                       >
                         {t.name}
                       </button>
                     ))}
                   </div>
-                  
+
                   <div className="border-t border-gray-200" />
                   <button onClick={signOut} className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition font-semibold">
                     Log Out

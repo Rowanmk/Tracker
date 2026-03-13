@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useDate } from '../context/DateContext';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
 import { getFinancialYearMonths, getFinancialYears } from '../utils/financialYear';
-import { loadTargets, isTargetInFinancialYear } from '../utils/loadTargets';
+import { isTargetInFinancialYear } from '../utils/loadTargets';
 import { unparse } from 'papaparse';
 import type { FinancialYear } from '../utils/financialYear';
 
@@ -33,7 +32,6 @@ interface LocalInputState {
 }
 
 export const TargetsControl: React.FC = () => {
-  const { selectedMonth, selectedYear } = useDate();
   const { allStaff, loading: authLoading, error: authError } = useAuth();
   const { services, loading: servicesLoading, error: servicesError } = useServices();
 
@@ -70,7 +68,7 @@ export const TargetsControl: React.FC = () => {
 
       const data = await Promise.all(
         allStaff.map(async (staff) => {
-          const { data: dbTargets, error: dbErr } = await supabase
+          const { data: dbTargets } = await supabase
             .from('monthlytargets')
             .select('month, service_id, target_value, year')
             .eq('staff_id', staff.staff_id)
@@ -271,7 +269,14 @@ export const TargetsControl: React.FC = () => {
             .eq('staff_id', staff.staff_id)
             .in('year', [selectedFinancialYear.start, selectedFinancialYear.end]);
 
-          const inserts: any[] = [];
+          const inserts: Array<{
+            staff_id: number;
+            service_id: number;
+            month: number;
+            year: number;
+            target_value: number;
+          }> = [];
+
           Object.entries(staff.targets).forEach(([monthStr, monthTargets]) => {
             const month = Number(monthStr);
             const year = month >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
@@ -431,7 +436,7 @@ export const TargetsControl: React.FC = () => {
   const getInputValue = (staffId: number, month: number, serviceName: string): string => {
     const key = getInputKey(staffId, month, serviceName);
 
-    if (localInputState.hasOwnProperty(key)) {
+    if (Object.prototype.hasOwnProperty.call(localInputState, key)) {
       return localInputState[key];
     }
 
