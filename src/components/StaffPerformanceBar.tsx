@@ -185,7 +185,7 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
         )}
       </div>
 
-      <div className="text-white font-semibold text-center leading-tight">
+      <div className="text-white text-xl font-semibold text-center leading-tight">
         {statusText}
         {" | "}Delivered: {Math.round(actualTotal)}
         {" | "}Expected: {Math.round(expectedByNow)}
