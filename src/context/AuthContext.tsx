@@ -33,6 +33,19 @@ interface AuthProviderProps {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
+const PERMANENT_ADMIN_NAME = 'rowan';
+
+const enforcePermanentAdmin = (staffMember: Staff): Staff => {
+  const firstName = staffMember.name.split(' ')[0]?.trim().toLowerCase();
+  if (firstName === PERMANENT_ADMIN_NAME && staffMember.role !== 'admin') {
+    return { ...staffMember, role: 'admin' };
+  }
+  return staffMember;
+};
+
+const enforcePermanentAdmins = (staffMembers: Staff[]): Staff[] =>
+  staffMembers.map(enforcePermanentAdmin);
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [staffLoaded, setStaffLoaded] = useState<boolean>(false);
@@ -69,20 +82,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return;
       }
 
-      const allStaffData = data || [];
-      allStaffRef.current = allStaffData;
-      setAllStaff(allStaffData);
-      setStaff(allStaffData.filter((s) => !s.is_hidden));
+      const normalizedStaff = enforcePermanentAdmins(data || []);
+      allStaffRef.current = normalizedStaff;
+      setAllStaff(normalizedStaff);
+      setStaff(normalizedStaff.filter((s) => !s.is_hidden));
       
-      // Update current staff if already logged in
       const savedStaffId = localStorage.getItem('crew_tracker_staff_id');
       if (savedStaffId) {
-        const found = allStaffData.find(s => s.staff_id === Number(savedStaffId));
+        const found = normalizedStaff.find(s => s.staff_id === Number(savedStaffId));
         if (found) setCurrentStaff(found);
       }
 
       await fetchPermissions();
-    } catch (err) {
+    } catch {
       setError('Failed to connect to the database.');
     } finally {
       setStaffLoaded(true);
@@ -139,10 +151,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return { error: 'Invalid username or password.' };
     }
 
-    setCurrentStaff(matched);
+    const enforcedMatched = enforcePermanentAdmin(matched);
+    setCurrentStaff(enforcedMatched);
     setIsAuthenticated(true);
-    localStorage.setItem('crew_tracker_staff_id', matched.staff_id.toString());
-    setSelectedStaffId(matched.staff_id.toString());
+    localStorage.setItem('crew_tracker_staff_id', enforcedMatched.staff_id.toString());
+    setSelectedStaffId(enforcedMatched.staff_id.toString());
 
     return {};
   };
