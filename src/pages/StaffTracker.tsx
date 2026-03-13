@@ -1,11 +1,9 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { useDate } from "../context/DateContext";
 import { useAuth } from "../context/AuthContext";
 import { useServices } from "../hooks/useServices";
 import { useWorkingDays } from "../hooks/useWorkingDays";
-import { useStaffLeaveAndHolidays } from "../hooks/useStaffLeaveAndHolidays";
 import { MyTrackerProgressTiles } from "../components/MyTrackerProgressTiles";
-import { StaffPerformanceBar } from "../components/StaffPerformanceBar";
 import { supabase } from "../supabase/client";
 import { loadTargets } from "../utils/loadTargets";
 
@@ -17,50 +15,45 @@ interface DailyEntry {
 
 export const StaffTracker: React.FC = () => {
   const { selectedMonth, selectedFinancialYear } = useDate();
-  const { currentStaff, allStaff } = useAuth();
+  const { currentStaff } = useAuth();
   const { services } = useServices();
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
-  const [teamTargets, setTeamTargets] = useState<Record<string, number>>({});
-  const [teamTotals, setTeamTotals] = useState<Record<string, number>>({});
+  const [personalTargets, setPersonalTargets] = useState<Record<string, number>>({});
+  const [personalTotals, setPersonalTotals] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
   const year = selectedMonth >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
   const daysInMonth = new Date(year, selectedMonth, 0).getDate();
 
-  const { teamWorkingDays, workingDaysUpToToday } = useWorkingDays({
+  const { staffWorkingDays, workingDaysUpToToday } = useWorkingDays({
     financialYear: selectedFinancialYear,
     month: selectedMonth,
+    staffId: currentStaff?.staff_id,
   });
 
-  const fetchTeamData = async () => {
-    if (!currentStaff || !currentStaff.team_id) return;
+  const fetchPersonalData = async () => {
+    if (!currentStaff) return;
     setLoading(true);
 
-    const teamStaff = allStaff.filter(s => s.team_id === currentStaff.team_id);
-    const staffIds = teamStaff.map(s => s.staff_id);
-
-    // 1. Fetch Team Activities
+    // 1. Fetch Personal Activities
     const { data: activities } = await supabase
       .from("dailyactivity")
-      .select("service_id, delivered_count, day, staff_id")
+      .select("service_id, delivered_count, day")
       .eq("month", selectedMonth)
       .eq("year", year)
-      .in("staff_id", staffIds);
+      .eq("staff_id", currentStaff.staff_id);
 
-    // 2. Fetch Team Targets
+    // 2. Fetch Personal Targets
+    const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, currentStaff.staff_id);
+    
     const targetTotals: Record<string, number> = {};
     const currentTotals: Record<string, number> = {};
     services.forEach(s => {
-      targetTotals[s.service_name] = 0;
+      targetTotals[s.service_name] = perService?.[s.service_id] || 0;
       currentTotals[s.service_name] = 0;
     });
 
-    for (const s of teamStaff) {
-      const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, s.staff_id);
-      services.forEach(svc => targetTotals[svc.service_name] += perService?.[svc.service_id] || 0);
-    }
-
-    // 3. Build Entry Table (Personal)
+    // 3. Build Entry Table
     const entries: DailyEntry[] = Array.from({ length: daysInMonth }, (_, i) => ({
       date: `${year}-${String(selectedMonth).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`,
       day: i + 1,
@@ -71,22 +64,20 @@ export const StaffTracker: React.FC = () => {
       const svc = services.find(s => s.service_id === a.service_id);
       if (svc) {
         currentTotals[svc.service_name] += a.delivered_count;
-        if (a.staff_id === currentStaff.staff_id) {
-          const entry = entries.find(e => e.day === a.day);
-          if (entry) entry.services[svc.service_name] = a.delivered_count;
-        }
+        const entry = entries.find(e => e.day === a.day);
+        if (entry) entry.services[svc.service_name] = a.delivered_count;
       }
     });
 
     setDailyEntries(entries);
-    setTeamTargets(targetTotals);
-    setTeamTotals(currentTotals);
+    setPersonalTargets(targetTotals);
+    setPersonalTotals(currentTotals);
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchTeamData();
-  }, [selectedMonth, selectedFinancialYear, currentStaff?.staff_id]);
+    fetchPersonalData();
+  }, [selectedMonth, selectedFinancialYear, currentStaff?.staff_id, services.length]);
 
   const onCellChange = async (serviceId: number, serviceName: string, day: number, value: string) => {
     if (!currentStaff) return;
@@ -100,23 +91,23 @@ export const StaffTracker: React.FC = () => {
       date, day, month: selectedMonth, year
     }, { onConflict: "staff_id,service_id,date" });
 
-    fetchTeamData();
+    fetchPersonalData();
   };
 
   if (loading) return <div className="py-6 text-center text-gray-500">Loading tracker…</div>;
 
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl lg:text-3xl font-bold">My Team's Progress</h2>
+      <h2 className="text-2xl lg:text-3xl font-bold">My Progress</h2>
       <MyTrackerProgressTiles
         services={services}
-        serviceTotals={teamTotals}
-        targets={teamTargets}
-        workingDays={teamWorkingDays}
+        serviceTotals={personalTotals}
+        targets={personalTargets}
+        workingDays={staffWorkingDays}
         workingDaysUpToToday={workingDaysUpToToday}
       />
       <div className="border rounded-xl overflow-hidden">
-        <div className="bg-[#001B47] text-white px-4 py-2 font-semibold">Personal Data Entry</div>
+        <div className="bg-[#001B47] text-white px-4 py-2 font-semibold">Daily Activity Entry</div>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
@@ -135,7 +126,7 @@ export const StaffTracker: React.FC = () => {
                         type="number"
                         value={e.services[s.service_name]}
                         onChange={(ev) => onCellChange(s.service_id, s.service_name, e.day, ev.target.value)}
-                        className="w-10 text-center border rounded text-xs"
+                        className="w-10 text-center border rounded text-xs no-spinner"
                       />
                     </td>
                   ))}

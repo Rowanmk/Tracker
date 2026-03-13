@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useDate } from '../context/DateContext';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
-import { useWorkingDays } from '../hooks/useWorkingDays';
 import { supabase } from '../supabase/client';
 import { getFinancialYearDateRange, getFinancialYearMonths } from '../utils/financialYear';
 
-interface AnnualTeamData {
-  team_id: number | 'unassigned';
+interface AnnualStaffData {
+  staff_id: number;
   name: string;
+  team_name: string;
   months: {
     [key: number]: {
       total: number;
@@ -20,9 +20,9 @@ interface AnnualTeamData {
 
 export const AnnualSummary: React.FC = () => {
   const { selectedFinancialYear } = useDate();
-  const { allStaff, teams } = useAuth();
+  const { allStaff, teams, selectedTeamId } = useAuth();
   const { services } = useServices();
-  const [annualData, setAnnualData] = useState<AnnualTeamData[]>([]);
+  const [annualData, setAnnualData] = useState<AnnualStaffData[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchAnnualData = async () => {
@@ -30,19 +30,26 @@ export const AnnualSummary: React.FC = () => {
     const { startDate, endDate } = getFinancialYearDateRange(selectedFinancialYear);
     const monthData = getFinancialYearMonths();
 
-    const results = await Promise.all(
-      [...teams, { id: 'unassigned', name: 'Unassigned' }].map(async (team) => {
-        const teamStaff = allStaff.filter(s => team.id === 'unassigned' ? !s.team_id : s.team_id === team.id);
-        if (teamStaff.length === 0) return null;
+    const filteredStaff = selectedTeamId === "all" || !selectedTeamId
+      ? allStaff.filter(s => !s.is_hidden)
+      : allStaff.filter(s => !s.is_hidden && String(s.team_id) === selectedTeamId);
 
+    if (filteredStaff.length === 0) {
+      setAnnualData([]);
+      setLoading(false);
+      return;
+    }
+
+    const results = await Promise.all(
+      filteredStaff.map(async (staff) => {
         const { data: activities } = await supabase
           .from('dailyactivity')
           .select('month, service_id, delivered_count')
-          .in('staff_id', teamStaff.map(s => s.staff_id))
+          .eq('staff_id', staff.staff_id)
           .gte('date', startDate.toISOString().slice(0, 10))
           .lte('date', endDate.toISOString().slice(0, 10));
 
-        const months: AnnualTeamData['months'] = {};
+        const months: AnnualStaffData['months'] = {};
         monthData.forEach(m => {
           months[m.number] = { total: 0, services: {} };
           services.forEach(s => months[m.number].services[s.service_name] = 0);
@@ -56,22 +63,25 @@ export const AnnualSummary: React.FC = () => {
           }
         });
 
+        const team = teams.find(t => t.id === staff.team_id);
+
         return {
-          team_id: team.id as number | 'unassigned',
-          name: team.name,
+          staff_id: staff.staff_id,
+          name: staff.name,
+          team_name: team?.name || 'Unassigned',
           months,
           totalDeliveries: Object.values(months).reduce((s, m) => s + m.total, 0)
         };
       })
     );
 
-    setAnnualData(results.filter((r): r is AnnualTeamData => r !== null));
+    setAnnualData(results.sort((a, b) => b.totalDeliveries - a.totalDeliveries));
     setLoading(false);
   };
 
   useEffect(() => {
     fetchAnnualData();
-  }, [selectedFinancialYear, allStaff.length, services.length]);
+  }, [selectedFinancialYear, allStaff.length, services.length, selectedTeamId]);
 
   if (loading) return <div className="py-6 text-center text-gray-500">Loading annual summary…</div>;
 
@@ -79,22 +89,24 @@ export const AnnualSummary: React.FC = () => {
 
   return (
     <div>
-      <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">Annual Team Summary</h2>
+      <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">Annual Staff Summary</h2>
       <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-100 dark:bg-gray-700">
             <tr>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase">Staff</th>
               <th className="px-4 py-3 text-left text-xs font-bold uppercase">Team</th>
               {monthData.map(m => <th key={m.number} className="px-4 py-3 text-center text-xs font-bold uppercase">{m.name}</th>)}
               <th className="px-4 py-3 text-center text-xs font-bold uppercase">FY Total</th>
             </tr>
           </thead>
           <tbody>
-            {annualData.map((team, idx) => (
-              <tr key={team.team_id} className={idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}>
-                <td className="px-4 py-3 font-medium">{team.name}</td>
-                {monthData.map(m => <td key={m.number} className="px-4 py-3 text-center">{team.months[m.number]?.total || 0}</td>)}
-                <td className="px-4 py-3 font-bold text-center">{team.totalDeliveries}</td>
+            {annualData.map((staff, idx) => (
+              <tr key={staff.staff_id} className={idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}>
+                <td className="px-4 py-3 font-medium">{staff.name}</td>
+                <td className="px-4 py-3 text-sm text-gray-500">{staff.team_name}</td>
+                {monthData.map(m => <td key={m.number} className="px-4 py-3 text-center">{staff.months[m.number]?.total || 0}</td>)}
+                <td className="px-4 py-3 font-bold text-center">{staff.totalDeliveries}</td>
               </tr>
             ))}
           </tbody>

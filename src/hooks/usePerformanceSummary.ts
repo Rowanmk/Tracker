@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
 interface PerformanceData {
-  team_id: number | string;
+  staff_id: number;
   total: number;
   target?: number;
 }
@@ -13,7 +13,7 @@ interface Params {
   selectedMonth: number;
   selectedYear: number;
   dashboardMode: 'team' | 'individual';
-  currentStaff: { team_id: number | string } | null;
+  currentStaff: { staff_id: number } | null;
 }
 
 export const usePerformanceSummary = ({
@@ -29,13 +29,15 @@ export const usePerformanceSummary = ({
     const today = new Date();
     const isCurrentMonth = selectedMonth === today.getMonth() + 1 && selectedYear === today.getFullYear();
 
-    const delivered = dashboardMode === 'team'
-      ? staffPerformance.reduce((s, p) => s + p.total, 0)
-      : staffPerformance.find(p => String(p.team_id) === String(currentStaff?.team_id))?.total || 0;
+    // If individual mode, we only care about the current staff member's data
+    // If team mode, we aggregate all staff in the current view
+    const delivered = dashboardMode === 'individual' && currentStaff
+      ? staffPerformance.find(p => p.staff_id === currentStaff.staff_id)?.total || 0
+      : staffPerformance.reduce((s, p) => s + p.total, 0);
 
-    const target = dashboardMode === 'team'
-      ? staffPerformance.reduce((s, p) => s + (p.target || 0), 0)
-      : staffPerformance.find(p => String(p.team_id) === String(currentStaff?.team_id))?.target || 0;
+    const target = dashboardMode === 'individual' && currentStaff
+      ? staffPerformance.find(p => p.staff_id === currentStaff.staff_id)?.target || 0
+      : staffPerformance.reduce((s, p) => s + (p.target || 0), 0);
 
     let expected = 0;
     if (target > 0) {

@@ -14,13 +14,15 @@ import { usePerformanceSummary } from "../hooks/usePerformanceSummary";
 export const Dashboard: React.FC = () => {
   const { viewMode } = useDashboardView();
   const { selectedMonth, selectedYear, financialYear } = useDate();
-  const { selectedTeamId, teams } = useAuth();
+  const { selectedTeamId, teams, currentStaff } = useAuth();
 
   const { services } = useServices();
   const { staffPerformance, dailyActivities } = useStaffPerformance("desc");
 
   const isAllTeams = selectedTeamId === "all";
-  const dashboardMode: "team" | "individual" = isAllTeams ? "team" : "individual";
+  // Dashboard mode is "individual" if we are looking at a specific team or if we want to highlight the current user
+  // However, for the charts, "team" mode now means "show all staff in the current selection"
+  const dashboardMode: "team" | "individual" = "team";
 
   const selectedTeam = !isAllTeams ? teams.find(t => t.id.toString() === selectedTeamId) : null;
 
@@ -35,8 +37,8 @@ export const Dashboard: React.FC = () => {
     workingDaysUpToToday,
     selectedMonth,
     selectedYear,
-    dashboardMode,
-    currentStaff: selectedTeam ? { team_id: selectedTeam.id } : null,
+    dashboardMode: "team", // Aggregate summary for the current view
+    currentStaff: null,
   });
 
   const variance = performanceSummary.delivered - performanceSummary.expected;
@@ -73,7 +75,7 @@ export const Dashboard: React.FC = () => {
           services={services}
           staffPerformance={staffPerformance}
           dashboardMode={dashboardMode}
-          currentStaff={selectedTeam ? { staff_id: selectedTeam.id, name: selectedTeam.name } : null}
+          currentStaff={null}
           viewMode={viewMode}
           workingDays={teamWorkingDays}
           workingDaysUpToToday={workingDaysUpToToday}
@@ -84,7 +86,7 @@ export const Dashboard: React.FC = () => {
           services={services}
           staffPerformance={staffPerformance}
           dashboardMode={dashboardMode}
-          currentStaff={selectedTeam ? { staff_id: selectedTeam.id, name: selectedTeam.name } : null}
+          currentStaff={null}
           viewMode={viewMode}
           workingDays={teamWorkingDays}
           workingDaysUpToToday={workingDaysUpToToday}
@@ -99,7 +101,7 @@ export const Dashboard: React.FC = () => {
           month={selectedMonth}
           financialYear={financialYear}
           dashboardMode={dashboardMode}
-          currentStaff={selectedTeam ? { staff_id: selectedTeam.id, name: selectedTeam.name } : null}
+          currentStaff={null}
           viewMode={viewMode}
         />
       </div>
