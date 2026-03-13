@@ -74,19 +74,12 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                 <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden z-50">
                   {/* Priority Section: Logged in user context */}
                   <div className="bg-blue-50/50 border-b border-blue-100">
-                    <div className="px-4 py-2 border-b border-blue-100/50">
-                      <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Logged in as {currentStaff?.name}</span>
-                    </div>
-                    
                     {userTeam && (
                       <button 
                         onClick={() => handleSelectTeam(userTeam.id)} 
                         className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === userTeam.id.toString() ? "bg-blue-100" : ""}`}
                       >
-                        <div className="flex flex-col">
-                          <span className="text-[10px] uppercase tracking-widest text-blue-600 mb-0.5">My Team</span>
-                          <span className="truncate">{userTeam.name}</span>
-                        </div>
+                        <span className="truncate">{userTeam.name}</span>
                       </button>
                     )}
                     
