@@ -121,7 +121,7 @@ export const Settings: React.FC = () => {
     if (!message) return fallbackMessage;
 
     if (message.toLowerCase().includes('row-level security policy')) {
-      return `${fallbackMessage}: you do not have permission to write to the teams table. Apply the Supabase RLS policy migration for teams, then try again.`;
+      return `${fallbackMessage}: you do not have permission to write to this table. Please check database policies.`;
     }
 
     return `${fallbackMessage}: ${message}`;
@@ -596,6 +596,7 @@ export const Settings: React.FC = () => {
       if (upsertError) {
         setTimedFeedback(getErrorMessage('Failed to save permissions', upsertError));
       } else {
+        await refreshStaff(); // Refresh global permissions state
         await createAuditLog({
           pagePath: '/settings',
           pageLabel: 'Settings',
@@ -914,9 +915,6 @@ export const Settings: React.FC = () => {
                   {isAddingTeam ? 'Adding...' : 'Add Team'}
                 </button>
               </form>
-              <p className="mt-3 text-xs text-gray-500">
-                If this fails with a permissions message, apply the Supabase RLS migration for the teams table.
-              </p>
             </div>
 
             <div className="bg-white shadow rounded-lg p-6">
@@ -1078,7 +1076,7 @@ export const Settings: React.FC = () => {
                       <td className="px-6 py-4 text-sm font-medium text-gray-900">{page.label}</td>
                       {['admin', 'staff'].map(role => {
                         const perm = permissions.find(p => p.role === role && p.page_path === page.path);
-                        const isVisible = perm ? Boolean(perm.is_visible) : true;
+                        const isVisible = perm ? perm.is_visible !== false : true;
                         return (
                           <td key={role} className="px-6 py-4 text-center">
                             <input
