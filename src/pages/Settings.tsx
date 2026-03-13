@@ -112,12 +112,19 @@ export const Settings: React.FC = () => {
 
   const setTimedFeedback = (message: string) => {
     setFeedback(message);
-    window.setTimeout(() => setFeedback(null), 3000);
+    window.setTimeout(() => setFeedback(null), 5000);
   };
 
   const getErrorMessage = (fallbackMessage: string, error: { message?: string } | null | undefined) => {
-    if (!error?.message) return fallbackMessage;
-    return `${fallbackMessage}: ${error.message}`;
+    const message = error?.message?.trim();
+
+    if (!message) return fallbackMessage;
+
+    if (message.toLowerCase().includes('row-level security policy')) {
+      return `${fallbackMessage}: you do not have permission to write to the teams table. Apply the Supabase RLS policy migration for teams, then try again.`;
+    }
+
+    return `${fallbackMessage}: ${message}`;
   };
 
   const getTeamName = (teamId: number | null) => {
@@ -140,7 +147,7 @@ export const Settings: React.FC = () => {
       ]);
 
       if (usersResult.error) {
-        setFeedback('Failed to load users data');
+        setFeedback(getErrorMessage('Failed to load users data', usersResult.error));
       } else {
         setAllUsers((usersResult.data as StaffWithTeam[]) || []);
       }
@@ -149,7 +156,9 @@ export const Settings: React.FC = () => {
         setPermissions(permsResult.data || []);
       }
 
-      if (!teamsResult.error) {
+      if (teamsResult.error) {
+        setFeedback(getErrorMessage('Failed to load teams data', teamsResult.error));
+      } else {
         setTeams(teamsResult.data || []);
       }
     } catch {
@@ -905,6 +914,9 @@ export const Settings: React.FC = () => {
                   {isAddingTeam ? 'Adding...' : 'Add Team'}
                 </button>
               </form>
+              <p className="mt-3 text-xs text-gray-500">
+                If this fails with a permissions message, apply the Supabase RLS migration for the teams table.
+              </p>
             </div>
 
             <div className="bg-white shadow rounded-lg p-6">
