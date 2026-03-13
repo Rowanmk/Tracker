@@ -7,8 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "13.0.5"
   }
@@ -279,6 +277,7 @@ export type Database = {
           security_answer: string | null
           security_question: string | null
           staff_id: number
+          team_id: number | null
           user_id: string | null
         }
         Insert: {
@@ -291,6 +290,7 @@ export type Database = {
           security_answer?: string | null
           security_question?: string | null
           staff_id?: number
+          team_id?: number | null
           user_id?: string | null
         }
         Update: {
@@ -303,9 +303,18 @@ export type Database = {
           security_answer?: string | null
           security_question?: string | null
           staff_id?: number
+          team_id?: number | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "staff_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       staff_leave: {
         Row: {
@@ -347,6 +356,27 @@ export type Database = {
             referencedColumns: ["staff_id"]
           },
         ]
+      }
+      teams: {
+        Row: {
+          created_at: string | null
+          id: number
+          is_active: boolean
+          name: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: number
+          is_active?: boolean
+          name: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: number
+          is_active?: boolean
+          name?: string
+        }
+        Relationships: []
       }
       working_days: {
         Row: {
