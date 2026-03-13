@@ -3,6 +3,7 @@ import { useDate } from "../context/DateContext";
 import { useAuth } from "../context/AuthContext";
 import { useServices } from "../hooks/useServices";
 import { useWorkingDays } from "../hooks/useWorkingDays";
+import { useStaffLeaveAndHolidays } from "../hooks/useStaffLeaveAndHolidays";
 import { MyTrackerProgressTiles } from "../components/MyTrackerProgressTiles";
 import { StaffPerformanceBar } from "../components/StaffPerformanceBar";
 import { useStaffPerformance } from "../hooks/useStaffPerformance";
@@ -37,6 +38,13 @@ export const StaffTracker: React.FC = () => {
     financialYear: selectedFinancialYear,
     month: selectedMonth,
     staffId: currentStaff?.staff_id,
+  });
+
+  const { bankHolidays } = useStaffLeaveAndHolidays({
+    staffId: currentStaff?.staff_id || 0,
+    month: selectedMonth,
+    year,
+    homeRegion: currentStaff?.home_region || 'england-and-wales'
   });
 
   const fetchPersonalData = async (isInitial = false) => {
@@ -168,6 +176,10 @@ export const StaffTracker: React.FC = () => {
     return day === 0 || day === 6;
   };
 
+  const isPublicHoliday = (dateStr: string) => {
+    return bankHolidays.some(h => h.date === dateStr);
+  };
+
   const teamName = selectedTeamId === "all" 
     ? "All Teams" 
     : teams.find(t => t.id.toString() === selectedTeamId)?.name || "My";
@@ -198,12 +210,12 @@ export const StaffTracker: React.FC = () => {
               <tr className="bg-gray-50 dark:bg-gray-700">
                 <th className="text-left px-3 py-2 border-b border-r dark:border-gray-600 text-sm text-gray-700 dark:text-gray-200 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10 w-40">Service</th>
                 {dailyEntries.map(e => {
-                  const weekend = isWeekend(e.date);
+                  const highlight = isWeekend(e.date) || isPublicHoliday(e.date);
                   return (
                     <th 
                       key={e.day} 
                       className={`text-center py-2 border-b border-r last:border-r-0 dark:border-gray-600 text-xs transition-colors px-0 ${
-                        weekend 
+                        highlight 
                           ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-bold' 
                           : 'text-gray-600 dark:text-gray-300'
                       }`}
@@ -222,12 +234,12 @@ export const StaffTracker: React.FC = () => {
                   </td>
                   {dailyEntries.map(e => {
                     const cellKey = getCellKey(s.service_id, e.day);
-                    const weekend = isWeekend(e.date);
+                    const highlight = isWeekend(e.date) || isPublicHoliday(e.date);
                     return (
                       <td 
                         key={e.day} 
                         className={`p-0 border-b border-r last:border-r-0 dark:border-gray-600 text-center transition-colors ${
-                          weekend ? 'bg-red-50/50 dark:bg-red-900/10' : ''
+                          highlight ? 'bg-red-50/50 dark:bg-red-900/10' : ''
                         }`}
                       >
                         <input
@@ -242,7 +254,7 @@ export const StaffTracker: React.FC = () => {
                           onBlur={(ev) => handleInputBlur(s.service_id, e.day, ev.target.value)}
                           onKeyDown={(ev) => handleKeyDown(ev, s.service_id, e.day)}
                           className={`w-full h-10 text-center border-0 dark:bg-gray-700 text-xs no-spinner focus:ring-2 focus:ring-inset focus:ring-blue-500 outline-none transition-colors ${
-                            weekend 
+                            highlight 
                               ? 'bg-red-50/80 dark:bg-red-900/20 text-red-900 dark:text-red-100' 
                               : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white'
                           }`}
@@ -263,12 +275,12 @@ export const StaffTracker: React.FC = () => {
                     const val = localValues[getCellKey(s.service_id, e.day)] || "0";
                     return sum + (parseInt(val) || 0);
                   }, 0);
-                  const weekend = isWeekend(e.date);
+                  const highlight = isWeekend(e.date) || isPublicHoliday(e.date);
                   return (
                     <td 
                       key={e.day} 
                       className={`text-center py-2 border-r last:border-r-0 dark:border-gray-600 text-xs transition-colors ${
-                        weekend 
+                        highlight 
                           ? 'bg-red-200/50 dark:bg-red-900/60 text-red-800 dark:text-red-200' 
                           : 'text-gray-900 dark:text-white'
                       }`}
