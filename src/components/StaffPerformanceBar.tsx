@@ -1,14 +1,13 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
-import { loadTargets } from "../utils/loadTargets";
-import { useAuth } from "../context/AuthContext";
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import { useDate } from "../context/DateContext";
 import { useWorkingDays } from "../hooks/useWorkingDays";
 import { getFinancialYears, getFinancialYearFromMonth } from "../utils/financialYear";
 
 interface StaffPerformance {
-  team_id: number | 'unassigned';
+  staff_id: number;
   name: string;
   total: number;
+  target: number;
 }
 
 interface Props {
@@ -21,7 +20,6 @@ const MONTHS = [
 ];
 
 export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
-  const { selectedTeamId, teams, staff } = useAuth();
   const {
     selectedMonth,
     selectedYear,
@@ -35,8 +33,7 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const isAllTeams = selectedTeamId === "all";
-
+  // Financial year month options for all supported years (25/26 and 26/27)
   const monthYearOptions = useMemo(() => {
     const allFYs = getFinancialYears();
     const order = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
@@ -59,6 +56,7 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
     return found ? found.label : `${MONTHS[selectedMonth - 1]} ${selectedYear}`;
   }, [selectedValue, monthYearOptions, selectedMonth, selectedYear]);
 
+  // Identify "Today" for highlighting
   const today = new Date();
   const todayValue = `${today.getMonth() + 1}-${today.getFullYear()}`;
 
@@ -68,47 +66,26 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
       month: selectedMonth,
     });
 
-  const [targetTotal, setTargetTotal] = useState<number>(0);
+  // Use team working days for the aggregate performance bar to match dashboard logic
+  const workingDays = teamWorkingDays;
 
-  const actualTotal = useMemo(() => {
-    if (isAllTeams) {
-      return staffPerformance.reduce((sum, s) => sum + (s.total || 0), 0);
-    }
-    const found = staffPerformance.find(p => p.team_id.toString() === selectedTeamId);
-    return found?.total ?? 0;
-  }, [isAllTeams, selectedTeamId, staffPerformance]);
+  // Calculate Actuals and Targets directly from the staffPerformance prop
+  // This ensures consistency with the Dashboard graphs which use the same source data
+  const { actualTotal, targetTotal } = useMemo(() => {
+    return staffPerformance.reduce(
+      (acc, s) => ({
+        actualTotal: acc.actualTotal + (s.total || 0),
+        targetTotal: acc.targetTotal + (s.target || 0),
+      }),
+      { actualTotal: 0, targetTotal: 0 }
+    );
+  }, [staffPerformance]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      const filteredStaff = isAllTeams 
-        ? staff 
-        : staff.filter(s => s.team_id?.toString() === selectedTeamId);
-
-      let total = 0;
-      for (const s of filteredStaff) {
-        const { totalTarget } = await loadTargets(
-          selectedMonth,
-          selectedFinancialYear,
-          s.staff_id
-        );
-        total += totalTarget;
-      }
-      
-      if (!cancelled) setTargetTotal(total);
-    };
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [isAllTeams, selectedTeamId, staff, selectedMonth, selectedFinancialYear]);
-
+  // Expected (pro-rated)
   const expectedByNow =
-    teamWorkingDays > 0
-      ? (targetTotal / teamWorkingDays) *
-        Math.min(workingDaysUpToToday, teamWorkingDays)
+    workingDays > 0
+      ? (targetTotal / workingDays) *
+        Math.min(workingDaysUpToToday, workingDays)
       : 0;
 
   const variance = actualTotal - expectedByNow;
@@ -133,6 +110,7 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
     }
   };
 
+  // Close dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -143,6 +121,7 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Scroll "Today" to middle when dropdown opens
   useEffect(() => {
     if (isDropdownOpen && listRef.current) {
       const todayIndex = monthYearOptions.findIndex(opt => opt.value === todayValue);
@@ -164,6 +143,7 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
       className="rounded-lg px-6 py-4 relative min-h-[56px] flex items-center justify-center z-20"
       style={{ backgroundColor: "#001B47" }}
     >
+      {/* Custom Month selector */}
       <div className="absolute left-4 top-1/2 -translate-y-1/2" ref={dropdownRef}>
         <button
           onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -214,6 +194,7 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
         )}
       </div>
 
+      {/* Center text */}
       <div className="text-white font-semibold text-center leading-tight">
         {statusText}
         {" | "}Delivered: {Math.round(actualTotal)}
