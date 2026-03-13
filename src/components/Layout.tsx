@@ -45,6 +45,11 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     return found ? found.name : "Select Team";
   })();
 
+  // Logic for reordering teams to prioritize the user's team
+  const userTeamId = currentStaff?.team_id;
+  const userTeam = userTeamId ? teams.find(t => t.id === userTeamId) : null;
+  const otherTeams = teams.filter(t => t.id !== userTeamId);
+
   return (
     <DashboardViewProvider>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -66,18 +71,53 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                 </svg>
               </button>
               {dropdownOpen && (
-                <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden z-50">
-                  <button onClick={() => handleSelectTeam("all")} className={`w-full text-left px-4 py-2.5 text-sm font-bold text-[#001B47] hover:bg-blue-50 transition ${selectedTeamId === "all" ? "bg-blue-100" : ""}`}>
-                    All Teams
-                  </button>
-                  <div className="border-t border-gray-200" />
-                  {teams.map((t) => (
-                    <button key={t.id} onClick={() => handleSelectTeam(t.id)} className={`w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition ${selectedTeamId === t.id.toString() ? "bg-blue-50" : ""}`}>
-                      {t.name}
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden z-50">
+                  {/* Priority Section: Logged in user context */}
+                  <div className="bg-blue-50/50 border-b border-blue-100">
+                    <div className="px-4 py-2 border-b border-blue-100/50">
+                      <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Logged in as {currentStaff?.name}</span>
+                    </div>
+                    
+                    {userTeam && (
+                      <button 
+                        onClick={() => handleSelectTeam(userTeam.id)} 
+                        className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === userTeam.id.toString() ? "bg-blue-100" : ""}`}
+                      >
+                        <div className="flex flex-col">
+                          <span className="text-[10px] uppercase tracking-widest text-blue-600 mb-0.5">My Team</span>
+                          <span className="truncate">{userTeam.name}</span>
+                        </div>
+                      </button>
+                    )}
+                    
+                    <button 
+                      onClick={() => handleSelectTeam("all")} 
+                      className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === "all" ? "bg-blue-100" : ""}`}
+                    >
+                      All Teams
                     </button>
-                  ))}
+                  </div>
+                  
+                  {/* Other Teams Section */}
+                  <div className="max-h-64 overflow-y-auto">
+                    {otherTeams.length > 0 && (
+                      <div className="px-4 py-2 bg-gray-50/50 border-b border-gray-100">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Other Teams</span>
+                      </div>
+                    )}
+                    {otherTeams.map((t) => (
+                      <button 
+                        key={t.id} 
+                        onClick={() => handleSelectTeam(t.id)} 
+                        className={`w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition ${selectedTeamId === t.id.toString() ? "bg-blue-50" : ""}`}
+                      >
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                  
                   <div className="border-t border-gray-200" />
-                  <button onClick={signOut} className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition font-semibold">
+                  <button onClick={signOut} className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition font-semibold">
                     Log Out
                   </button>
                 </div>
