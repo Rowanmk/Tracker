@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
 
@@ -208,11 +208,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const hasPermission = (path: string): boolean => {
+  const hasPermission = useCallback((path: string): boolean => {
     if (!currentStaff) return false;
     const perm = permissions.find(p => p.role === currentStaff.role && p.page_path === path);
     return perm ? perm.is_visible : true;
-  };
+  }, [currentStaff, permissions]);
 
   const isAdmin = currentStaff?.role === 'admin';
 
