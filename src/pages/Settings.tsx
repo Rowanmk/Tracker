@@ -113,6 +113,11 @@ export const Settings: React.FC = () => {
     window.setTimeout(() => setFeedback(null), 3000);
   };
 
+  const getErrorMessage = (fallbackMessage: string, error: { message?: string } | null | undefined) => {
+    if (!error?.message) return fallbackMessage;
+    return `${fallbackMessage}: ${error.message}`;
+  };
+
   const getTeamName = (teamId: number | null) => {
     if (!teamId) return 'Unassigned';
     return teams.find(team => team.id === teamId)?.name || 'Unknown';
@@ -218,7 +223,7 @@ export const Settings: React.FC = () => {
         .single();
 
       if (insertError) {
-        setTimedFeedback('Failed to add user');
+        setTimedFeedback(getErrorMessage('Failed to add user', insertError));
       } else {
         setAllUsers(prev =>
           [...prev, data as StaffWithTeam].sort((a, b) => a.name.localeCompare(b.name))
@@ -276,7 +281,7 @@ export const Settings: React.FC = () => {
         .single();
 
       if (updateError) {
-        setTimedFeedback('Failed to update user');
+        setTimedFeedback(getErrorMessage('Failed to update user', updateError));
       } else {
         setAllUsers(prev =>
           prev
@@ -315,7 +320,7 @@ export const Settings: React.FC = () => {
         .eq('staff_id', currentStaff.staff_id);
 
       if (updateError) {
-        setTimedFeedback('Failed to update account');
+        setTimedFeedback(getErrorMessage('Failed to update account', updateError));
       } else {
         setAccountForm(prev => ({ ...prev, password: '' }));
         await refreshStaff();
@@ -341,12 +346,13 @@ export const Settings: React.FC = () => {
         .insert({
           name: newTeamName.trim(),
           is_active: newTeamIsActive,
+          created_at: new Date().toISOString(),
         })
         .select()
         .single();
 
       if (error) {
-        setTimedFeedback('Failed to add team');
+        setTimedFeedback(getErrorMessage('Failed to add team', error));
       } else {
         setTeams(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
         setNewTeamName('');
@@ -390,7 +396,7 @@ export const Settings: React.FC = () => {
         .single();
 
       if (error) {
-        setTimedFeedback('Failed to update team');
+        setTimedFeedback(getErrorMessage('Failed to update team', error));
       } else {
         setTeams(prev =>
           prev.map(team => (team.id === teamId ? data : team)).sort((a, b) => a.name.localeCompare(b.name))
@@ -425,7 +431,7 @@ export const Settings: React.FC = () => {
         .single();
 
       if (error) {
-        setTimedFeedback('Failed to update team status');
+        setTimedFeedback(getErrorMessage('Failed to update team status', error));
       } else {
         setTeams(prev =>
           prev.map(item => (item.id === team.id ? data : item)).sort((a, b) => a.name.localeCompare(b.name))
@@ -480,7 +486,7 @@ export const Settings: React.FC = () => {
         );
 
       if (upsertError) {
-        setTimedFeedback('Failed to save permissions');
+        setTimedFeedback(getErrorMessage('Failed to save permissions', upsertError));
       } else {
         setTimedFeedback('Successfully saved permissions');
       }
