@@ -11,6 +11,10 @@ interface StaffLeaveRow {
   end_date: string;
 }
 
+interface StaffRegionRow {
+  home_region: string | null;
+}
+
 interface Params {
   financialYear: { start: number; end: number };
   month: number;
@@ -60,7 +64,6 @@ export const useWorkingDays = (params: Params): Result => {
         const startIso = startOfMonthISO(year, month);
         const endIso = endOfMonthISO(year, month);
 
-        // ---- 1) Base weekdays for month + weekdays up to today ----
         let baseWorking = 0;
         let baseWorkingToToday = 0;
 
@@ -72,8 +75,6 @@ export const useWorkingDays = (params: Params): Result => {
           }
         }
 
-        // ---- 2) Team bank holidays (England & Wales) ----
-        // IMPORTANT: filter region, and de-duplicate dates to avoid double-subtracting.
         const { data: teamHolidays, error: teamHolErr } = await supabase
           .from('bank_holidays')
           .select('date, region')
@@ -82,7 +83,7 @@ export const useWorkingDays = (params: Params): Result => {
           .lte('date', endIso);
 
         if (teamHolErr) {
-          console.error('Error fetching team bank holidays:', teamHolErr);
+          setError('Failed to calculate working days');
         }
 
         const teamHolidayDates = new Set<string>();
@@ -101,9 +102,6 @@ export const useWorkingDays = (params: Params): Result => {
           }
         });
 
-        // Clamp for future/past relative to real today:
-        // - If selected month is in the future: 0 days elapsed.
-        // - If selected month is in the past: full month elapsed.
         const selectedMonthStart = new Date(year, month - 1, 1);
         const now = new Date();
         const nowMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -114,25 +112,21 @@ export const useWorkingDays = (params: Params): Result => {
           teamWorkingToToday = teamWorking;
         }
 
-        // ---- 3) Staff working days (optional), based on their region + leave ----
-        // Default to team working days if no staffId
         let staffWorkingCalc = teamWorking;
 
         if (staffId) {
-          // Fetch staff region
           const { data: staffRow, error: staffErr } = await supabase
             .from('staff')
             .select('home_region')
             .eq('staff_id', staffId)
-            .single();
+            .maybeSingle<StaffRegionRow>();
 
           if (staffErr) {
-            console.error('Error fetching staff region:', staffErr);
+            setError('Failed to calculate working days');
           }
 
           const staffRegion = staffRow?.home_region || 'england-and-wales';
 
-          // Base for staff = weekdays - staff region holidays
           staffWorkingCalc = baseWorking;
 
           const { data: staffHolidays, error: staffHolErr } = await supabase
@@ -143,7 +137,7 @@ export const useWorkingDays = (params: Params): Result => {
             .lte('date', endIso);
 
           if (staffHolErr) {
-            console.error('Error fetching staff bank holidays:', staffHolErr);
+            setError('Failed to calculate working days');
           }
 
           const staffHolidayDates = new Set<string>();
@@ -156,7 +150,6 @@ export const useWorkingDays = (params: Params): Result => {
             if (!isWeekend(d)) staffWorkingCalc--;
           });
 
-          // Subtract staff leave days within the month only
           const { data: leaveRows, error: leaveErr } = await supabase
             .from('staff_leave')
             .select('start_date, end_date')
@@ -164,7 +157,7 @@ export const useWorkingDays = (params: Params): Result => {
             .or(`and(start_date.lte.${endIso},end_date.gte.${startIso})`);
 
           if (leaveErr) {
-            console.error('Error fetching staff leave:', leaveErr);
+            setError('Failed to calculate working days');
           }
 
           (leaveRows as StaffLeaveRow[] | null)?.forEach((l) => {
@@ -180,8 +173,7 @@ export const useWorkingDays = (params: Params): Result => {
         setTeamWorkingDays(Math.max(0, teamWorking));
         setWorkingDaysUpToToday(Math.max(0, teamWorkingToToday));
         setStaffWorkingDays(Math.max(0, staffWorkingCalc));
-      } catch (e) {
-        console.error(e);
+      } catch {
         setError('Failed to calculate working days');
         setShowFallbackWarning(true);
         setTeamWorkingDays(0);

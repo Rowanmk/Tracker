@@ -89,7 +89,7 @@ export const SelfAssessmentProgress: React.FC = () => {
         });
 
         (activities || []).forEach((a) => {
-          if (a.staff_id && breakdown[a.staff_id]) {
+          if (a.staff_id != null && breakdown[a.staff_id]) {
             const m = new Date(a.date).getMonth() + 1;
             if (!breakdown[a.staff_id][m]) {
               breakdown[a.staff_id][m] = { submitted: 0, target: 0 };
@@ -99,7 +99,7 @@ export const SelfAssessmentProgress: React.FC = () => {
         });
 
         (targets || []).forEach((t) => {
-          if (t.staff_id && breakdown[t.staff_id]) {
+          if (t.staff_id != null && breakdown[t.staff_id]) {
             if (!breakdown[t.staff_id][t.month]) {
               breakdown[t.staff_id][t.month] = { submitted: 0, target: 0 };
             }
@@ -116,7 +116,7 @@ export const SelfAssessmentProgress: React.FC = () => {
     };
 
     fetchMonthlyData();
-  }, [localFinancialYear, services, staffProgress.length]);
+  }, [localFinancialYear, services, staffProgress]);
 
   const visibleStaff = staffProgress.filter(
     (s) => s.fullYearTarget > 0 || s.submitted > 0

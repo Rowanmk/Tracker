@@ -256,7 +256,7 @@ export const TargetsControl: React.FC = () => {
     }
   };
 
-  const handleSaveTargets = async () => {
+  const handleSaveTargets = async (): Promise<boolean> => {
     setSaveMessage(null);
     setError(null);
 
@@ -308,8 +308,10 @@ export const TargetsControl: React.FC = () => {
       setHasUnsavedChanges(false);
       setSaveMessage('✅ Targets saved successfully');
       setTimeout(() => setSaveMessage(null), 3000);
+      return true;
     } catch {
       setError('Failed to save targets');
+      return false;
     }
   };
 
@@ -502,7 +504,9 @@ export const TargetsControl: React.FC = () => {
             📥 Export CSV
           </button>
           <button
-            onClick={handleSaveTargets}
+            onClick={() => {
+              void handleSaveTargets();
+            }}
             disabled={!hasUnsavedChanges}
             className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -562,7 +566,7 @@ export const TargetsControl: React.FC = () => {
                       className={`flex w-full ${
                         serviceIdx % 2 === 0
                           ? 'bg-white dark:bg-gray-800'
-                          : 'bg-gray-50 dark:bg-gray-750'
+                          : 'bg-gray-50 dark:bg-gray-700'
                       } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
                     >
                       <div className="w-40 flex-shrink-0 px-4 py-2 border-r border-gray-200 dark:border-gray-600 flex items-center">
@@ -711,7 +715,7 @@ export const TargetsControl: React.FC = () => {
                   className={`flex w-full ${
                     serviceIdx % 2 === 0
                       ? 'bg-white dark:bg-gray-800'
-                      : 'bg-gray-50 dark:bg-gray-750'
+                      : 'bg-gray-50 dark:bg-gray-700'
                   } hover:bg-purple-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
                 >
                   <div className="w-40 flex-shrink-0 px-4 py-2 border-r border-gray-200 dark:border-gray-600 flex items-center">
@@ -791,9 +795,11 @@ export const TargetsControl: React.FC = () => {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  handleSaveTargets();
-                  confirmNavigation();
+                onClick={async () => {
+                  const success = await handleSaveTargets();
+                  if (success) {
+                    confirmNavigation();
+                  }
                 }}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
               >

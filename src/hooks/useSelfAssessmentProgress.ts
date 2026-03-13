@@ -37,9 +37,6 @@ export const useSelfAssessmentProgress = (
       setError(null);
 
       try {
-        /* ---------------------------------------------------------
-           1. Resolve Self Assessment service
-        --------------------------------------------------------- */
         const saService = services.find(
           (s: Service) => s.service_name === 'Self Assessments'
         );
@@ -51,23 +48,16 @@ export const useSelfAssessmentProgress = (
           return;
         }
 
-        /* ---------------------------------------------------------
-           2. Delivery window (10 months after FY)
-        --------------------------------------------------------- */
         const deliveryStartYear = financialYear.end;
         const deliveryEndYear = financialYear.end + 1;
 
-        const deliveryStartDate = new Date(deliveryStartYear, 3, 1); // Apr 1
-        const deliveryEndDate = new Date(deliveryEndYear, 0, 31);   // Jan 31
+        const deliveryStartDate = new Date(deliveryStartYear, 3, 1);
+        const deliveryEndDate = new Date(deliveryEndYear, 0, 31);
 
         const deliveryStartIso = deliveryStartDate.toISOString().slice(0, 10);
         const deliveryEndIso = deliveryEndDate.toISOString().slice(0, 10);
 
-        /* ---------------------------------------------------------
-           3. Last completed month (calendar-based, clipped)
-        --------------------------------------------------------- */
         const today = new Date();
-
         let lastCompletedIso: string | null = null;
 
         if (today > deliveryStartDate) {
@@ -89,63 +79,47 @@ export const useSelfAssessmentProgress = (
             : null;
         }
 
-        /* ---------------------------------------------------------
-           4. Fetch actuals
-        --------------------------------------------------------- */
-        const { data: activities, error: activitiesError } =
-          await supabase
-            .from('dailyactivity')
-            .select('staff_id, delivered_count, date')
-            .eq('service_id', saService.service_id)
-            .gte('date', deliveryStartIso)
-            .lte('date', deliveryEndIso);
+        const { data: activities, error: activitiesError } = await supabase
+          .from('dailyactivity')
+          .select('staff_id, delivered_count, date')
+          .eq('service_id', saService.service_id)
+          .gte('date', deliveryStartIso)
+          .lte('date', deliveryEndIso);
 
         if (activitiesError) {
-          console.error(activitiesError);
           setError('Failed to load activity data');
           setStaffProgress([]);
           setLoading(false);
           return;
         }
 
-        const safeActivities: DailyActivity[] = activities ?? [];
+        const safeActivities: DailyActivity[] = (activities ?? []) as DailyActivity[];
 
-        /* ---------------------------------------------------------
-           5. Fetch targets
-        --------------------------------------------------------- */
-        const { data: targets, error: targetsError } =
-          await supabase
-            .from('monthlytargets')
-            .select('staff_id, month, year, target_value')
-            .eq('service_id', saService.service_id)
-            .in('year', [deliveryStartYear, deliveryEndYear]);
+        const { data: targets, error: targetsError } = await supabase
+          .from('monthlytargets')
+          .select('staff_id, month, year, target_value')
+          .eq('service_id', saService.service_id)
+          .in('year', [deliveryStartYear, deliveryEndYear]);
 
         if (targetsError) {
-          console.error(targetsError);
           setError('Failed to load target data');
           setStaffProgress([]);
           setLoading(false);
           return;
         }
 
-        const safeTargets: MonthlyTarget[] = targets ?? [];
+        const safeTargets: MonthlyTarget[] = (targets ?? []) as MonthlyTarget[];
 
-        /* ---------------------------------------------------------
-           6. Staff inclusion
-        --------------------------------------------------------- */
         const staffWithData = new Set<number>();
 
         safeActivities.forEach((a: DailyActivity) => {
-          if (a.staff_id) staffWithData.add(a.staff_id);
+          if (a.staff_id != null) staffWithData.add(a.staff_id);
         });
 
         safeTargets.forEach((t: MonthlyTarget) => {
-          if (t.staff_id) staffWithData.add(t.staff_id);
+          if (t.staff_id != null) staffWithData.add(t.staff_id);
         });
 
-        /* ---------------------------------------------------------
-           7. Per-staff calculations
-        --------------------------------------------------------- */
         const results: StaffProgressData[] = [];
 
         staffWithData.forEach((staffId: number) => {
@@ -186,7 +160,6 @@ export const useSelfAssessmentProgress = (
           const futureTargets = safeTargets
             .filter((t: MonthlyTarget) => {
               if (t.staff_id !== staffId) return false;
-
               const tDate = new Date(t.year, t.month - 1, 1);
               return (
                 tDate >= targetStartDate &&
@@ -214,8 +187,7 @@ export const useSelfAssessmentProgress = (
 
         results.sort((a, b) => a.name.localeCompare(b.name));
         setStaffProgress(results);
-      } catch (err) {
-        console.error('useSelfAssessmentProgress error:', err);
+      } catch {
         setError('Failed to load Self Assessment progress');
         setStaffProgress([]);
       } finally {
@@ -224,7 +196,7 @@ export const useSelfAssessmentProgress = (
     };
 
     fetchData();
-  }, [financialYear, allStaff.length, services.length]);
+  }, [financialYear, allStaff, services]);
 
   return { staffProgress, loading, error };
 };
