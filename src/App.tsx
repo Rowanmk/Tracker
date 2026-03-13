@@ -11,6 +11,7 @@ import { StaffTracker } from './pages/StaffTracker';
 import { SelfAssessmentProgress } from './pages/SelfAssessmentProgress';
 import { TargetsControl } from './pages/TargetsControl';
 import { Settings } from './pages/Settings';
+import { AuditLog } from './pages/AuditLog';
 import { Login } from './pages/Login';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { useAuth } from './context/AuthContext';
@@ -46,6 +47,7 @@ const ProtectedApp: React.FC = () => {
         <Route path="/sa-progress" element={<SelfAssessmentProgress />} />
         <Route path="/targets" element={<TargetsControl />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/audit-log" element={<AuditLog />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

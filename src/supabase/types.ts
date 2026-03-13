@@ -12,6 +12,63 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_logs: {
+        Row: {
+          action_type: string
+          created_at: string
+          description: string
+          entity_id: string | null
+          entity_type: string
+          id: number
+          metadata: Json | null
+          page_label: string
+          page_path: string
+          staff_id: number | null
+          team_id: number | null
+        }
+        Insert: {
+          action_type: string
+          created_at?: string
+          description: string
+          entity_id?: string | null
+          entity_type: string
+          id?: number
+          metadata?: Json | null
+          page_label: string
+          page_path: string
+          staff_id?: number | null
+          team_id?: number | null
+        }
+        Update: {
+          action_type?: string
+          created_at?: string
+          description?: string
+          entity_id?: string | null
+          entity_type?: string
+          id?: number
+          metadata?: Json | null
+          page_label?: string
+          page_path?: string
+          staff_id?: number | null
+          team_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "audit_logs_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bank_holidays: {
         Row: {
           bunting: boolean | null

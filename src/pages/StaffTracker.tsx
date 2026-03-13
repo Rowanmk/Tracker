@@ -8,6 +8,7 @@ import { MyTrackerProgressTiles } from "../components/MyTrackerProgressTiles";
 import { StaffPerformanceBar } from "../components/StaffPerformanceBar";
 import { supabase } from "../supabase/client";
 import { loadTargets } from "../utils/loadTargets";
+import { createAuditLog } from "../utils/auditLog";
 
 interface DailyEntry {
   date: string;
@@ -41,7 +42,6 @@ export const StaffTracker: React.FC = () => {
   const { currentStaff, selectedStaffId, allStaff } = useAuth();
   const { services: rawServices, loading: servicesLoading } = useServices();
 
-  // Sort services into the required order: Accounts, VAT, Self Assessments
   const services = useMemo(() => {
     return [...rawServices].sort((a, b) => {
       const ai = SERVICE_ORDER.indexOf(a.service_name);
@@ -54,14 +54,12 @@ export const StaffTracker: React.FC = () => {
 
   const isTeamSelected = selectedStaffId === "team" || !selectedStaffId;
 
-  // Dynamic page title based on selection
   const pageTitle = useMemo(() => {
     if (isTeamSelected) return "My Team's Tracker";
     
     const selectedStaff = allStaff.find(s => s.staff_id.toString() === selectedStaffId);
     const name = selectedStaff?.name || currentStaff?.name || "Staff";
     
-    // Handle possessive (Rowan's vs James')
     const suffix = name.endsWith('s') ? "'" : "'s";
     return `${name}${suffix} Tracker`;
   }, [isTeamSelected, selectedStaffId, allStaff, currentStaff]);
@@ -372,6 +370,28 @@ export const StaffTracker: React.FC = () => {
           { onConflict: "staff_id,service_id,date" }
         );
 
+      const service = services.find(item => item.service_id === serviceId);
+
+      await createAuditLog({
+        pagePath: '/tracker',
+        pageLabel: 'My Tracker',
+        actionType: 'update',
+        entityType: 'daily_activity',
+        entityId: `${currentStaff.staff_id}-${serviceId}-${date}`,
+        description: `Updated ${service?.service_name || 'service'} on ${date} to ${value}`,
+        actorStaffId: currentStaff.staff_id,
+        teamId: currentStaff.team_id,
+        metadata: {
+          date,
+          day,
+          month: selectedMonth,
+          year,
+          service_id: serviceId,
+          service_name: service?.service_name || null,
+          delivered_count: value,
+        },
+      });
+
       window.dispatchEvent(new Event("activity-updated"));
     } finally {
       setSavingKey(null);
@@ -411,9 +431,7 @@ export const StaffTracker: React.FC = () => {
         <div className="w-full" ref={scrollContainerRef}>
           <table className="w-full border-collapse table-fixed">
             <colgroup>
-              {/* Service name column — fixed width */}
               <col style={{ width: "140px" }} />
-              {/* Day columns — equal share of remaining space */}
               {dayMeta.map((d) => (
                 <col key={d.day} />
               ))}

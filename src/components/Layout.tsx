@@ -20,6 +20,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     { path: "/annual", label: "Annual Summary" },
     { path: "/targets", label: "Targets Control" },
     { path: "/settings", label: "Settings" },
+    { path: "/audit-log", label: "Audit Log" },
   ];
 
   const navigationLinks = allNavigationLinks.filter(link => hasPermission(link.path));

@@ -4,6 +4,7 @@ import { useDate } from '../context/DateContext';
 import { CalendarMonthYearSelector } from '../components/CalendarMonthYearSelector';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
+import { createAuditLog } from '../utils/auditLog';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
 type Team = Database['public']['Tables']['teams']['Row'];
@@ -82,6 +83,7 @@ export const Settings: React.FC = () => {
     { path: "/annual", label: "Annual Summary" },
     { path: "/targets", label: "Targets Control" },
     { path: "/settings", label: "Settings" },
+    { path: "/audit-log", label: "Audit Log" },
   ];
 
   const [permissions, setPermissions] = useState<Permission[]>([]);
@@ -203,7 +205,7 @@ export const Settings: React.FC = () => {
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUserName.trim()) return;
+    if (!newUserName.trim() || !currentStaff) return;
 
     setIsAddingUser(true);
     setFeedback(null);
@@ -234,6 +236,20 @@ export const Settings: React.FC = () => {
         setNewUserRegion('england-and-wales');
         setNewUserTeamId(emptyTeamOption);
         await refreshStaff();
+        await createAuditLog({
+          pagePath: '/settings',
+          pageLabel: 'Settings',
+          actionType: 'create',
+          entityType: 'user',
+          entityId: String(data.staff_id),
+          description: `Created user ${data.name}`,
+          actorStaffId: currentStaff.staff_id,
+          teamId: data.team_id,
+          metadata: {
+            role: data.role,
+            home_region: data.home_region,
+          },
+        });
         setTimedFeedback('Successfully added user');
       }
     } catch {
@@ -260,11 +276,14 @@ export const Settings: React.FC = () => {
   };
 
   const handleSaveEdit = async () => {
-    if (!editingUser || !editForm.name.trim()) return;
+    if (!editingUser || !editForm.name.trim() || !currentStaff) return;
 
     setFeedback(null);
 
     try {
+      const previousTeamId = editingUser.team_id;
+      const nextTeamId = editForm.team_id === emptyTeamOption ? null : Number(editForm.team_id);
+
       const { data, error: updateError } = await supabase
         .from('staff')
         .update({
@@ -274,7 +293,7 @@ export const Settings: React.FC = () => {
           home_region: editForm.home_region,
           security_question: editForm.security_question.trim() || null,
           security_answer: editForm.security_answer.trim() || null,
-          team_id: editForm.team_id === emptyTeamOption ? null : Number(editForm.team_id),
+          team_id: nextTeamId,
         })
         .eq('staff_id', editingUser.staff_id)
         .select('*, team:team_id (*)')
@@ -290,6 +309,25 @@ export const Settings: React.FC = () => {
         );
         setEditingUser(null);
         await refreshStaff();
+        await createAuditLog({
+          pagePath: '/settings',
+          pageLabel: 'Settings',
+          actionType: 'update',
+          entityType: 'user',
+          entityId: String(editingUser.staff_id),
+          description:
+            previousTeamId !== nextTeamId
+              ? `Updated user ${data.name} and changed team to ${getTeamName(nextTeamId)}`
+              : `Updated user ${data.name}`,
+          actorStaffId: currentStaff.staff_id,
+          teamId: nextTeamId,
+          metadata: {
+            previous_team_id: previousTeamId,
+            next_team_id: nextTeamId,
+            role: data.role,
+            home_region: data.home_region,
+          },
+        });
         setTimedFeedback('Successfully updated user');
       }
     } catch {
@@ -324,6 +362,20 @@ export const Settings: React.FC = () => {
       } else {
         setAccountForm(prev => ({ ...prev, password: '' }));
         await refreshStaff();
+        await createAuditLog({
+          pagePath: '/settings',
+          pageLabel: 'Settings',
+          actionType: 'update',
+          entityType: 'account',
+          entityId: String(currentStaff.staff_id),
+          description: `Updated account settings for ${currentStaff.name}`,
+          actorStaffId: currentStaff.staff_id,
+          teamId: currentStaff.team_id,
+          metadata: {
+            updated_password: Boolean(updates.password),
+            updated_security_question: true,
+          },
+        });
         setTimedFeedback('Successfully updated account settings');
       }
     } catch {
@@ -335,7 +387,7 @@ export const Settings: React.FC = () => {
 
   const handleAddTeam = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTeamName.trim()) return;
+    if (!newTeamName.trim() || !currentStaff) return;
 
     setIsAddingTeam(true);
     setFeedback(null);
@@ -357,6 +409,19 @@ export const Settings: React.FC = () => {
         setTeams(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
         setNewTeamName('');
         setNewTeamIsActive(true);
+        await createAuditLog({
+          pagePath: '/settings',
+          pageLabel: 'Settings',
+          actionType: 'create',
+          entityType: 'team',
+          entityId: String(data.id),
+          description: `Created team ${data.name}`,
+          actorStaffId: currentStaff.staff_id,
+          teamId: data.id,
+          metadata: {
+            is_active: data.is_active,
+          },
+        });
         setTimedFeedback('Successfully added team');
       }
     } catch {
@@ -380,11 +445,13 @@ export const Settings: React.FC = () => {
   };
 
   const handleSaveTeam = async (teamId: number) => {
-    if (!teamEditForm.name.trim()) return;
+    if (!teamEditForm.name.trim() || !currentStaff) return;
 
     setFeedback(null);
 
     try {
+      const existingTeam = teams.find(team => team.id === teamId) || null;
+
       const { data, error } = await supabase
         .from('teams')
         .update({
@@ -412,6 +479,21 @@ export const Settings: React.FC = () => {
           )
         );
         cancelEditTeam();
+        await createAuditLog({
+          pagePath: '/settings',
+          pageLabel: 'Settings',
+          actionType: 'update',
+          entityType: 'team',
+          entityId: String(teamId),
+          description: `Updated team ${existingTeam?.name || data.name}`,
+          actorStaffId: currentStaff.staff_id,
+          teamId,
+          metadata: {
+            previous_name: existingTeam?.name || null,
+            new_name: data.name,
+            is_active: data.is_active,
+          },
+        });
         setTimedFeedback('Successfully updated team');
       }
     } catch {
@@ -420,6 +502,8 @@ export const Settings: React.FC = () => {
   };
 
   const handleToggleTeamActive = async (team: Team) => {
+    if (!currentStaff) return;
+
     setFeedback(null);
 
     try {
@@ -446,6 +530,19 @@ export const Settings: React.FC = () => {
               : user
           )
         );
+        await createAuditLog({
+          pagePath: '/settings',
+          pageLabel: 'Settings',
+          actionType: 'update',
+          entityType: 'team',
+          entityId: String(team.id),
+          description: `Marked team ${data.name} as ${data.is_active ? 'active' : 'inactive'}`,
+          actorStaffId: currentStaff.staff_id,
+          teamId: team.id,
+          metadata: {
+            is_active: data.is_active,
+          },
+        });
         setTimedFeedback(`Team marked as ${data.is_active ? 'active' : 'inactive'}`);
       }
     } catch {
@@ -472,6 +569,8 @@ export const Settings: React.FC = () => {
   };
 
   const savePermissions = async () => {
+    if (!currentStaff) return;
+
     setIsSavingPermissions(true);
     try {
       const { error: upsertError } = await supabase
@@ -488,6 +587,19 @@ export const Settings: React.FC = () => {
       if (upsertError) {
         setTimedFeedback(getErrorMessage('Failed to save permissions', upsertError));
       } else {
+        await createAuditLog({
+          pagePath: '/settings',
+          pageLabel: 'Settings',
+          actionType: 'update',
+          entityType: 'permissions',
+          entityId: 'role_permissions',
+          description: 'Updated role permissions',
+          actorStaffId: currentStaff.staff_id,
+          teamId: currentStaff.team_id,
+          metadata: {
+            permission_count: permissions.length,
+          },
+        });
         setTimedFeedback('Successfully saved permissions');
       }
     } catch {
