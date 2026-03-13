@@ -253,6 +253,32 @@ export const StaffTracker: React.FC = () => {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="bg-gray-100 dark:bg-gray-700 font-bold">
+                <td className="px-3 py-2 border-r dark:border-gray-600 text-sm text-gray-900 dark:text-white sticky left-0 bg-gray-100 dark:bg-gray-700 z-10">
+                  Total
+                </td>
+                {dailyEntries.map(e => {
+                  const dayTotal = services.reduce((sum, s) => {
+                    const val = localValues[getCellKey(s.service_id, e.day)] || "0";
+                    return sum + (parseInt(val) || 0);
+                  }, 0);
+                  const weekend = isWeekend(e.date);
+                  return (
+                    <td 
+                      key={e.day} 
+                      className={`text-center py-2 border-r last:border-r-0 dark:border-gray-600 text-xs transition-colors ${
+                        weekend 
+                          ? 'bg-red-200/50 dark:bg-red-900/60 text-red-800 dark:text-red-200' 
+                          : 'text-gray-900 dark:text-white'
+                      }`}
+                    >
+                      {dayTotal}
+                    </td>
+                  );
+                })}
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
