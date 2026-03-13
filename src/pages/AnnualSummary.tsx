@@ -26,7 +26,7 @@ interface AnnualData {
 const getRolling12MonthRange = (month: number, year: number) => {
   const endDate = new Date(year, month - 1, 1);
   endDate.setMonth(endDate.getMonth() + 1);
-  endDate.setDate(0); // end of previous month
+  endDate.setDate(0);
 
   const startDate = new Date(endDate);
   startDate.setMonth(startDate.getMonth() - 11);
@@ -47,14 +47,14 @@ export const AnnualSummary: React.FC = () => {
 
   const currentMonth = selectedMonth;
   const currentYear =
-    selectedMonth >= 4
-      ? selectedFinancialYear.start
-      : selectedFinancialYear.end;
+    selectedMonth >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
 
-  const { workingDays, workingDaysUpToToday } = useWorkingDays({
+  const { teamWorkingDays, workingDaysUpToToday } = useWorkingDays({
     financialYear: selectedFinancialYear,
     month: selectedMonth,
   });
+
+  const workingDays = teamWorkingDays;
 
   const fetchAnnualData = async () => {
     try {
@@ -65,7 +65,7 @@ export const AnnualSummary: React.FC = () => {
         getRolling12MonthRange(selectedMonth, currentYear);
 
       const rows = await Promise.all(
-        allStaff.map(async staff => {
+        allStaff.map(async (staff) => {
           const { data: fyActivities } = await supabase
             .from('dailyactivity')
             .select('month, day, service_id, delivered_count, date')
@@ -83,18 +83,19 @@ export const AnnualSummary: React.FC = () => {
           const months: AnnualData['months'] = {};
           for (let m = 1; m <= 12; m++) {
             months[m] = { total: 0, services: {} };
-            services.forEach(s => (months[m].services[s.service_name] = 0));
+            services.forEach((s) => {
+              months[m].services[s.service_name] = 0;
+            });
           }
 
           const dailyTotals: Record<number, number> = {};
 
-          fyActivities?.forEach(a => {
+          fyActivities?.forEach((a) => {
             if (!a.service_id) return;
             months[a.month].total += a.delivered_count;
-            months[a.month].services[
-              services.find(s => s.service_id === a.service_id)?.service_name || ''
-            ] += a.delivered_count;
-
+            const serviceName =
+              services.find((s) => s.service_id === a.service_id)?.service_name || '';
+            months[a.month].services[serviceName] += a.delivered_count;
             dailyTotals[a.day] = (dailyTotals[a.day] || 0) + a.delivered_count;
           });
 
@@ -127,17 +128,17 @@ export const AnnualSummary: React.FC = () => {
     fetchAnnualData();
   }, [selectedFinancialYear, selectedMonth, allStaff.length, services.length]);
 
-  const monthData = getFinancialYearMonths(selectedFinancialYear);
+  const monthData = getFinancialYearMonths();
 
   const displayStaff =
     isAdmin && selectedStaffId
-      ? allStaff.find(s => s.staff_id.toString() === selectedStaffId) || currentStaff
+      ? allStaff.find((s) => s.staff_id.toString() === selectedStaffId) || currentStaff
       : currentStaff;
 
   const getCurrentMonthData = () => {
     if (!displayStaff) return { currentDelivered: 0, historicalAverage: 0 };
 
-    const staffData = annualData.find(s => s.staff_id === displayStaff.staff_id);
+    const staffData = annualData.find((s) => s.staff_id === displayStaff.staff_id);
     if (!staffData) return { currentDelivered: 0, historicalAverage: 0 };
 
     return {
@@ -193,7 +194,7 @@ export const AnnualSummary: React.FC = () => {
           <thead className="bg-gray-100 dark:bg-gray-700">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-bold uppercase">Staff</th>
-              {monthData.map(m => (
+              {monthData.map((m) => (
                 <th key={m.number} className="px-4 py-3 text-center text-xs font-bold uppercase">
                   {m.name}
                 </th>
@@ -208,10 +209,10 @@ export const AnnualSummary: React.FC = () => {
                 className={idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}
               >
                 <td className="px-4 py-3 font-medium">{staff.name}</td>
-                {monthData.map(m => (
+                {monthData.map((m) => (
                   <td key={m.number} className="px-4 py-3 text-center">
                     {showServiceBreakdown
-                      ? services.map(s => (
+                      ? services.map((s) => (
                           <div key={s.service_id} className="text-xs">
                             {s.service_name}: {staff.months[m.number].services[s.service_name]}
                           </div>
@@ -219,9 +220,7 @@ export const AnnualSummary: React.FC = () => {
                       : staff.months[m.number].total}
                   </td>
                 ))}
-                <td className="px-4 py-3 font-bold text-center">
-                  {staff.totalDeliveries}
-                </td>
+                <td className="px-4 py-3 font-bold text-center">{staff.totalDeliveries}</td>
               </tr>
             ))}
           </tbody>

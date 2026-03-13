@@ -6,7 +6,16 @@ import { DashboardViewProvider } from "../context/DashboardViewContext";
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
   const { selectedMonth, selectedYear } = useDate();
-  const { currentStaff, allStaff, onStaffChange, isAdmin, selectedStaffId, signOut, hasPermission } = useAuth();
+  const {
+    currentStaff,
+    allStaff,
+    onStaffChange,
+    isAdmin,
+    selectedStaffId,
+    signOut,
+    hasPermission,
+    permissions,
+  } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -22,7 +31,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     { path: "/settings", label: "Settings" },
   ];
 
-  const navigationLinks = allNavigationLinks.filter(link => hasPermission(link.path));
+  const navigationLinks = allNavigationLinks.filter((link) => hasPermission(link.path));
 
   const isActivePath = (path: string) => location.pathname === path;
 
@@ -36,12 +45,12 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Redirect if user lands on a page they don't have permission for
   useEffect(() => {
     if (currentStaff && !hasPermission(location.pathname)) {
-      navigate("/");
+      const firstAllowedPath = allNavigationLinks.find((link) => hasPermission(link.path))?.path || "/login";
+      navigate(firstAllowedPath);
     }
-  }, [location.pathname, currentStaff, permissions]);
+  }, [location.pathname, currentStaff, permissions, navigate]);
 
   const handleSelectStaff = (staffId: number | "team") => {
     onStaffChange(staffId);
@@ -56,26 +65,26 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
   const buttonLabel = (() => {
     if (selectedStaffId === "team") return "Team View";
     if (selectedStaffId) {
-      const found = allStaff.find(s => s.staff_id.toString() === selectedStaffId);
+      const found = allStaff.find((s) => s.staff_id.toString() === selectedStaffId);
       if (found) return found.name;
     }
     return currentStaff?.name ?? "Select";
   })();
 
   const signedInUserIsSelected =
-    currentStaff && selectedStaffId === currentStaff.staff_id.toString();
+    !!currentStaff && selectedStaffId === currentStaff.staff_id.toString();
 
   const selectedItem: { label: string; id: number | "team" } | null = (() => {
     if (signedInUserIsSelected) return null;
     if (selectedStaffId === "team") return { label: "Team View", id: "team" };
     if (selectedStaffId) {
-      const found = allStaff.find(s => s.staff_id.toString() === selectedStaffId);
+      const found = allStaff.find((s) => s.staff_id.toString() === selectedStaffId);
       if (found) return { label: found.name, id: found.staff_id };
     }
     return null;
   })();
 
-  const otherStaff = allStaff.filter(s => {
+  const otherStaff = allStaff.filter((s) => {
     if (s.is_hidden) return false;
     if (s.staff_id === currentStaff?.staff_id) return false;
     if (selectedStaffId && s.staff_id.toString() === selectedStaffId) return false;
@@ -157,9 +166,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                     </>
                   )}
 
-                  {signedInUserIsSelected && (
-                    <div className="border-t-2 border-gray-300" />
-                  )}
+                  {signedInUserIsSelected && <div className="border-t-2 border-gray-300" />}
 
                   {isAdmin && showTeamViewInOthers && (
                     <button
@@ -170,15 +177,16 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                     </button>
                   )}
 
-                  {isAdmin && otherStaff.map((s) => (
-                    <button
-                      key={s.staff_id}
-                      onClick={() => handleSelectStaff(s.staff_id)}
-                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition"
-                    >
-                      {s.name}
-                    </button>
-                  ))}
+                  {isAdmin &&
+                    otherStaff.map((s) => (
+                      <button
+                        key={s.staff_id}
+                        onClick={() => handleSelectStaff(s.staff_id)}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition"
+                      >
+                        {s.name}
+                      </button>
+                    ))}
 
                   <div className="border-t border-gray-200" />
                   <button
@@ -193,9 +201,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
           </div>
         </header>
 
-        <main className="w-full px-6 py-6">
-          {children}
-        </main>
+        <main className="w-full px-6 py-6">{children}</main>
       </div>
     </DashboardViewProvider>
   );
