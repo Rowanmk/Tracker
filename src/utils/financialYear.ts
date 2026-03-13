@@ -20,10 +20,15 @@ export const getFinancialYearFromMonth = (month: number, year: number): Financia
 };
 
 /**
- * Returns the supported financial years: 2025/26 and 2026/27.
+ * Returns the supported financial years: 2024/25, 2025/26 and 2026/27.
  */
 export const getFinancialYears = (): FinancialYear[] => {
   return [
+    {
+      label: '2024/25',
+      start: 2024,
+      end: 2025,
+    },
     {
       label: '2025/26',
       start: 2025,
@@ -44,7 +49,7 @@ export const getCurrentFinancialYear = (): FinancialYear => {
   const fy = getFinancialYearFromMonth(month, year);
   
   // Clamp to supported range if outside
-  if (fy.start < 2025) return { label: '2025/26', start: 2025, end: 2026 };
+  if (fy.start < 2024) return { label: '2024/25', start: 2024, end: 2025 };
   if (fy.start > 2026) return { label: '2026/27', start: 2026, end: 2027 };
   return fy;
 };

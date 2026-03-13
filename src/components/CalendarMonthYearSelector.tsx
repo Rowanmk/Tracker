@@ -24,8 +24,8 @@ export const CalendarMonthYearSelector: React.FC<CalendarMonthYearSelectorProps>
   ];
 
   const financialYears = getFinancialYears();
-  // Restrict year selection to 2025, 2026, and 2027 to align with FY 25/26 and 26/27
-  const years = [2025, 2026, 2027];
+  // Restrict year selection to 2024, 2025, 2026, and 2027 to align with FY 24/25, 25/26 and 26/27
+  const years = [2024, 2025, 2026, 2027];
 
   return (
     <div className="flex space-x-4 mb-6">
