@@ -48,8 +48,8 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
           });
         }
         setServiceTargets(targetMap);
-      } catch (error) {
-        console.error('Error fetching service targets:', error);
+      } catch {
+        setServiceTargets({});
       } finally {
         setLoading(false);
       }
@@ -64,67 +64,49 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
 
   const chartData = useMemo(() => {
     if (isAllTeams) {
-      // Group by Team
-      const teamResults = teams.map(team => {
-        const teamStaff = staffPerformance.filter(s => s.team_id === team.id);
-        const delivered = teamStaff.reduce((sum, s) => sum + s.total, 0);
-        const target = teamStaff.reduce((sum, s) => sum + s.target, 0);
-        const expectedByToday = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
-        const runRatePercent = expectedByToday > 0 ? (delivered / expectedByToday) * 100 : 0;
+      return [...staffPerformance]
+        .map((staff) => {
+          const expectedByToday =
+            workingDays > 0 ? (staff.target / workingDays) * workingDaysUpToToday : 0;
+          const runRatePercent =
+            expectedByToday > 0 ? (staff.total / expectedByToday) * 100 : 0;
+          const teamName =
+            teams.find((team) => team.id === staff.team_id)?.name || "Unassigned";
 
-        return {
-          id: team.id,
-          label: team.name,
-          delivered,
-          target,
-          expectedByToday,
-          runRatePercent
-        };
-      });
-
-      // Add Unassigned if there are any
-      const unassignedStaff = staffPerformance.filter(s => !s.team_id);
-      if (unassignedStaff.length > 0) {
-        const delivered = unassignedStaff.reduce((sum, s) => sum + s.total, 0);
-        const target = unassignedStaff.reduce((sum, s) => sum + s.target, 0);
-        const expectedByToday = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
-        const runRatePercent = expectedByToday > 0 ? (delivered / expectedByToday) * 100 : 0;
-
-        teamResults.push({
-          id: 0,
-          label: "Unassigned",
-          delivered,
-          target,
-          expectedByToday,
-          runRatePercent
-        });
-      }
-
-      return teamResults.sort((a, b) => b.delivered - a.delivered);
-    } else {
-      // Group by Service for the selected team
-      return services.map(service => {
-        const delivered = staffPerformance.reduce((sum, s) => sum + (s.services[service.service_name] || 0), 0);
-        const target = serviceTargets[service.service_id] || 0;
-        const expectedByToday = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
-        const runRatePercent = expectedByToday > 0 ? (delivered / expectedByToday) * 100 : 0;
-
-        return {
-          id: service.service_id,
-          label: service.service_name,
-          delivered,
-          target,
-          expectedByToday,
-          runRatePercent
-        };
-      });
+          return {
+            id: staff.staff_id,
+            label: staff.name,
+            delivered: staff.total,
+            target: staff.target,
+            expectedByToday,
+            runRatePercent,
+            teamName,
+          };
+        })
+        .sort((a, b) => b.delivered - a.delivered);
     }
+
+    return services.map((service) => {
+      const delivered = staffPerformance.reduce((sum, s) => sum + (s.services[service.service_name] || 0), 0);
+      const target = serviceTargets[service.service_id] || 0;
+      const expectedByToday = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
+      const runRatePercent = expectedByToday > 0 ? (delivered / expectedByToday) * 100 : 0;
+
+      return {
+        id: service.service_id,
+        label: service.service_name,
+        delivered,
+        target,
+        expectedByToday,
+        runRatePercent,
+      };
+    });
   }, [isAllTeams, teams, staffPerformance, services, serviceTargets, workingDays, workingDaysUpToToday]);
 
   const getBarColor = (percentage: number) => {
-    if (percentage >= 90) return "#008A00";     // dark green  
-    if (percentage >= 75) return "#FF8A2A";     // orange  
-    return "#FF3B30";                           // red  
+    if (percentage >= 90) return "#008A00";
+    if (percentage >= 75) return "#FF8A2A";
+    return "#FF3B30";
   };
 
   if (loading) {
@@ -173,8 +155,10 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
 
           {chartData.map((data, i) => {
             const { label, delivered, expectedByToday, runRatePercent } = data;
-            
-            let display, barHeight;
+
+            let display;
+            let barHeight;
+
             if (viewMode === "percent") {
               display = runRatePercent;
               barHeight = (runRatePercent / yMax) * BAR_AREA_HEIGHT;
