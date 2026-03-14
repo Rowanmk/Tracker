@@ -119,13 +119,14 @@ export const useWorkingDays = (params: Params): Result => {
             .from('staff')
             .select('home_region')
             .eq('staff_id', staffId)
-            .maybeSingle<StaffRegionRow>();
+            .maybeSingle();
 
           if (staffErr) {
             setError('Failed to calculate working days');
           }
 
-          const staffRegion = staffRow?.home_region || 'england-and-wales';
+          const typedStaffRow = staffRow as StaffRegionRow | null;
+          const staffRegion = typedStaffRow?.home_region || 'england-and-wales';
 
           staffWorkingCalc = baseWorking;
 
