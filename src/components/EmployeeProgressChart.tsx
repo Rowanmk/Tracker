@@ -109,6 +109,11 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
     return "#FF3B30";
   };
 
+  const formatAxisLabel = (label: string, maxChars: number) => {
+    if (label.length <= maxChars) return label;
+    return `${label.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
+  };
+
   if (loading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
@@ -131,6 +136,10 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
 
   const maxValue = viewMode === "percent" ? maxRunRatePercent : Math.max(maxDelivered, maxExpected);
   const yMax = Math.max(maxValue * 1.10, 1);
+
+  const shouldRotateLabels = isAllTeams && (barCount > 8 || chartData.some((d) => d.label.length > 12));
+  const axisLabelCharLimit = shouldRotateLabels ? 12 : 16;
+  const axisLabelY = shouldRotateLabels ? BASELINE_Y + 20 : BASELINE_Y + 15;
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
@@ -169,6 +178,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
 
             const x = FIXED_LEFT_MARGIN + (i * BAR_SLOT_WIDTH) + (BAR_SLOT_WIDTH / 2);
             const barColor = getBarColor(runRatePercent);
+            const displayLabel = formatAxisLabel(label, axisLabelCharLimit);
 
             return (
               <g key={data.id}>
@@ -193,11 +203,13 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
 
                 <text
                   x={x}
-                  y={BASELINE_Y + 15}
+                  y={axisLabelY}
                   textAnchor="middle"
                   className="text-[10px] font-medium fill-gray-600 dark:fill-gray-400 transition-all duration-300 ease-in-out"
+                  transform={shouldRotateLabels ? `rotate(-35 ${x} ${axisLabelY})` : undefined}
                 >
-                  {label}
+                  <title>{label}</title>
+                  {displayLabel}
                 </text>
               </g>
             );
