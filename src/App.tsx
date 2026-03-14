@@ -54,7 +54,7 @@ const AuthRedirect: React.FC = () => {
 };
 
 const ProtectedApp: React.FC = () => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, hasPermission } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -76,7 +76,7 @@ const ProtectedApp: React.FC = () => {
   }
 
   if (location.pathname === '/login' || location.pathname === '/forgot-password') {
-    return <Navigate to={getFirstAllowedPath((path) => useAuth().hasPermission(path))} replace />;
+    return <Navigate to={getFirstAllowedPath(hasPermission)} replace />;
   }
 
   return (
@@ -90,7 +90,7 @@ const ProtectedApp: React.FC = () => {
         <Route path="/targets" element={<ProtectedRoute path="/targets" element={<TargetsControl />} />} />
         <Route path="/settings" element={<ProtectedRoute path="/settings" element={<Settings />} />} />
         <Route path="/audit-log" element={<ProtectedRoute path="/audit-log" element={<AuditLog />} />} />
-        <Route path="*" element={<Navigate to={getFirstAllowedPath(useAuth().hasPermission)} replace />} />
+        <Route path="*" element={<Navigate to={getFirstAllowedPath(hasPermission)} replace />} />
       </Routes>
     </Layout>
   );
