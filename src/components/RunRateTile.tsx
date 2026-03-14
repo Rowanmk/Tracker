@@ -9,6 +9,7 @@ interface RunRateTileProps {
   financialYear: FinancialYear;
   target: number;
   viewMode?: "percent" | "numbers";
+  playbackDay?: number;
 }
 
 const VIEWBOX_HEIGHT = 300;
@@ -26,6 +27,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
   financialYear,
   target,
   viewMode = "numbers",
+  playbackDay,
 }) => {
   const selectedYear = month >= 4 ? financialYear.start : financialYear.end;
   const daysInSelectedMonth = new Date(selectedYear, month, 0).getDate();
@@ -102,12 +104,16 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     return Number.isInteger(value) ? value.toString() : value.toFixed(0);
   };
 
-  const daysToRenderBars = isCurrentMonth ? Math.min(currentDay, daysInSelectedMonth) : daysInSelectedMonth;
+  const playbackLimit = playbackDay ?? (isCurrentMonth ? Math.min(currentDay, daysInSelectedMonth) : daysInSelectedMonth);
+  const daysToRenderBars = Math.min(playbackLimit, daysInSelectedMonth);
   const chartWidth = daysInSelectedMonth * 15 + LEFT_AXIS_MARGIN + RIGHT_PADDING;
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
-      <div className="tile-header px-4 py-1.5">Run Rate</div>
+      <div className="tile-header px-4 py-1.5">
+        Run Rate
+        {playbackDay ? <span className="ml-2 text-white/80">Day {playbackDay}</span> : null}
+      </div>
 
       <div className="flex-1 flex flex-col justify-end p-3 pb-4 overflow-hidden">
         <svg

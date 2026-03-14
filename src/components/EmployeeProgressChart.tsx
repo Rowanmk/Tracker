@@ -12,6 +12,7 @@ interface EmployeeProgressChartProps {
   financialYear: FinancialYear;
   selectedTeamId: string | null;
   teams: any[];
+  playbackDay?: number;
 }
 
 const VIEWBOX_HEIGHT = 300;
@@ -29,6 +30,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   financialYear,
   selectedTeamId,
   teams,
+  playbackDay,
 }) => {
   const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(false);
@@ -145,6 +147,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
       <div className="tile-header px-4 py-1.5">
         {isAllTeams ? "Team Progress Chart" : "Service Progress Chart"}
+        {playbackDay ? <span className="ml-2 text-white/80">Day {playbackDay}</span> : null}
       </div>
 
       <div className="flex-1 flex flex-col justify-end p-3 pb-4">
