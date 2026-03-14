@@ -48,8 +48,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
           });
         }
         setServiceTargets(targetMap);
-      } catch (error) {
-        console.error('Error fetching service targets:', error);
+      } catch {
         setServiceTargets({});
       } finally {
         setLoading(false);
@@ -59,18 +58,18 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     if (staffPerformance.length > 0) {
       fetchServiceTargets();
     }
-  }, [month, financialYear, staffPerformance.length]);
+  }, [month, financialYear, staffPerformance]);
 
   const getBarColor = (delivered: number, target: number) => {
     const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
     const difference = delivered - expectedSoFar;
 
     if (difference >= 0) {
-      return '#008A00'; // Green - ahead or on-track
+      return '#008A00';
     } else if (difference >= -0.25 * expectedSoFar) {
-      return '#FF8A2A'; // Orange - slightly behind
+      return '#FF8A2A';
     } else {
-      return '#FF3B30'; // Red - significantly behind
+      return '#FF3B30';
     }
   };
 
@@ -92,13 +91,13 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
           +{Math.round(difference)}
         </span>
       );
-    } else {
-      return (
-        <span className="inline-flex items-center px-2 py-1 rounded text-sm font-bold transition-all duration-300 ease-in-out" style={{ color: '#FF3B30' }}>
-          {Math.round(difference)}
-        </span>
-      );
     }
+
+    return (
+      <span className="inline-flex items-center px-2 py-1 rounded text-sm font-bold transition-all duration-300 ease-in-out" style={{ color: '#FF3B30' }}>
+        {Math.round(difference)}
+      </span>
+    );
   };
 
   const renderServiceRow = (serviceId: number, serviceName: string) => {
@@ -118,13 +117,13 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
             <span className="text-sm text-gray-600 dark:text-gray-400 transition-all duration-300 ease-in-out">({Math.round(percentage)}%)</span>
           </div>
         </div>
-        
+
         <div className="relative flex items-center">
           <div className="flex-1 relative">
             <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-8 overflow-hidden shadow-inner">
               <div
                 className="h-8 rounded-full transition-all duration-500 ease-in-out shadow-sm"
-                style={{ 
+                style={{
                   width: `${Math.min(percentage, 100)}%`,
                   backgroundColor: barColor
                 }}
@@ -144,6 +143,17 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
       </div>
     );
   };
+
+  if (loading) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
+        <div className="tile-header px-4 py-1.5">
+          Team Progress
+        </div>
+        <div className="flex-1 flex items-center justify-center text-gray-500">Loading…</div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">

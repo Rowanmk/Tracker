@@ -33,7 +33,6 @@ export async function loadTargets(
   const { data, error } = await query;
 
   if (error) {
-    console.error('Error loading targets:', error);
     throw error;
   }
 
@@ -43,8 +42,6 @@ export async function loadTargets(
   (data as MonthlyTarget[] || []).forEach((row) => {
     const expected = getExpectedYearForMonth(row.month, financialYear);
     if (row.year !== expected) return;
-
-    // 🔒 Guard against null service_id (required for TS safety)
     if (row.service_id == null) return;
 
     const val = row.target_value ?? 0;
