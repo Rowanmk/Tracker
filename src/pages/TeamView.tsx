@@ -39,12 +39,27 @@ export const TeamView: React.FC = () => {
 
       try {
         // Determine the 24-month window to calculate a 12-month rolling average for the last 12 completed months
-        const end = new Date();
-        end.setDate(0); // Last day of the previous month
-        end.setHours(23, 59, 59, 999);
+        const today = new Date();
+        // Last completed month is the month before the current month
+        const lastCompletedMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        
+        const all24Months: Array<{ year: number; month: number }> = [];
+        // Start 23 months before the last completed month to get 24 months total
+        const startMonth = new Date(lastCompletedMonth.getFullYear(), lastCompletedMonth.getMonth() - 23, 1);
+        
+        const curr = new Date(startMonth);
+        for (let i = 0; i < 24; i++) {
+          all24Months.push({ year: curr.getFullYear(), month: curr.getMonth() + 1 });
+          curr.setMonth(curr.getMonth() + 1);
+        }
 
-        const start24 = new Date(end.getFullYear(), end.getMonth() - 23, 1);
-        start24.setHours(0, 0, 0, 0);
+        const firstMonth = all24Months[0];
+        const lastMonth = all24Months[23];
+
+        // Format dates for Supabase query (YYYY-MM-DD) safely in local time
+        const startDateStr = `${firstMonth.year}-${String(firstMonth.month).padStart(2, '0')}-01`;
+        const lastDayOfLastMonth = new Date(lastMonth.year, lastMonth.month, 0).getDate();
+        const endDateStr = `${lastMonth.year}-${String(lastMonth.month).padStart(2, '0')}-${String(lastDayOfLastMonth).padStart(2, '0')}`;
 
         // Filter staff based on selected team
         const filteredStaff = selectedTeamId === "all" || !selectedTeamId
@@ -64,8 +79,8 @@ export const TeamView: React.FC = () => {
           .from('dailyactivity')
           .select('service_id, date, delivered_count')
           .in('staff_id', staffIds)
-          .gte('date', start24.toISOString().slice(0, 10))
-          .lte('date', end.toISOString().slice(0, 10));
+          .gte('date', startDateStr)
+          .lte('date', endDateStr);
 
         if (fetchError) throw fetchError;
 
@@ -76,20 +91,13 @@ export const TeamView: React.FC = () => {
         });
 
         activities?.forEach(a => {
-          if (!a.service_id) return;
-          const d = new Date(a.date);
-          const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+          if (!a.service_id || !a.date) return;
+          // Parse YYYY-MM-DD safely without timezone shifts to ensure accurate monthly grouping
+          const [yearStr, monthStr] = a.date.split('-');
+          const key = `${parseInt(yearStr, 10)}-${parseInt(monthStr, 10)}`;
           if (!serviceMonthTotals[a.service_id]) serviceMonthTotals[a.service_id] = {};
           serviceMonthTotals[a.service_id][key] = (serviceMonthTotals[a.service_id][key] || 0) + a.delivered_count;
         });
-
-        // Build an array of the 24 months in chronological order
-        const all24Months: Array<{ year: number; month: number }> = [];
-        const curr24 = new Date(start24);
-        while (curr24 <= end) {
-          all24Months.push({ year: curr24.getFullYear(), month: curr24.getMonth() + 1 });
-          curr24.setMonth(curr24.getMonth() + 1);
-        }
 
         // Calculate actuals and rolling averages for the last 12 months
         const processedStats = services.map(service => {
@@ -105,6 +113,7 @@ export const TeamView: React.FC = () => {
             const actual = monthlyActuals[i];
             
             // Rolling average is the sum of the current month and the 11 preceding months
+            // Example: For Jan 2026, it sums Feb 2025 to Jan 2026 (12 months) and divides by 12.
             let rollingSum = 0;
             for (let j = i - 11; j <= i; j++) {
               rollingSum += monthlyActuals[j];
