@@ -17,6 +17,7 @@ interface ServiceStats {
     service_name: string;
   };
   data: MonthlyData[];
+  isPercentage?: boolean;
 }
 
 export const TeamView: React.FC = () => {
@@ -86,6 +87,16 @@ export const TeamView: React.FC = () => {
 
         if (fetchError) throw fetchError;
 
+        // Fetch targets for the 24-month window to calculate % achieved
+        const { data: targets, error: targetsError } = await supabase
+          .from('monthlytargets')
+          .select('staff_id, month, year, target_value')
+          .in('staff_id', staffIds)
+          .gte('year', firstMonth.year)
+          .lte('year', lastMonth.year);
+
+        if (targetsError) throw targetsError;
+
         const { data: bankHolidays } = await supabase
           .from('bank_holidays')
           .select('date, region')
@@ -106,23 +117,39 @@ export const TeamView: React.FC = () => {
           finalActivities = [...finalActivities, ...bagels];
         }
 
+        const displayServices = services.filter(s => s.service_name !== 'Bagel Days');
+
         // Group activities by service and YYYY-MM
         const serviceMonthTotals: Record<number, Record<string, number>> = {};
-        services.forEach(s => {
+        displayServices.forEach(s => {
           serviceMonthTotals[s.service_id] = {};
         });
 
+        const monthActuals: Record<string, number> = {};
+
         finalActivities.forEach(a => {
           if (!a.service_id || !a.date) return;
+          const service = services.find(s => s.service_id === a.service_id);
+          if (!service || service.service_name === 'Bagel Days') return;
+
           // Parse YYYY-MM-DD safely without timezone shifts to ensure accurate monthly grouping
           const [yearStr, monthStr] = a.date.split('-');
           const key = `${parseInt(yearStr, 10)}-${parseInt(monthStr, 10)}`;
+          
           if (!serviceMonthTotals[a.service_id]) serviceMonthTotals[a.service_id] = {};
           serviceMonthTotals[a.service_id][key] = (serviceMonthTotals[a.service_id][key] || 0) + (a.delivered_count || 0);
+          
+          monthActuals[key] = (monthActuals[key] || 0) + (a.delivered_count || 0);
+        });
+
+        const monthTargets: Record<string, number> = {};
+        targets?.forEach(t => {
+          const key = `${t.year}-${t.month}`;
+          monthTargets[key] = (monthTargets[key] || 0) + (t.target_value || 0);
         });
 
         // Calculate actuals and rolling averages for the last 12 months
-        const processedStats = services.map(service => {
+        const processedStats: ServiceStats[] = displayServices.map(service => {
           const monthlyActuals = all24Months.map(m => {
             const key = `${m.year}-${m.month}`;
             return serviceMonthTotals[service.service_id]?.[key] || 0;
@@ -153,6 +180,40 @@ export const TeamView: React.FC = () => {
             service,
             data: last12Data
           };
+        });
+
+        // Calculate % of Target Achieved
+        const percentData: MonthlyData[] = [];
+        const monthlyPercents = all24Months.map(m => {
+          const key = `${m.year}-${m.month}`;
+          const actual = monthActuals[key] || 0;
+          const target = monthTargets[key] || 0;
+          return target > 0 ? (actual / target) * 100 : 0;
+        });
+
+        for (let i = 12; i < 24; i++) {
+          const actualPercent = monthlyPercents[i];
+          let rollingSum = 0;
+          for (let j = i - 11; j <= i; j++) {
+            rollingSum += monthlyPercents[j];
+          }
+          const rollingAverage = rollingSum / 12;
+
+          percentData.push({
+            year: all24Months[i].year,
+            month: all24Months[i].month,
+            actual: Math.round(actualPercent),
+            rollingAverage
+          });
+        }
+
+        processedStats.push({
+          service: {
+            service_id: -1,
+            service_name: '% of Target Achieved'
+          },
+          data: percentData,
+          isPercentage: true
         });
 
         setStatsData(processedStats);
@@ -220,7 +281,7 @@ export const TeamView: React.FC = () => {
                   </h3>
                   <div className="flex items-end gap-2">
                     <span className={`text-3xl font-extrabold ${isActive ? 'text-[#FF8A2A]' : 'text-[#001B47] dark:text-blue-400'}`}>
-                      {latestMonth.rollingAverage.toFixed(1)}
+                      {latestMonth.rollingAverage.toFixed(1)}{stat.isPercentage ? '%' : ''}
                     </span>
                     <span className={`text-xs font-semibold uppercase tracking-wider mb-1 ${isActive ? 'text-gray-300' : 'text-gray-500 dark:text-gray-400'}`}>
                       12m Avg
@@ -248,13 +309,13 @@ export const TeamView: React.FC = () => {
                     Latest Month Actual
                   </div>
                   <div className="text-2xl font-bold text-[#001B47] dark:text-blue-400">
-                    {activeStat.data[11].actual}
+                    {activeStat.data[11].actual}{activeStat.isPercentage ? '%' : ''}
                   </div>
                 </div>
               </div>
               
               <div className="w-full h-[400px]">
-                <ServiceComboChart data={activeStat.data} />
+                <ServiceComboChart data={activeStat.data} isPercentage={activeStat.isPercentage} />
               </div>
             </div>
           )}
@@ -264,7 +325,7 @@ export const TeamView: React.FC = () => {
   );
 };
 
-const ServiceComboChart = ({ data }: { data: MonthlyData[] }) => {
+const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPercentage?: boolean }) => {
   const VIEWBOX_WIDTH = 800;
   const VIEWBOX_HEIGHT = 320;
   const PADDING_TOP = 40;
@@ -303,7 +364,7 @@ const ServiceComboChart = ({ data }: { data: MonthlyData[] }) => {
         return (
           <g key={ratio}>
             <text x={PADDING_LEFT - 10} y={y + 4} textAnchor="end" className="text-[10px] fill-gray-500 dark:fill-gray-400">
-              {val}
+              {val}{isPercentage ? '%' : ''}
             </text>
             <line 
               x1={PADDING_LEFT} 
@@ -334,7 +395,7 @@ const ServiceComboChart = ({ data }: { data: MonthlyData[] }) => {
               rx={4}
               className="transition-all duration-500 ease-out dark:fill-blue-500"
             >
-              <title>Actual: {d.actual}</title>
+              <title>Actual: {d.actual}{isPercentage ? '%' : ''}</title>
             </rect>
             <text 
               x={x} 
@@ -371,7 +432,7 @@ const ServiceComboChart = ({ data }: { data: MonthlyData[] }) => {
           strokeWidth="2"
           className="dark:stroke-gray-800 transition-all duration-500 ease-out"
         >
-          <title>Rolling Avg: {d.rollingAverage.toFixed(1)}</title>
+          <title>Rolling Avg: {d.rollingAverage.toFixed(1)}{isPercentage ? '%' : ''}</title>
         </circle>
       ))}
     </svg>
