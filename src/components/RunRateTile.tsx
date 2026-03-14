@@ -140,7 +140,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
   const chartWidth = daysInSelectedMonth * 15 + LEFT_AXIS_MARGIN + RIGHT_PADDING;
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[380px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[418px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
       <div className="tile-header px-4 py-1.5">
         Run Rate
         {playbackDay ? <span className="ml-2 text-white/80">Day {Math.round(clampedPlaybackDay)}</span> : null}
