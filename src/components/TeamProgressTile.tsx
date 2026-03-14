@@ -71,18 +71,31 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
     const difference = delivered - expectedSoFar;
 
-    if (difference >= 0) {
-      return '#008A00';
-    } else if (difference >= -0.25 * expectedSoFar) {
-      return '#FF8A2A';
+    const tenPercent = target * 0.10;
+    const twentyFivePercent = target * 0.25;
+
+    if (difference >= -tenPercent) {
+      return '#008A00'; // Green (within 10% behind, or any amount ahead)
+    } else if (difference >= -twentyFivePercent) {
+      return '#FF8A2A'; // Orange (between 10% and 25% behind)
     } else {
-      return '#FF3B30';
+      return '#FF3B30'; // Red (more than 25% behind)
     }
   };
 
   const getAheadBehindBadge = (delivered: number, target: number) => {
     const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
     const difference = delivered - expectedSoFar;
+
+    const tenPercent = target * 0.10;
+    const twentyFivePercent = target * 0.25;
+
+    let color = '#FF3B30';
+    if (difference >= -tenPercent) {
+      color = '#008A00';
+    } else if (difference >= -twentyFivePercent) {
+      color = '#FF8A2A';
+    }
 
     if (Math.abs(difference) < 0.5) {
       return (
@@ -94,14 +107,14 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
 
     if (difference > 0) {
       return (
-        <span className="inline-flex items-center px-2 py-1 rounded text-sm font-bold transition-all duration-300 ease-in-out" style={{ color: '#008A00' }}>
+        <span className="inline-flex items-center px-2 py-1 rounded text-sm font-bold transition-all duration-300 ease-in-out" style={{ color }}>
           +{Math.round(difference)}
         </span>
       );
     }
 
     return (
-      <span className="inline-flex items-center px-2 py-1 rounded text-sm font-bold transition-all duration-300 ease-in-out" style={{ color: '#FF3B30' }}>
+      <span className="inline-flex items-center px-2 py-1 rounded text-sm font-bold transition-all duration-300 ease-in-out" style={{ color }}>
         {Math.round(difference)}
       </span>
     );
