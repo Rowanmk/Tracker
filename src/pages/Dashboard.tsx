@@ -333,6 +333,8 @@ export const Dashboard: React.FC = () => {
           playbackProgress={playbackProgress}
           onDaySelect={handleDaySelect}
           onTogglePlay={handleTogglePlay}
+          month={selectedMonth}
+          year={yearForMonth}
         />
       </div>
 
