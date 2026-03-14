@@ -224,7 +224,10 @@ export const StaffTracker: React.FC = () => {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, serviceId: number, day: number) => {
-    if (e.key !== "Tab") return;
+    const isTab = e.key === "Tab";
+    const isArrow = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key);
+
+    if (!isTab && !isArrow) return;
 
     const serviceIndex = services.findIndex((service) => service.service_id === serviceId);
     const dayIndex = day - 1;
@@ -232,23 +235,45 @@ export const StaffTracker: React.FC = () => {
     let nextServiceIndex = serviceIndex;
     let nextDayIndex = dayIndex;
 
-    if (e.shiftKey) {
-      nextDayIndex--;
-      if (nextDayIndex < 0) {
-        nextDayIndex = daysInMonth - 1;
-        nextServiceIndex--;
-        if (nextServiceIndex < 0) {
-          nextServiceIndex = services.length - 1;
+    if (isTab) {
+      if (e.shiftKey) {
+        nextDayIndex--;
+        if (nextDayIndex < 0) {
+          nextDayIndex = daysInMonth - 1;
+          nextServiceIndex--;
+          if (nextServiceIndex < 0) {
+            nextServiceIndex = services.length - 1;
+          }
+        }
+      } else {
+        nextDayIndex++;
+        if (nextDayIndex >= daysInMonth) {
+          nextDayIndex = 0;
+          nextServiceIndex++;
+          if (nextServiceIndex >= services.length) {
+            nextServiceIndex = 0;
+          }
         }
       }
-    } else {
-      nextDayIndex++;
-      if (nextDayIndex >= daysInMonth) {
-        nextDayIndex = 0;
+    } else if (isArrow) {
+      if (e.key === "ArrowUp") {
+        nextServiceIndex--;
+      } else if (e.key === "ArrowDown") {
         nextServiceIndex++;
-        if (nextServiceIndex >= services.length) {
-          nextServiceIndex = 0;
-        }
+      } else if (e.key === "ArrowLeft") {
+        nextDayIndex--;
+      } else if (e.key === "ArrowRight") {
+        nextDayIndex++;
+      }
+
+      // Boundary checks for arrow navigation (no wrapping)
+      if (
+        nextServiceIndex < 0 ||
+        nextServiceIndex >= services.length ||
+        nextDayIndex < 0 ||
+        nextDayIndex >= daysInMonth
+      ) {
+        return;
       }
     }
 
