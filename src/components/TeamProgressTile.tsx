@@ -71,13 +71,12 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
     const difference = delivered - expectedSoFar;
 
-    const tenPercent = target * 0.10;
     const twentyFivePercent = target * 0.25;
 
-    if (difference >= -tenPercent) {
-      return '#008A00'; // Green (within 10% behind, or any amount ahead)
+    if (difference >= 0) {
+      return '#008A00'; // Green (ahead or on target)
     } else if (difference >= -twentyFivePercent) {
-      return '#FF8A2A'; // Orange (between 10% and 25% behind)
+      return '#FF8A2A'; // Orange (less than 25% behind)
     } else {
       return '#FF3B30'; // Red (more than 25% behind)
     }
@@ -87,11 +86,10 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
     const difference = delivered - expectedSoFar;
 
-    const tenPercent = target * 0.10;
     const twentyFivePercent = target * 0.25;
 
     let color = '#FF3B30';
-    if (difference >= -tenPercent) {
+    if (difference >= 0) {
       color = '#008A00';
     } else if (difference >= -twentyFivePercent) {
       color = '#FF8A2A';
