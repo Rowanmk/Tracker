@@ -104,7 +104,7 @@ export const Dashboard: React.FC = () => {
         animationFrameRef.current = null;
       }
     };
-  }, [isPlaying, maxPlayableDay]);
+  }, [isPlaying, maxPlayableDay, playbackProgress]);
 
   const filteredActivities = useMemo(() => {
     const safeProgress = Math.max(1, Math.min(maxPlayableDay, playbackProgress));
