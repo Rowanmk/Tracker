@@ -130,7 +130,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[380px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
         <div className="tile-header px-4 py-1.5">Progress Chart</div>
         <div className="flex-1 flex items-center justify-center text-gray-500">Loading…</div>
       </div>
@@ -158,13 +158,13 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   const yMax = viewMode === "percent" ? stablePercentMax : stableNumbersMax;
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[380px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
       <div className="tile-header px-4 py-1.5">
         {isAllTeams ? "Team Progress Chart" : "Service Progress Chart"}
         {roundedPlaybackDay ? <span className="ml-2 text-white/80">Day {roundedPlaybackDay}</span> : null}
       </div>
 
-      <div className="flex-1 flex flex-col justify-end p-3 pb-4">
+      <div className="flex-1 flex flex-col justify-end p-3 pb-2">
         <svg
           viewBox={`0 0 ${CHART_WIDTH} ${VIEWBOX_HEIGHT}`}
           preserveAspectRatio="none"

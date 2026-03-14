@@ -153,7 +153,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[380px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
         <div className="tile-header px-4 py-1.5">
           Team Progress
         </div>
@@ -163,12 +163,12 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[380px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
       <div className="tile-header px-4 py-1.5">
         Team Progress
       </div>
 
-      <div className="flex-1 flex flex-col justify-end p-3 pb-4">
+      <div className="flex-1 flex flex-col justify-end p-3 pb-2">
         <div className="space-y-4 flex-1 flex flex-col justify-center">
           {services.map(service => renderServiceRow(service.service_id, service.service_name))}
         </div>
