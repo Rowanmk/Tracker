@@ -143,7 +143,7 @@ export const Dashboard: React.FC = () => {
 
     return dailyActivities
       .map((activity) => {
-        if (activity.day &lt;= wholeDay) {
+        if (activity.day <= wholeDay) {
           return activity;
         }
 
@@ -156,12 +156,12 @@ export const Dashboard: React.FC = () => {
 
         return null;
       })
-      .filter((activity): activity is NonNullable&lt;typeof activity&gt; => activity !== null);
+      .filter((activity): activity is NonNullable<typeof activity> => activity !== null);
   }, [dailyActivities, playbackProgress, daysInMonth]);
 
   const historicalStaffPerformance = useMemo(() => {
-    const activityTotalsByStaff = new Map&lt;number, number&gt;();
-    const serviceTotalsByStaff = new Map&lt;number, Record&lt;string, number&gt;&gt;();
+    const activityTotalsByStaff = new Map<number, number>();
+    const serviceTotalsByStaff = new Map<number, Record<string, number>>();
 
     filteredActivities.forEach((activity) => {
       const staffId = activity.staff_id;
@@ -186,7 +186,7 @@ export const Dashboard: React.FC = () => {
     });
 
     return staffPerformance.map((staff) => {
-      const serviceBreakdown = services.reduce&lt;Record&lt;string, number&gt;&gt;((acc, service) => {
+      const serviceBreakdown = services.reduce<Record<string, number>>((acc, service) => {
         acc[service.service_name] =
           serviceTotalsByStaff.get(staff.staff_id)?.[service.service_name] || 0;
         return acc;
@@ -210,7 +210,7 @@ export const Dashboard: React.FC = () => {
 
     let count = 0;
 
-    for (let day = 1; day &lt;= Math.min(wholeDay, daysInMonth); day++) {
+    for (let day = 1; day <= Math.min(wholeDay, daysInMonth); day++) {
       const currentDate = new Date(yearForMonth, selectedMonth - 1, day);
       const dayOfWeek = currentDate.getDay();
 
@@ -220,7 +220,7 @@ export const Dashboard: React.FC = () => {
     }
 
     const nextDay = wholeDay + 1;
-    if (partialDayProgress > 0 && nextDay &lt;= daysInMonth) {
+    if (partialDayProgress > 0 && nextDay <= daysInMonth) {
       const currentDate = new Date(yearForMonth, selectedMonth - 1, nextDay);
       const dayOfWeek = currentDate.getDay();
 
@@ -301,31 +301,31 @@ export const Dashboard: React.FC = () => {
 
   if (loading) {
     return (
-      &lt;div className="space-y-6"&gt;
-        &lt;div className="page-header"&gt;
-          &lt;h2 className="page-title"&gt;
+      <div className="space-y-6">
+        <div className="page-header">
+          <h2 className="page-title">
             {isAllTeams ? "All Teams Dashboard" : `${selectedTeam?.name} Dashboard`}
-          &lt;/h2&gt;
-        &lt;/div&gt;
-        &lt;div className="py-10 text-center text-gray-500"&gt;Loading dashboard…&lt;/div&gt;
-      &lt;/div&gt;
+          </h2>
+        </div>
+        <div className="py-10 text-center text-gray-500">Loading dashboard…</div>
+      </div>
     );
   }
 
   return (
-    &lt;div className="space-y-6"&gt;
-      &lt;div className="page-header"&gt;
-        &lt;h2 className="page-title"&gt;
+    <div className="space-y-6">
+      <div className="page-header">
+        <h2 className="page-title">
           {isAllTeams ? "All Teams Dashboard" : `${selectedTeam?.name} Dashboard`}
-        &lt;/h2&gt;
-      &lt;/div&gt;
+        </h2>
+      </div>
 
-      &lt;div className="mb-6"&gt;
-        &lt;StaffPerformanceBar staffPerformance={historicalStaffPerformance} /&gt;
-      &lt;/div&gt;
+      <div className="mb-6">
+        <StaffPerformanceBar staffPerformance={historicalStaffPerformance} />
+      </div>
 
-      &lt;div className="mb-6"&gt;
-        &lt;DashboardPlaybackControls
+      <div className="mb-6">
+        <DashboardPlaybackControls
           daysInMonth={daysInMonth}
           selectedDay={selectedPlaybackDay}
           isPlaying={isPlaying}
@@ -334,46 +334,46 @@ export const Dashboard: React.FC = () => {
           onTogglePlay={handleTogglePlay}
           month={selectedMonth}
           year={yearForMonth}
-        /&gt;
-      &lt;/div&gt;
+        />
+      </div>
 
-      &lt;div className="mb-6 space-y-2"&gt;
-        &lt;div className="flex justify-between items-center text-sm font-medium"&gt;
-          &lt;span className="text-gray-700 dark:text-gray-300"&gt;
+      <div className="mb-6 space-y-2">
+        <div className="flex justify-between items-center text-sm font-medium">
+          <span className="text-gray-700 dark:text-gray-300">
             {isAllTeams ? "Global Progress" : `${selectedTeam?.name} Progress`}
-          &lt;/span&gt;
-          &lt;span className="text-gray-900 dark:text-white font-bold"&gt;
+          </span>
+          <span className="text-gray-900 dark:text-white font-bold">
             {Math.round(performanceSummary.delivered)} / {performanceSummary.target} (
             {performanceSummary.target > 0
               ? Math.round((performanceSummary.delivered / performanceSummary.target) * 100)
               : 0}
             %)
-          &lt;/span&gt;
-        &lt;/div&gt;
-        &lt;div className="relative w-full h-6 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner"&gt;
-          &lt;div
+          </span>
+        </div>
+        <div className="relative w-full h-6 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner">
+          <div
             className={`h-6 rounded-full transition-[width] duration-150 ease-linear ${
               isAhead ? "bg-green-600" : "bg-red-600"
             }`}
             style={{ width: `${deliveredPercent}%` }}
-          /&gt;
-          &lt;div
+          />
+          <div
             className="absolute top-0 h-6 w-0.5 bg-[#001B47] transition-[left] duration-150 ease-linear"
             style={{ left: `${expectedPercent}%` }}
-          /&gt;
-          &lt;div
+          />
+          <div
             className={`absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold ${
               isAhead ? "text-green-700" : "text-red-700"
             }`}
-          &gt;
+          >
             {isAhead ? "+" : "-"}
             {Math.abs(Math.round(variance))}
-          &lt;/div&gt;
-        &lt;/div&gt;
-      &lt;/div&gt;
+          </div>
+        </div>
+      </div>
 
-      &lt;div className="grid grid-cols-1 lg:grid-cols-3 gap-6"&gt;
-        &lt;TeamProgressTile
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <TeamProgressTile
           services={services}
           staffPerformance={historicalStaffPerformance}
           viewMode={viewMode}
@@ -381,8 +381,8 @@ export const Dashboard: React.FC = () => {
           workingDaysUpToToday={workingDaysElapsedToPlayback}
           month={selectedMonth}
           financialYear={financialYear}
-        /&gt;
-        &lt;EmployeeProgressChart
+        />
+        <EmployeeProgressChart
           services={services}
           staffPerformance={historicalStaffPerformance}
           viewMode={viewMode}
@@ -393,8 +393,8 @@ export const Dashboard: React.FC = () => {
           selectedTeamId={selectedTeamId}
           teams={teams}
           playbackDay={playbackProgress}
-        /&gt;
-        &lt;RunRateTile
+        />
+        <RunRateTile
           workingDays={teamWorkingDays}
           workingDaysUpToToday={workingDaysElapsedToPlayback}
           dailyActivities={dailyActivities}
@@ -403,8 +403,8 @@ export const Dashboard: React.FC = () => {
           target={performanceSummary.target}
           viewMode={viewMode}
           playbackDay={playbackProgress}
-        /&gt;
-      &lt;/div&gt;
-    &lt;/div&gt;
+        />
+      </div>
+    </div>
   );
 };
