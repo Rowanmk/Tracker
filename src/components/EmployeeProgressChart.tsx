@@ -134,12 +134,12 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   const BAR_WIDTH = Math.min(BAR_SLOT_WIDTH * 0.65, 60);
 
   const maxRunRatePercent = Math.max(
-    ...chartData.map(d => Math.max(d.runRatePercent, 100)),
+    ...chartData.map((d) => Math.max(d.runRatePercent, 100)),
     100
   );
-  const maxDelivered = Math.max(...chartData.map(d => d.delivered), 1);
-  const maxExpected = Math.max(...chartData.map(d => d.expectedByToday), 1);
-  const maxTarget = Math.max(...chartData.map(d => d.target), 1);
+  const maxDelivered = Math.max(...chartData.map((d) => d.delivered), 1);
+  const maxExpected = Math.max(...chartData.map((d) => d.expectedByToday), 1);
+  const maxTarget = Math.max(...chartData.map((d) => d.target), 1);
 
   const maxValue = viewMode === "percent"
     ? maxRunRatePercent
@@ -200,8 +200,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                   fill={barColor}
                   rx="4"
                   style={{
-                    transition:
-                      "y 180ms linear, height 180ms linear, fill 180ms linear",
+                    transition: "y 120ms linear, height 120ms linear, fill 120ms linear",
                   }}
                 />
 
@@ -210,9 +209,6 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                   y={BASELINE_Y - barHeight - 8}
                   textAnchor="middle"
                   className="text-[10px] font-bold fill-gray-700 dark:fill-gray-300"
-                  style={{
-                    transition: "y 180ms linear",
-                  }}
                 >
                   {viewMode === "percent" ? `${Math.round(runRatePercent)}%` : Math.round(display)}
                 </text>
@@ -240,7 +236,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
               stroke="#555"
               strokeDasharray="6,4"
               strokeWidth="2"
-              style={{ transition: "y1 180ms linear, y2 180ms linear" }}
+              style={{ transition: "y1 120ms linear, y2 120ms linear" }}
             />
           )}
         </svg>

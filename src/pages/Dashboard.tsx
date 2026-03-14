@@ -21,7 +21,7 @@ export const Dashboard: React.FC = () => {
   const { staffPerformance, dailyActivities } = useStaffPerformance("desc");
 
   const isAllTeams = selectedTeamId === "all";
-  const selectedTeam = !isAllTeams ? teams.find(t => t.id.toString() === selectedTeamId) : null;
+  const selectedTeam = !isAllTeams ? teams.find((t) => t.id.toString() === selectedTeamId) : null;
 
   const { teamWorkingDays, workingDaysUpToToday } = useWorkingDays({
     financialYear,
@@ -43,6 +43,7 @@ export const Dashboard: React.FC = () => {
   const [selectedPlaybackDay, setSelectedPlaybackDay] = useState<number>(maxPlayableDay);
   const [playbackProgress, setPlaybackProgress] = useState<number>(maxPlayableDay);
   const [isPlaying, setIsPlaying] = useState(false);
+
   const animationFrameRef = useRef<number | null>(null);
   const animationStartTimeRef = useRef<number | null>(null);
   const animationStartProgressRef = useRef<number>(1);
@@ -51,6 +52,13 @@ export const Dashboard: React.FC = () => {
     setSelectedPlaybackDay(maxPlayableDay);
     setPlaybackProgress(maxPlayableDay);
     setIsPlaying(false);
+    animationStartProgressRef.current = maxPlayableDay;
+    animationStartTimeRef.current = null;
+
+    if (animationFrameRef.current !== null) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
   }, [selectedMonth, selectedYear, selectedTeamId, maxPlayableDay]);
 
   useEffect(() => {
@@ -63,12 +71,22 @@ export const Dashboard: React.FC = () => {
       return;
     }
 
-    const startProgress = Math.max(1, Math.min(maxPlayableDay, animationStartProgressRef.current || playbackProgress || 1));
-    animationStartProgressRef.current = startProgress;
+    const startProgress = Math.max(
+      1,
+      Math.min(maxPlayableDay, animationStartProgressRef.current || 1)
+    );
+
+    if (startProgress >= maxPlayableDay) {
+      setPlaybackProgress(maxPlayableDay);
+      setSelectedPlaybackDay(maxPlayableDay);
+      setIsPlaying(false);
+      return;
+    }
+
     animationStartTimeRef.current = null;
 
-    const remainingDistance = Math.max(0, maxPlayableDay - startProgress);
-    const durationMs = Math.max(1200, remainingDistance * 180);
+    const remainingDistance = maxPlayableDay - startProgress;
+    const durationMs = Math.max(1400, remainingDistance * 220);
 
     const step = (timestamp: number) => {
       if (animationStartTimeRef.current === null) {
@@ -78,20 +96,21 @@ export const Dashboard: React.FC = () => {
       const elapsed = timestamp - animationStartTimeRef.current;
       const progressRatio = Math.min(elapsed / durationMs, 1);
       const easedRatio = 1 - Math.pow(1 - progressRatio, 3);
-      const nextProgress =
-        startProgress +
-        (maxPlayableDay - startProgress) * easedRatio;
 
+      const nextProgress = startProgress + remainingDistance * easedRatio;
       const clampedNextProgress = Math.max(1, Math.min(maxPlayableDay, nextProgress));
 
       setPlaybackProgress(clampedNextProgress);
-      setSelectedPlaybackDay(Math.max(1, Math.min(maxPlayableDay, Math.round(clampedNextProgress))));
+      setSelectedPlaybackDay(Math.max(1, Math.min(maxPlayableDay, Math.ceil(clampedNextProgress))));
 
       if (progressRatio < 1) {
         animationFrameRef.current = window.requestAnimationFrame(step);
       } else {
         setPlaybackProgress(maxPlayableDay);
         setSelectedPlaybackDay(maxPlayableDay);
+        animationStartProgressRef.current = maxPlayableDay;
+        animationFrameRef.current = null;
+        animationStartTimeRef.current = null;
         setIsPlaying(false);
       }
     };
@@ -104,7 +123,7 @@ export const Dashboard: React.FC = () => {
         animationFrameRef.current = null;
       }
     };
-  }, [isPlaying, maxPlayableDay, playbackProgress]);
+  }, [isPlaying, maxPlayableDay]);
 
   const filteredActivities = useMemo(() => {
     const safeProgress = Math.max(1, Math.min(maxPlayableDay, playbackProgress));
@@ -113,11 +132,7 @@ export const Dashboard: React.FC = () => {
 
     return dailyActivities
       .map((activity) => {
-        if (activity.day < wholeDay) {
-          return activity;
-        }
-
-        if (activity.day === wholeDay) {
+        if (activity.day <= wholeDay) {
           return activity;
         }
 
@@ -148,16 +163,21 @@ export const Dashboard: React.FC = () => {
 
       if (!matchedStaff || !matchedService) return;
 
-      activityTotalsByStaff.set(staffId, (activityTotalsByStaff.get(staffId) || 0) + activity.delivered_count);
+      activityTotalsByStaff.set(
+        staffId,
+        (activityTotalsByStaff.get(staffId) || 0) + activity.delivered_count
+      );
 
       const existingServices = serviceTotalsByStaff.get(staffId) || {};
-      existingServices[matchedService.service_name] = (existingServices[matchedService.service_name] || 0) + activity.delivered_count;
+      existingServices[matchedService.service_name] =
+        (existingServices[matchedService.service_name] || 0) + activity.delivered_count;
       serviceTotalsByStaff.set(staffId, existingServices);
     });
 
     return staffPerformance.map((staff) => {
       const serviceBreakdown = services.reduce<Record<string, number>>((acc, service) => {
-        acc[service.service_name] = serviceTotalsByStaff.get(staff.staff_id)?.[service.service_name] || 0;
+        acc[service.service_name] =
+          serviceTotalsByStaff.get(staff.staff_id)?.[service.service_name] || 0;
         return acc;
       }, {});
 
@@ -174,13 +194,15 @@ export const Dashboard: React.FC = () => {
 
   const workingDaysElapsedToPlayback = useMemo(() => {
     const safeProgress = Math.max(1, Math.min(maxPlayableDay, playbackProgress));
-    let count = 0;
     const wholeDay = Math.floor(safeProgress);
     const partialDayProgress = safeProgress - wholeDay;
+
+    let count = 0;
 
     for (let day = 1; day <= Math.min(wholeDay, daysInMonth); day++) {
       const currentDate = new Date(yearForMonth, selectedMonth - 1, day);
       const dayOfWeek = currentDate.getDay();
+
       if (dayOfWeek !== 0 && dayOfWeek !== 6) {
         count += 1;
       }
@@ -190,6 +212,7 @@ export const Dashboard: React.FC = () => {
     if (partialDayProgress > 0 && nextDay <= daysInMonth) {
       const currentDate = new Date(yearForMonth, selectedMonth - 1, nextDay);
       const dayOfWeek = currentDate.getDay();
+
       if (dayOfWeek !== 0 && dayOfWeek !== 6) {
         count += partialDayProgress;
       }
@@ -200,7 +223,16 @@ export const Dashboard: React.FC = () => {
     }
 
     return Math.min(count, teamWorkingDays);
-  }, [playbackProgress, selectedMonth, yearForMonth, daysInMonth, isCurrentMonth, workingDaysUpToToday, teamWorkingDays, maxPlayableDay]);
+  }, [
+    playbackProgress,
+    selectedMonth,
+    yearForMonth,
+    daysInMonth,
+    isCurrentMonth,
+    workingDaysUpToToday,
+    teamWorkingDays,
+    maxPlayableDay,
+  ]);
 
   const performanceSummary = usePerformanceSummary({
     staffPerformance: historicalStaffPerformance,
@@ -217,15 +249,25 @@ export const Dashboard: React.FC = () => {
 
   const handleDaySelect = (day: number) => {
     const safeDay = Math.max(1, Math.min(maxPlayableDay, day));
+
+    if (animationFrameRef.current !== null) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    animationStartTimeRef.current = null;
+    animationStartProgressRef.current = safeDay;
     setSelectedPlaybackDay(safeDay);
     setPlaybackProgress(safeDay);
-    animationStartProgressRef.current = safeDay;
     setIsPlaying(false);
   };
 
   const handleTogglePlay = () => {
     if (isPlaying) {
-      animationStartProgressRef.current = Math.max(1, Math.min(maxPlayableDay, playbackProgress));
+      animationStartProgressRef.current = Math.max(
+        1,
+        Math.min(maxPlayableDay, playbackProgress)
+      );
       setIsPlaying(false);
       return;
     }
@@ -235,9 +277,9 @@ export const Dashboard: React.FC = () => {
         ? 1
         : Math.max(1, Math.min(maxPlayableDay, playbackProgress));
 
-    setSelectedPlaybackDay(Math.round(startFrom));
-    setPlaybackProgress(startFrom);
     animationStartProgressRef.current = startFrom;
+    setSelectedPlaybackDay(Math.ceil(startFrom));
+    setPlaybackProgress(startFrom);
     setIsPlaying(true);
   };
 
@@ -279,21 +321,32 @@ export const Dashboard: React.FC = () => {
           <span className="text-gray-700 dark:text-gray-300">
             {isAllTeams ? "Global Progress" : `${selectedTeam?.name} Progress`}
           </span>
-          <span className="text-gray-900 dark:text-white font-bold transition-[opacity,transform] duration-150 ease-linear">
-            {Math.round(performanceSummary.delivered)} / {performanceSummary.target} ({performanceSummary.target > 0 ? Math.round((performanceSummary.delivered / performanceSummary.target) * 100) : 0}%)
+          <span className="text-gray-900 dark:text-white font-bold">
+            {Math.round(performanceSummary.delivered)} / {performanceSummary.target} (
+            {performanceSummary.target > 0
+              ? Math.round((performanceSummary.delivered / performanceSummary.target) * 100)
+              : 0}
+            %)
           </span>
         </div>
         <div className="relative w-full h-6 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner">
           <div
-            className={`h-6 rounded-full transition-[width] duration-100 ease-linear ${isAhead ? "bg-green-600" : "bg-red-600"}`}
+            className={`h-6 rounded-full transition-[width] duration-100 ease-linear ${
+              isAhead ? "bg-green-600" : "bg-red-600"
+            }`}
             style={{ width: `${deliveredPercent}%` }}
           />
           <div
             className="absolute top-0 h-6 w-0.5 bg-[#001B47] transition-[left] duration-100 ease-linear"
             style={{ left: `${expectedPercent}%` }}
           />
-          <div className={`absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold ${isAhead ? "text-green-700" : "text-red-700"}`}>
-            {isAhead ? "+" : "-"}{Math.abs(Math.round(variance))}
+          <div
+            className={`absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold ${
+              isAhead ? "text-green-700" : "text-red-700"
+            }`}
+          >
+            {isAhead ? "+" : "-"}
+            {Math.abs(Math.round(variance))}
           </div>
         </div>
       </div>

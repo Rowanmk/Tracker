@@ -228,7 +228,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             stroke="#6B7280"
             strokeWidth="3"
             strokeDasharray="8,4"
-            style={{ transition: "all 180ms linear" }}
+            style={{ transition: "all 120ms linear" }}
           />
 
           {displayedBarValues.map((value, idx) => {
@@ -247,7 +247,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
                 fill="#001B47"
                 rx={2}
                 style={{
-                  transition: "y 180ms linear, height 180ms linear",
+                  transition: "y 120ms linear, height 120ms linear",
                 }}
               />
             );
