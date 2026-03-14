@@ -186,24 +186,27 @@ export const TeamView: React.FC = () => {
 
         // Calculate % of Target Achieved
         const percentData: MonthlyData[] = [];
-        const monthlyPercents = all24Months.map(m => {
-          const key = `${m.year}-${m.month}`;
-          const actual = monthActuals[key] || 0;
-          const target = monthTargets[key] || 0;
-          return target > 0 ? (actual / target) * 100 : 0;
-        });
 
         for (let i = 12; i < 24; i++) {
-          const actualPercent = monthlyPercents[i];
-          let rollingSum = 0;
+          const currentMonth = all24Months[i];
+          const currentKey = `${currentMonth.year}-${currentMonth.month}`;
+          const currentActual = monthActuals[currentKey] || 0;
+          const currentTarget = monthTargets[currentKey] || 0;
+          const actualPercent = currentTarget > 0 ? (currentActual / currentTarget) * 100 : 0;
+
+          let rollingActualSum = 0;
+          let rollingTargetSum = 0;
           for (let j = i - 11; j <= i; j++) {
-            rollingSum += monthlyPercents[j];
+            const jMonth = all24Months[j];
+            const jKey = `${jMonth.year}-${jMonth.month}`;
+            rollingActualSum += (monthActuals[jKey] || 0);
+            rollingTargetSum += (monthTargets[jKey] || 0);
           }
-          const rollingAverage = rollingSum / 12;
+          const rollingAverage = rollingTargetSum > 0 ? (rollingActualSum / rollingTargetSum) * 100 : 0;
 
           percentData.push({
-            year: all24Months[i].year,
-            month: all24Months[i].month,
+            year: currentMonth.year,
+            month: currentMonth.month,
             actual: Math.round(actualPercent),
             rollingAverage
           });
