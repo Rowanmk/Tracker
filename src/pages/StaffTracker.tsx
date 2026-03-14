@@ -9,7 +9,6 @@ import { StaffPerformanceBar } from "../components/StaffPerformanceBar";
 import { useStaffPerformance } from "../hooks/useStaffPerformance";
 import { supabase } from "../supabase/client";
 import { loadTargets } from "../utils/loadTargets";
-import { generateBagelDays } from "../utils/bagelDays";
 
 interface DailyEntry {
   date: string;
@@ -22,6 +21,8 @@ export const StaffTracker: React.FC = () => {
   const { currentStaff, selectedTeamId, teams, allStaff } = useAuth();
   const { services } = useServices();
   const { staffPerformance } = useStaffPerformance("desc");
+
+  const displayServices = useMemo(() => services.filter(s => s.service_name !== 'Bagel Days'), [services]);
 
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
   const [personalTargets, setPersonalTargets] = useState<Record<string, number>>({});
@@ -71,18 +72,18 @@ export const StaffTracker: React.FC = () => {
   });
 
   const fetchTeamTrackerData = async (isInitial = false) => {
-    if (!currentStaff || services.length === 0) return;
+    if (!currentStaff || displayServices.length === 0) return;
     if (isInitial) setLoading(true);
 
     const entries: DailyEntry[] = Array.from({ length: daysInMonth }, (_, i) => ({
       date: `${year}-${String(selectedMonth).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`,
       day: i + 1,
-      services: Object.fromEntries(services.map((service) => [service.service_name, 0])),
+      services: Object.fromEntries(displayServices.map((service) => [service.service_name, 0])),
     }));
 
     const nextTargets: Record<string, number> = {};
     const nextTotals: Record<string, number> = {};
-    services.forEach((service) => {
+    displayServices.forEach((service) => {
       nextTargets[service.service_name] = 0;
       nextTotals[service.service_name] = 0;
     });
@@ -112,25 +113,16 @@ export const StaffTracker: React.FC = () => {
       ),
     ]);
 
-    const { data: allBankHolidays } = await supabase.from('bank_holidays').select('date, region');
-
     let finalActivities = activities || [];
-    const bagelService = services.find(s => s.service_name === 'Bagel Days');
-    if (bagelService && allBankHolidays) {
-      const startOfMonth = new Date(year, selectedMonth - 1, 1);
-      const endOfMonth = new Date(year, selectedMonth, 0);
-      const bagels = generateBagelDays(finalActivities, allBankHolidays, selectedTeamMembers, bagelService.service_id, startOfMonth, endOfMonth);
-      finalActivities = [...finalActivities, ...bagels];
-    }
 
     targetResults.forEach(({ perService }) => {
-      services.forEach((service) => {
+      displayServices.forEach((service) => {
         nextTargets[service.service_name] += perService?.[service.service_id] || 0;
       });
     });
 
     finalActivities.forEach((activity) => {
-      const service = services.find((item) => item.service_id === activity.service_id);
+      const service = displayServices.find((item) => item.service_id === activity.service_id);
       if (!service) return;
 
       nextTotals[service.service_name] += activity.delivered_count || 0;
@@ -141,7 +133,7 @@ export const StaffTracker: React.FC = () => {
       }
     });
 
-    services.forEach((service) => {
+    displayServices.forEach((service) => {
       entries.forEach((entry) => {
         nextLocalValues[`${service.service_id}-${entry.day}`] = String(
           entry.services[service.service_name] || 0
@@ -158,7 +150,7 @@ export const StaffTracker: React.FC = () => {
 
   useEffect(() => {
     fetchTeamTrackerData(true);
-  }, [selectedMonth, selectedFinancialYear, selectedTeamId, currentStaff?.staff_id, services.length, editableStaffIds.join(",")]);
+  }, [selectedMonth, selectedFinancialYear, selectedTeamId, currentStaff?.staff_id, displayServices.length, editableStaffIds.join(",")]);
 
   const getCellKey = (serviceId: number, day: number) => `${serviceId}-${day}`;
 
@@ -171,9 +163,6 @@ export const StaffTracker: React.FC = () => {
 
   const handleInputBlur = async (serviceId: number, day: number, value: string) => {
     if (editableStaffIds.length === 0) return;
-
-    const bagelService = services.find(s => s.service_name === 'Bagel Days');
-    if (serviceId === bagelService?.service_id) return;
 
     const parsedValue = parseInt(value, 10);
     const numValue = Number.isNaN(parsedValue) ? 0 : Math.max(parsedValue, 0);
@@ -244,7 +233,7 @@ export const StaffTracker: React.FC = () => {
 
     if (!isTab && !isArrow) return;
 
-    const serviceIndex = services.findIndex((service) => service.service_id === serviceId);
+    const serviceIndex = displayServices.findIndex((service) => service.service_id === serviceId);
     const dayIndex = day - 1;
 
     let nextServiceIndex = serviceIndex;
@@ -257,7 +246,7 @@ export const StaffTracker: React.FC = () => {
           nextDayIndex = daysInMonth - 1;
           nextServiceIndex--;
           if (nextServiceIndex < 0) {
-            nextServiceIndex = services.length - 1;
+            nextServiceIndex = displayServices.length - 1;
           }
         }
       } else {
@@ -265,7 +254,7 @@ export const StaffTracker: React.FC = () => {
         if (nextDayIndex >= daysInMonth) {
           nextDayIndex = 0;
           nextServiceIndex++;
-          if (nextServiceIndex >= services.length) {
+          if (nextServiceIndex >= displayServices.length) {
             nextServiceIndex = 0;
           }
         }
@@ -281,10 +270,9 @@ export const StaffTracker: React.FC = () => {
         nextDayIndex++;
       }
 
-      // Boundary checks for arrow navigation (no wrapping)
       if (
         nextServiceIndex < 0 ||
-        nextServiceIndex >= services.length ||
+        nextServiceIndex >= displayServices.length ||
         nextDayIndex < 0 ||
         nextDayIndex >= daysInMonth
       ) {
@@ -292,7 +280,7 @@ export const StaffTracker: React.FC = () => {
       }
     }
 
-    const nextService = services[nextServiceIndex];
+    const nextService = displayServices[nextServiceIndex];
     const nextDay = nextDayIndex + 1;
     const nextKey = getCellKey(nextService.service_id, nextDay);
 
@@ -327,7 +315,7 @@ export const StaffTracker: React.FC = () => {
       </div>
 
       <MyTrackerProgressTiles
-        services={services}
+        services={displayServices}
         serviceTotals={personalTotals}
         targets={personalTargets}
         workingDays={staffWorkingDays}
@@ -363,8 +351,7 @@ export const StaffTracker: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {services.map((service) => {
-                const isBagelDay = service.service_name === 'Bagel Days';
+              {displayServices.map((service) => {
                 return (
                   <tr
                     key={service.service_id}
@@ -389,16 +376,13 @@ export const StaffTracker: React.FC = () => {
                               else inputRefs.current.delete(cellKey);
                             }}
                             type="number"
-                            readOnly={isBagelDay}
                             value={localValues[cellKey] || "0"}
                             onFocus={(ev) => ev.target.select()}
                             onChange={(ev) => handleInputChange(service.service_id, entry.day, ev.target.value)}
                             onBlur={(ev) => handleInputBlur(service.service_id, entry.day, ev.target.value)}
                             onKeyDown={(ev) => handleKeyDown(ev, service.service_id, entry.day)}
                             className={`w-full h-10 text-center border-0 dark:bg-gray-700 text-xs no-spinner focus:ring-2 focus:ring-inset focus:ring-blue-500 outline-none transition-colors ${
-                              isBagelDay
-                                ? "bg-gray-200 dark:bg-gray-600 cursor-not-allowed opacity-70 text-gray-600 dark:text-gray-400"
-                                : highlight
+                              highlight
                                 ? "bg-red-50/80 dark:bg-red-900/20 text-red-900 dark:text-red-100"
                                 : "bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                             }`}
@@ -416,7 +400,7 @@ export const StaffTracker: React.FC = () => {
                   Total
                 </td>
                 {dailyEntries.map((entry) => {
-                  const dayTotal = services.reduce((sum, service) => {
+                  const dayTotal = displayServices.reduce((sum, service) => {
                     const val = localValues[getCellKey(service.service_id, entry.day)] || "0";
                     return sum + (parseInt(val, 10) || 0);
                   }, 0);

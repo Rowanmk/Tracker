@@ -67,9 +67,13 @@ export const AnnualSummary: React.FC = () => {
 
         finalActivities.forEach(a => {
           if (months[a.month]) {
-            months[a.month].total += a.delivered_count || 0;
             const svc = services.find(s => s.service_id === a.service_id);
-            if (svc) months[a.month].services[svc.service_name] += a.delivered_count || 0;
+            if (svc) {
+              months[a.month].services[svc.service_name] += a.delivered_count || 0;
+              if (svc.service_name !== 'Bagel Days') {
+                months[a.month].total += a.delivered_count || 0;
+              }
+            }
           }
         });
 

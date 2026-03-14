@@ -100,7 +100,7 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
 
       const { data: historicalActivities } = await supabase
         .from("dailyactivity")
-        .select("staff_id, delivered_count, month, year, date")
+        .select("staff_id, service_id, delivered_count, month, year, date")
         .in("staff_id", staffIds)
         .neq("month", selectedMonth)
         .gte("date", startDate.toISOString().split("T")[0])
@@ -149,7 +149,9 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
             const service = services.find(s => s.service_id === a.service_id);
             if (service) {
               serviceData[service.service_name] += a.delivered_count || 0;
-              totalDelivered += a.delivered_count || 0;
+              if (service.service_name !== 'Bagel Days') {
+                totalDelivered += a.delivered_count || 0;
+              }
             }
           });
 
@@ -158,14 +160,23 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
           const staffHistorical = finalHistorical.filter(a => a.staff_id === staff.staff_id);
           const monthlyTotals: Record<string, number> = {};
           staffHistorical.forEach(a => {
-            const key = `${a.year}-${a.month}`;
-            monthlyTotals[key] = (monthlyTotals[key] || 0) + (a.delivered_count || 0);
+            const service = services.find(s => s.service_id === a.service_id);
+            if (service?.service_name !== 'Bagel Days') {
+              const key = `${a.year}-${a.month}`;
+              monthlyTotals[key] = (monthlyTotals[key] || 0) + (a.delivered_count || 0);
+            }
           });
           const historicalMonthsCount = Object.keys(monthlyTotals).length;
           const totalHistorical = Object.values(monthlyTotals).reduce((s, v) => s + v, 0);
 
           const staffPrevActivities = finalPrevMonth.filter(a => a.staff_id === staff.staff_id);
-          const prevMonthTotal = staffPrevActivities.reduce((s, a) => s + (a.delivered_count || 0), 0);
+          const prevMonthTotal = staffPrevActivities.reduce((s, a) => {
+            const service = services.find(srv => srv.service_id === a.service_id);
+            if (service?.service_name !== 'Bagel Days') {
+              return s + (a.delivered_count || 0);
+            }
+            return s;
+          }, 0);
           const { totalTarget: prevMonthTarget } = await loadTargets(previousMonth, previousMonthFinancialYear, staff.staff_id);
 
           return {

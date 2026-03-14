@@ -22,6 +22,8 @@ export const Dashboard: React.FC = () => {
   const { services } = useServices();
   const { staffPerformance, dailyActivities, loading } = useStaffPerformance("desc");
 
+  const displayServices = useMemo(() => services.filter(s => s.service_name !== 'Bagel Days'), [services]);
+
   const isAllTeams = selectedTeamId === "all";
   const selectedTeam = !isAllTeams ? teams.find((t) => t.id.toString() === selectedTeamId) : null;
 
@@ -174,10 +176,12 @@ export const Dashboard: React.FC = () => {
 
       if (!matchedStaff || !matchedService) return;
 
-      activityTotalsByStaff.set(
-        staffId,
-        (activityTotalsByStaff.get(staffId) || 0) + activity.delivered_count
-      );
+      if (matchedService.service_name !== 'Bagel Days') {
+        activityTotalsByStaff.set(
+          staffId,
+          (activityTotalsByStaff.get(staffId) || 0) + activity.delivered_count
+        );
+      }
 
       const existingServices = serviceTotalsByStaff.get(staffId) || {};
       existingServices[matchedService.service_name] =
@@ -374,7 +378,7 @@ export const Dashboard: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <TeamProgressTile
-          services={services}
+          services={displayServices}
           staffPerformance={historicalStaffPerformance}
           viewMode={viewMode}
           workingDays={teamWorkingDays}
@@ -383,7 +387,7 @@ export const Dashboard: React.FC = () => {
           financialYear={financialYear}
         />
         <EmployeeProgressChart
-          services={services}
+          services={displayServices}
           staffPerformance={historicalStaffPerformance}
           viewMode={viewMode}
           workingDays={teamWorkingDays}
