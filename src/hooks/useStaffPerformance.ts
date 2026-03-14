@@ -4,6 +4,7 @@ import { loadTargets } from "../utils/loadTargets";
 import { useAuth } from "../context/AuthContext";
 import { useDate } from "../context/DateContext";
 import { useServices } from "./useServices";
+import { generateBagelDays } from "../utils/bagelDays";
 
 export interface StaffPerformance {
   staff_id: number;
@@ -75,6 +76,10 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
 
       const staffIds = filteredStaff.map(s => s.staff_id);
 
+      const { data: bankHolidays } = await supabase.from('bank_holidays').select('date, region');
+      const bagelService = services.find(s => s.service_name === 'Bagel Days');
+      const bagelServiceId = bagelService?.service_id;
+
       const { data: activities, error: activitiesError } = await supabase
         .from("dailyactivity")
         .select("staff_id, service_id, delivered_count, month, year, day, date")
@@ -83,7 +88,15 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
         .in("staff_id", staffIds);
 
       if (activitiesError) throw activitiesError;
-      setDailyActivities(activities || []);
+
+      let finalActivities = activities || [];
+      if (bagelServiceId && bankHolidays) {
+        const startOfMonth = new Date(selectedYear, selectedMonth - 1, 1);
+        const endOfMonth = new Date(selectedYear, selectedMonth, 0);
+        const bagels = generateBagelDays(finalActivities, bankHolidays, filteredStaff, bagelServiceId, startOfMonth, endOfMonth);
+        finalActivities = [...finalActivities, ...bagels];
+      }
+      setDailyActivities(finalActivities as any);
 
       const { data: historicalActivities } = await supabase
         .from("dailyactivity")
@@ -92,6 +105,13 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
         .neq("month", selectedMonth)
         .gte("date", startDate.toISOString().split("T")[0])
         .lte("date", endDate.toISOString().split("T")[0]);
+
+      let finalHistorical = historicalActivities || [];
+      if (bagelServiceId && bankHolidays) {
+        const bagels = generateBagelDays(finalHistorical, bankHolidays, filteredStaff, bagelServiceId, startDate, endDate)
+          .filter(b => b.month !== selectedMonth);
+        finalHistorical = [...finalHistorical, ...bagels];
+      }
 
       const previousMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
       const previousYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
@@ -102,10 +122,18 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
 
       const { data: previousMonthActivities } = await supabase
         .from("dailyactivity")
-        .select("staff_id, service_id, delivered_count")
+        .select("staff_id, service_id, delivered_count, date")
         .in("staff_id", staffIds)
         .eq("month", previousMonth)
         .eq("year", previousYear);
+
+      let finalPrevMonth = previousMonthActivities || [];
+      if (bagelServiceId && bankHolidays) {
+        const startOfPrev = new Date(previousYear, previousMonth - 1, 1);
+        const endOfPrev = new Date(previousYear, previousMonth, 0);
+        const bagels = generateBagelDays(finalPrevMonth, bankHolidays, filteredStaff, bagelServiceId, startOfPrev, endOfPrev);
+        finalPrevMonth = [...finalPrevMonth, ...bagels];
+      }
 
       const staffResults: StaffPerformance[] = await Promise.all(
         filteredStaff.map(async (staff) => {
@@ -114,30 +142,30 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
             serviceData[s.service_name] = 0;
           });
 
-          const staffActivities = activities?.filter(a => a.staff_id === staff.staff_id) || [];
+          const staffActivities = finalActivities.filter(a => a.staff_id === staff.staff_id);
           let totalDelivered = 0;
 
           staffActivities.forEach(a => {
             const service = services.find(s => s.service_id === a.service_id);
             if (service) {
-              serviceData[service.service_name] += a.delivered_count;
-              totalDelivered += a.delivered_count;
+              serviceData[service.service_name] += a.delivered_count || 0;
+              totalDelivered += a.delivered_count || 0;
             }
           });
 
           const { totalTarget } = await loadTargets(selectedMonth, financialYear, staff.staff_id);
 
-          const staffHistorical = historicalActivities?.filter(a => a.staff_id === staff.staff_id) || [];
+          const staffHistorical = finalHistorical.filter(a => a.staff_id === staff.staff_id);
           const monthlyTotals: Record<string, number> = {};
           staffHistorical.forEach(a => {
             const key = `${a.year}-${a.month}`;
-            monthlyTotals[key] = (monthlyTotals[key] || 0) + a.delivered_count;
+            monthlyTotals[key] = (monthlyTotals[key] || 0) + (a.delivered_count || 0);
           });
           const historicalMonthsCount = Object.keys(monthlyTotals).length;
           const totalHistorical = Object.values(monthlyTotals).reduce((s, v) => s + v, 0);
 
-          const staffPrevActivities = previousMonthActivities?.filter(a => a.staff_id === staff.staff_id) || [];
-          const prevMonthTotal = staffPrevActivities.reduce((s, a) => s + a.delivered_count, 0);
+          const staffPrevActivities = finalPrevMonth.filter(a => a.staff_id === staff.staff_id);
+          const prevMonthTotal = staffPrevActivities.reduce((s, a) => s + (a.delivered_count || 0), 0);
           const { totalTarget: prevMonthTarget } = await loadTargets(previousMonth, previousMonthFinancialYear, staff.staff_id);
 
           return {

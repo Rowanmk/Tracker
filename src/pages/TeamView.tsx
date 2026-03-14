@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
+import { generateBagelDays } from '../utils/bagelDays';
 
 interface MonthlyData {
   year: number;
@@ -77,12 +78,32 @@ export const TeamView: React.FC = () => {
         // Fetch daily activities for the 24-month window
         const { data: activities, error: fetchError } = await supabase
           .from('dailyactivity')
-          .select('service_id, date, delivered_count')
+          .select('staff_id, service_id, date, delivered_count')
           .in('staff_id', staffIds)
           .gte('date', startDateStr)
           .lte('date', endDateStr);
 
         if (fetchError) throw fetchError;
+
+        const { data: bankHolidays } = await supabase
+          .from('bank_holidays')
+          .select('date, region')
+          .gte('date', startDateStr)
+          .lte('date', endDateStr);
+
+        let finalActivities = activities || [];
+        const bagelService = services.find(s => s.service_name === 'Bagel Days');
+        
+        if (bagelService && bankHolidays) {
+          const [sYear, sMonth, sDay] = startDateStr.split('-').map(Number);
+          const localStartDate = new Date(sYear, sMonth - 1, sDay);
+
+          const [eYear, eMonth, eDay] = endDateStr.split('-').map(Number);
+          const localEndDate = new Date(eYear, eMonth - 1, eDay);
+
+          const bagels = generateBagelDays(finalActivities, bankHolidays, filteredStaff, bagelService.service_id, localStartDate, localEndDate);
+          finalActivities = [...finalActivities, ...bagels];
+        }
 
         // Group activities by service and YYYY-MM
         const serviceMonthTotals: Record<number, Record<string, number>> = {};
@@ -90,13 +111,13 @@ export const TeamView: React.FC = () => {
           serviceMonthTotals[s.service_id] = {};
         });
 
-        activities?.forEach(a => {
+        finalActivities.forEach(a => {
           if (!a.service_id || !a.date) return;
           // Parse YYYY-MM-DD safely without timezone shifts to ensure accurate monthly grouping
           const [yearStr, monthStr] = a.date.split('-');
           const key = `${parseInt(yearStr, 10)}-${parseInt(monthStr, 10)}`;
           if (!serviceMonthTotals[a.service_id]) serviceMonthTotals[a.service_id] = {};
-          serviceMonthTotals[a.service_id][key] = (serviceMonthTotals[a.service_id][key] || 0) + a.delivered_count;
+          serviceMonthTotals[a.service_id][key] = (serviceMonthTotals[a.service_id][key] || 0) + (a.delivered_count || 0);
         });
 
         // Calculate actuals and rolling averages for the last 12 months

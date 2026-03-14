@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
 import { getFinancialYearDateRange, getFinancialYearMonths } from '../utils/financialYear';
+import { generateBagelDays } from '../utils/bagelDays';
 
 interface AnnualStaffData {
   staff_id: number;
@@ -40,14 +41,23 @@ export const AnnualSummary: React.FC = () => {
       return;
     }
 
+    const { data: bankHolidays } = await supabase.from('bank_holidays').select('date, region');
+    const bagelService = services.find(s => s.service_name === 'Bagel Days');
+
     const results = await Promise.all(
       filteredStaff.map(async (staff) => {
         const { data: activities } = await supabase
           .from('dailyactivity')
-          .select('month, service_id, delivered_count')
+          .select('staff_id, month, service_id, delivered_count, date')
           .eq('staff_id', staff.staff_id)
           .gte('date', startDate.toISOString().slice(0, 10))
           .lte('date', endDate.toISOString().slice(0, 10));
+
+        let finalActivities = activities || [];
+        if (bagelService && bankHolidays) {
+          const bagels = generateBagelDays(finalActivities, bankHolidays, [staff], bagelService.service_id, startDate, endDate);
+          finalActivities = [...finalActivities, ...bagels];
+        }
 
         const months: AnnualStaffData['months'] = {};
         monthData.forEach(m => {
@@ -55,11 +65,11 @@ export const AnnualSummary: React.FC = () => {
           services.forEach(s => months[m.number].services[s.service_name] = 0);
         });
 
-        activities?.forEach(a => {
+        finalActivities.forEach(a => {
           if (months[a.month]) {
-            months[a.month].total += a.delivered_count;
+            months[a.month].total += a.delivered_count || 0;
             const svc = services.find(s => s.service_id === a.service_id);
-            if (svc) months[a.month].services[svc.service_name] += a.delivered_count;
+            if (svc) months[a.month].services[svc.service_name] += a.delivered_count || 0;
           }
         });
 

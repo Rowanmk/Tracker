@@ -9,6 +9,7 @@ import { StaffPerformanceBar } from "../components/StaffPerformanceBar";
 import { useStaffPerformance } from "../hooks/useStaffPerformance";
 import { supabase } from "../supabase/client";
 import { loadTargets } from "../utils/loadTargets";
+import { generateBagelDays } from "../utils/bagelDays";
 
 interface DailyEntry {
   date: string;
@@ -100,7 +101,7 @@ export const StaffTracker: React.FC = () => {
     const [{ data: activities }, targetResults] = await Promise.all([
       supabase
         .from("dailyactivity")
-        .select("service_id, delivered_count, day, staff_id")
+        .select("service_id, delivered_count, day, staff_id, date")
         .eq("month", selectedMonth)
         .eq("year", year)
         .in("staff_id", editableStaffIds),
@@ -111,21 +112,32 @@ export const StaffTracker: React.FC = () => {
       ),
     ]);
 
+    const { data: allBankHolidays } = await supabase.from('bank_holidays').select('date, region');
+
+    let finalActivities = activities || [];
+    const bagelService = services.find(s => s.service_name === 'Bagel Days');
+    if (bagelService && allBankHolidays) {
+      const startOfMonth = new Date(year, selectedMonth - 1, 1);
+      const endOfMonth = new Date(year, selectedMonth, 0);
+      const bagels = generateBagelDays(finalActivities, allBankHolidays, selectedTeamMembers, bagelService.service_id, startOfMonth, endOfMonth);
+      finalActivities = [...finalActivities, ...bagels];
+    }
+
     targetResults.forEach(({ perService }) => {
       services.forEach((service) => {
         nextTargets[service.service_name] += perService?.[service.service_id] || 0;
       });
     });
 
-    activities?.forEach((activity) => {
+    finalActivities.forEach((activity) => {
       const service = services.find((item) => item.service_id === activity.service_id);
       if (!service) return;
 
-      nextTotals[service.service_name] += activity.delivered_count;
+      nextTotals[service.service_name] += activity.delivered_count || 0;
 
       const entry = entries.find((item) => item.day === activity.day);
       if (entry) {
-        entry.services[service.service_name] += activity.delivered_count;
+        entry.services[service.service_name] += activity.delivered_count || 0;
       }
     });
 
@@ -159,6 +171,9 @@ export const StaffTracker: React.FC = () => {
 
   const handleInputBlur = async (serviceId: number, day: number, value: string) => {
     if (editableStaffIds.length === 0) return;
+
+    const bagelService = services.find(s => s.service_name === 'Bagel Days');
+    if (serviceId === bagelService?.service_id) return;
 
     const parsedValue = parseInt(value, 10);
     const numValue = Number.isNaN(parsedValue) ? 0 : Math.max(parsedValue, 0);
@@ -348,46 +363,52 @@ export const StaffTracker: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {services.map((service) => (
-                <tr
-                  key={service.service_id}
-                  className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                >
-                  <td className="px-3 py-1.5 border-b border-r dark:border-gray-600 text-sm font-medium text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800 z-10 truncate">
-                    {service.service_name}
-                  </td>
-                  {dailyEntries.map((entry) => {
-                    const cellKey = getCellKey(service.service_id, entry.day);
-                    const highlight = isWeekend(entry.date) || isPublicHoliday(entry.date);
-                    return (
-                      <td
-                        key={entry.day}
-                        className={`p-0 border-b border-r last:border-r-0 dark:border-gray-600 text-center transition-colors ${
-                          highlight ? "bg-red-50/50 dark:bg-red-900/10" : ""
-                        }`}
-                      >
-                        <input
-                          ref={(el) => {
-                            if (el) inputRefs.current.set(cellKey, el);
-                            else inputRefs.current.delete(cellKey);
-                          }}
-                          type="number"
-                          value={localValues[cellKey] || "0"}
-                          onFocus={(ev) => ev.target.select()}
-                          onChange={(ev) => handleInputChange(service.service_id, entry.day, ev.target.value)}
-                          onBlur={(ev) => handleInputBlur(service.service_id, entry.day, ev.target.value)}
-                          onKeyDown={(ev) => handleKeyDown(ev, service.service_id, entry.day)}
-                          className={`w-full h-10 text-center border-0 dark:bg-gray-700 text-xs no-spinner focus:ring-2 focus:ring-inset focus:ring-blue-500 outline-none transition-colors ${
-                            highlight
-                              ? "bg-red-50/80 dark:bg-red-900/20 text-red-900 dark:text-red-100"
-                              : "bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              {services.map((service) => {
+                const isBagelDay = service.service_name === 'Bagel Days';
+                return (
+                  <tr
+                    key={service.service_id}
+                    className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                  >
+                    <td className="px-3 py-1.5 border-b border-r dark:border-gray-600 text-sm font-medium text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800 z-10 truncate">
+                      {service.service_name}
+                    </td>
+                    {dailyEntries.map((entry) => {
+                      const cellKey = getCellKey(service.service_id, entry.day);
+                      const highlight = isWeekend(entry.date) || isPublicHoliday(entry.date);
+                      return (
+                        <td
+                          key={entry.day}
+                          className={`p-0 border-b border-r last:border-r-0 dark:border-gray-600 text-center transition-colors ${
+                            highlight ? "bg-red-50/50 dark:bg-red-900/10" : ""
                           }`}
-                        />
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
+                        >
+                          <input
+                            ref={(el) => {
+                              if (el) inputRefs.current.set(cellKey, el);
+                              else inputRefs.current.delete(cellKey);
+                            }}
+                            type="number"
+                            readOnly={isBagelDay}
+                            value={localValues[cellKey] || "0"}
+                            onFocus={(ev) => ev.target.select()}
+                            onChange={(ev) => handleInputChange(service.service_id, entry.day, ev.target.value)}
+                            onBlur={(ev) => handleInputBlur(service.service_id, entry.day, ev.target.value)}
+                            onKeyDown={(ev) => handleKeyDown(ev, service.service_id, entry.day)}
+                            className={`w-full h-10 text-center border-0 dark:bg-gray-700 text-xs no-spinner focus:ring-2 focus:ring-inset focus:ring-blue-500 outline-none transition-colors ${
+                              isBagelDay
+                                ? "bg-gray-200 dark:bg-gray-600 cursor-not-allowed opacity-70 text-gray-600 dark:text-gray-400"
+                                : highlight
+                                ? "bg-red-50/80 dark:bg-red-900/20 text-red-900 dark:text-red-100"
+                                : "bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                            }`}
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot>
               <tr className="bg-gray-100 dark:bg-gray-700 font-bold">
