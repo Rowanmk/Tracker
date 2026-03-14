@@ -106,7 +106,7 @@ export const TeamView: React.FC = () => {
             
             // Rolling average is the sum of the current month and the 11 preceding months
             let rollingSum = 0;
-            for (let j = i - 11; j &lt;= i; j++) {
+            for (let j = i - 11; j <= i; j++) {
               rollingSum += monthlyActuals[j];
             }
             const rollingAverage = rollingSum / 12;
