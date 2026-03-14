@@ -140,8 +140,8 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   const barCount = chartData.length;
   const availableWidth = CHART_WIDTH - FIXED_LEFT_MARGIN - RIGHT_PADDING;
   const barSlotWidth = availableWidth / Math.max(barCount, 1);
-  // Increased bar width multiplier from 0.65 to 0.85 and max width from 60 to 120
-  const barWidth = Math.min(barSlotWidth * 0.85, 120);
+  // Increased bar width multiplier to 0.95 and max width to 200 to use up more x-axis space
+  const barWidth = Math.min(barSlotWidth * 0.95, 200);
 
   const shouldRotateLabels = isAllTeams && (barCount > 8 || chartData.some((d) => d.label.length > 12));
   const axisLabelCharLimit = shouldRotateLabels ? 12 : 16;
