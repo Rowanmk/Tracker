@@ -117,7 +117,7 @@ export const TeamView: React.FC = () => {
           finalActivities = [...finalActivities, ...bagels];
         }
 
-        const displayServices = services.filter(s => s.service_name !== 'Bagel Days');
+        const displayServices = services;
 
         // Group activities by service and YYYY-MM
         const serviceMonthTotals: Record<number, Record<string, number>> = {};
@@ -130,7 +130,7 @@ export const TeamView: React.FC = () => {
         finalActivities.forEach(a => {
           if (!a.service_id || !a.date) return;
           const service = services.find(s => s.service_id === a.service_id);
-          if (!service || service.service_name === 'Bagel Days') return;
+          if (!service) return;
 
           // Parse YYYY-MM-DD safely without timezone shifts to ensure accurate monthly grouping
           const [yearStr, monthStr] = a.date.split('-');
@@ -139,7 +139,9 @@ export const TeamView: React.FC = () => {
           if (!serviceMonthTotals[a.service_id]) serviceMonthTotals[a.service_id] = {};
           serviceMonthTotals[a.service_id][key] = (serviceMonthTotals[a.service_id][key] || 0) + (a.delivered_count || 0);
           
-          monthActuals[key] = (monthActuals[key] || 0) + (a.delivered_count || 0);
+          if (service.service_name !== 'Bagel Days') {
+            monthActuals[key] = (monthActuals[key] || 0) + (a.delivered_count || 0);
+          }
         });
 
         const monthTargets: Record<string, number> = {};
@@ -261,7 +263,7 @@ export const TeamView: React.FC = () => {
       ) : (
         <div className="space-y-6">
           {/* Tabbed Tiles */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
             {statsData.map(stat => {
               const latestMonth = stat.data[11];
               const isActive = activeServiceId === stat.service.service_id;
