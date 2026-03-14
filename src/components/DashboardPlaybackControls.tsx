@@ -29,45 +29,43 @@ export const DashboardPlaybackControls: React.FC<DashboardPlaybackControlsProps>
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4 transition-all duration-300 ease-in-out">
-      <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-        <div className="flex-1 overflow-x-auto">
-          <div className="flex items-center gap-2 min-w-max pr-2">
-            {Array.from({ length: safeDaysInMonth }, (_, index) => {
-              const day = index + 1;
-              const isActive = day === clampedSelectedDay;
+      <div className="flex flex-row items-center gap-2 sm:gap-4 w-full">
+        <div className="flex-1 flex items-center gap-0.5 sm:gap-1 w-full">
+          {Array.from({ length: safeDaysInMonth }, (_, index) => {
+            const day = index + 1;
+            const isActive = day === clampedSelectedDay;
 
-              let isWeekend = false;
-              if (month && year) {
-                const date = new Date(year, month - 1, day);
-                const dayOfWeek = date.getDay();
-                isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-              }
+            let isWeekend = false;
+            if (month && year) {
+              const date = new Date(year, month - 1, day);
+              const dayOfWeek = date.getDay();
+              isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+            }
 
-              let buttonClasses = "h-9 min-w-[36px] px-3 rounded-md text-sm font-bold border transition-all duration-200 ";
-              if (isActive) {
-                buttonClasses += "bg-[#001B47] text-white border-[#001B47]";
-              } else if (isWeekend) {
-                buttonClasses += "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40";
-              } else {
-                buttonClasses += "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600";
-              }
+            let buttonClasses = "flex-1 h-9 rounded-sm sm:rounded-md text-[10px] sm:text-xs md:text-sm font-bold border transition-all duration-200 flex items-center justify-center min-w-0 px-0 ";
+            if (isActive) {
+              buttonClasses += "bg-[#001B47] text-white border-[#001B47]";
+            } else if (isWeekend) {
+              buttonClasses += "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40";
+            } else {
+              buttonClasses += "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600";
+            }
 
-              return (
-                <button
-                  key={day}
-                  onClick={() => onDaySelect(day)}
-                  className={buttonClasses}
-                  aria-pressed={isActive}
-                  aria-label={`Show dashboard for day ${day}`}
-                >
-                  {day}
-                </button>
-              );
-            })}
-          </div>
+            return (
+              <button
+                key={day}
+                onClick={() => onDaySelect(day)}
+                className={buttonClasses}
+                aria-pressed={isActive}
+                aria-label={`Show dashboard for day ${day}`}
+              >
+                {day}
+              </button>
+            );
+          })}
         </div>
 
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-end shrink-0">
           <button
             onClick={onTogglePlay}
             className={`h-10 w-10 rounded-md border flex items-center justify-center transition-colors ${
