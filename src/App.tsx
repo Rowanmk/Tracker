@@ -1,6 +1,6 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { DateProvider } from './context/DateContext';
 import { Layout } from './components/Layout';
@@ -14,10 +14,48 @@ import { Settings } from './pages/Settings';
 import { AuditLog } from './pages/AuditLog';
 import { Login } from './pages/Login';
 import { ForgotPassword } from './pages/ForgotPassword';
-import { useAuth } from './context/AuthContext';
+
+const getFirstAllowedPath = (hasPermission: (path: string) => boolean) => {
+  const protectedPaths = [
+    '/',
+    '/tracker',
+    '/sa-progress',
+    '/team',
+    '/annual',
+    '/targets',
+    '/settings',
+    '/audit-log',
+  ];
+
+  return protectedPaths.find((path) => hasPermission(path)) || '/tracker';
+};
+
+const ProtectedRoute: React.FC<{
+  path: string;
+  element: React.ReactElement;
+}> = ({ path, element }) => {
+  const { hasPermission } = useAuth();
+
+  if (!hasPermission(path)) {
+    return <Navigate to={getFirstAllowedPath(hasPermission)} replace />;
+  }
+
+  return element;
+};
+
+const AuthRedirect: React.FC = () => {
+  const { isAuthenticated, hasPermission } = useAuth();
+
+  if (isAuthenticated) {
+    return <Navigate to={getFirstAllowedPath(hasPermission)} replace />;
+  }
+
+  return <Navigate to="/login" replace />;
+};
 
 const ProtectedApp: React.FC = () => {
   const { isAuthenticated, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -32,23 +70,27 @@ const ProtectedApp: React.FC = () => {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<AuthRedirect />} />
       </Routes>
     );
+  }
+
+  if (location.pathname === '/login' || location.pathname === '/forgot-password') {
+    return <Navigate to={getFirstAllowedPath((path) => useAuth().hasPermission(path))} replace />;
   }
 
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/team" element={<TeamView />} />
-        <Route path="/annual" element={<AnnualSummary />} />
-        <Route path="/tracker" element={<StaffTracker />} />
-        <Route path="/sa-progress" element={<SelfAssessmentProgress />} />
-        <Route path="/targets" element={<TargetsControl />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/audit-log" element={<AuditLog />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/" element={<ProtectedRoute path="/" element={<Dashboard />} />} />
+        <Route path="/team" element={<ProtectedRoute path="/team" element={<TeamView />} />} />
+        <Route path="/annual" element={<ProtectedRoute path="/annual" element={<AnnualSummary />} />} />
+        <Route path="/tracker" element={<ProtectedRoute path="/tracker" element={<StaffTracker />} />} />
+        <Route path="/sa-progress" element={<ProtectedRoute path="/sa-progress" element={<SelfAssessmentProgress />} />} />
+        <Route path="/targets" element={<ProtectedRoute path="/targets" element={<TargetsControl />} />} />
+        <Route path="/settings" element={<ProtectedRoute path="/settings" element={<Settings />} />} />
+        <Route path="/audit-log" element={<ProtectedRoute path="/audit-log" element={<AuditLog />} />} />
+        <Route path="*" element={<Navigate to={getFirstAllowedPath(useAuth().hasPermission)} replace />} />
       </Routes>
     </Layout>
   );
