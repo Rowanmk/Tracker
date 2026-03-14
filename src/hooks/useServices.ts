@@ -4,7 +4,7 @@ import type { Database } from '../supabase/types';
 
 type Service = Database['public']['Tables']['services']['Row'];
 
-const SERVICE_ORDER = ['Accounts', 'VAT', 'Self Assessments', 'Self Assessment'];
+const SERVICE_ORDER = ['Accounts', 'VAT', 'Self Assessments', 'Self Assessment', 'Bagel Days'];
 
 const sortServices = (servicesToSort: Service[]) => {
   return [...servicesToSort].sort((a, b) => {
@@ -53,6 +53,10 @@ export const useServices = () => {
             service_id: 3,
             service_name: 'Self Assessments',
           },
+          {
+            service_id: 4,
+            service_name: 'Bagel Days',
+          }
         ];
 
         if (servicesError) {
@@ -60,7 +64,12 @@ export const useServices = () => {
           setShowFallbackWarning(true);
           setServices(sortServices(mockServices));
         } else {
-          setServices(sortServices(data || []));
+          let fetchedServices = data || [];
+          // Auto-inject Bagel Days if it doesn't exist in the DB yet, so it shows up immediately
+          if (!fetchedServices.some(s => s.service_name === 'Bagel Days')) {
+            fetchedServices = [...fetchedServices, { service_id: -999, service_name: 'Bagel Days' }];
+          }
+          setServices(sortServices(fetchedServices));
         }
       } catch {
         setError('Failed to connect to database');
@@ -79,6 +88,10 @@ export const useServices = () => {
             service_id: 3,
             service_name: 'Self Assessments',
           },
+          {
+            service_id: 4,
+            service_name: 'Bagel Days',
+          }
         ];
         setServices(sortServices(mockServices));
       } finally {
