@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { loadTargets } from '../utils/loadTargets';
 import type { FinancialYear } from '../utils/financialYear';
 
@@ -35,13 +35,20 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
   const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(false);
 
+  // Use a string of IDs to prevent the useEffect from re-running every frame during playback
+  const staffIdsString = useMemo(() => 
+    staffPerformance.map(s => s.staff_id).sort().join(','), 
+  [staffPerformance]);
+
   useEffect(() => {
     const fetchServiceTargets = async () => {
       setLoading(true);
       try {
         const targetMap: Record<number, number> = {};
-        for (const staff of staffPerformance) {
-          const { perService } = await loadTargets(month, financialYear, staff.staff_id);
+        const staffIds = staffIdsString ? staffIdsString.split(',').map(Number) : [];
+        
+        for (const staffId of staffIds) {
+          const { perService } = await loadTargets(month, financialYear, staffId);
           Object.entries(perService).forEach(([serviceId, value]) => {
             const sid = parseInt(serviceId);
             targetMap[sid] = (targetMap[sid] || 0) + value;
@@ -55,10 +62,10 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
       }
     };
 
-    if (staffPerformance.length > 0) {
+    if (staffIdsString) {
       fetchServiceTargets();
     }
-  }, [month, financialYear, staffPerformance]);
+  }, [month, financialYear, staffIdsString]);
 
   const getBarColor = (delivered: number, target: number) => {
     const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
@@ -113,7 +120,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
         <div className="flex justify-between items-center">
           <span className="font-bold text-gray-900 dark:text-white transition-all duration-300 ease-in-out">{serviceName}</span>
           <div className="flex items-center space-x-2">
-            <span className="font-bold text-gray-900 dark:text-white transition-all duration-300 ease-in-out">{delivered} / {Math.round(target)}</span>
+            <span className="font-bold text-gray-900 dark:text-white transition-all duration-300 ease-in-out">{Math.round(delivered)} / {Math.round(target)}</span>
             <span className="text-sm text-gray-600 dark:text-gray-400 transition-all duration-300 ease-in-out">({Math.round(percentage)}%)</span>
           </div>
         </div>
@@ -127,7 +134,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
                   width: `${Math.min(percentage, 100)}%`,
                   backgroundColor: barColor
                 }}
-                title={`${serviceName}: ${delivered}/${Math.round(target)} (${Math.round(percentage)}%)`}
+                title={`${serviceName}: ${Math.round(delivered)}/${Math.round(target)} (${Math.round(percentage)}%)`}
               />
               <div
                 className="absolute top-0 h-8 w-0.5 bg-[#001B47] transition-all duration-300 ease-in-out"

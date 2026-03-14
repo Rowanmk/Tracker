@@ -41,13 +41,21 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   const isAllTeams = selectedTeamId === "all";
   const roundedPlaybackDay = playbackDay ? Math.max(1, Math.round(playbackDay)) : undefined;
 
+  // Use a string of IDs to prevent the useEffect from re-running every frame during playback
+  const staffIdsString = useMemo(() => 
+    staffPerformance.map(s => s.staff_id).sort().join(','), 
+  [staffPerformance]);
+
   useEffect(() => {
     const fetchServiceTargets = async () => {
       setLoading(true);
       try {
         const targetMap: Record<number, number> = {};
-        for (const staff of staffPerformance) {
-          const { perService } = await loadTargets(month, financialYear, staff.staff_id);
+        // We only need the IDs to fetch targets, which don't change during playback
+        const staffIds = staffIdsString ? staffIdsString.split(',').map(Number) : [];
+        
+        for (const staffId of staffIds) {
+          const { perService } = await loadTargets(month, financialYear, staffId);
           Object.entries(perService).forEach(([serviceId, value]) => {
             const sid = parseInt(serviceId);
             targetMap[sid] = (targetMap[sid] || 0) + value;
@@ -61,12 +69,12 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
       }
     };
 
-    if (!isAllTeams && staffPerformance.length > 0) {
+    if (!isAllTeams && staffIdsString) {
       fetchServiceTargets();
     } else {
       setLoading(false);
     }
-  }, [month, financialYear, staffPerformance, isAllTeams]);
+  }, [month, financialYear, staffIdsString, isAllTeams]);
 
   const chartData = useMemo(() => {
     if (isAllTeams) {
@@ -139,8 +147,10 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   const axisLabelY = shouldRotateLabels ? BASELINE_Y + 20 : BASELINE_Y + 15;
 
   const stablePercentMax = 140;
+  
+  // Lock the Y-axis to the target or final delivered value so it doesn't shift during playback
   const stableNumbersMax = Math.max(
-    ...chartData.map((d) => Math.max(d.target, d.delivered, d.expectedByToday)),
+    ...chartData.map((d) => Math.max(d.target, d.delivered)),
     1
   ) || 1;
 
@@ -201,6 +211,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                   y={BASELINE_Y - barHeight - 8}
                   textAnchor="middle"
                   className="text-[10px] font-bold fill-gray-700 dark:fill-gray-300"
+                  style={{ transition: "y 180ms ease-out" }}
                 >
                   {viewMode === "percent" ? `${Math.round(runRatePercent)}%` : Math.round(display)}
                 </text>

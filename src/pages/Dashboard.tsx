@@ -396,7 +396,7 @@ export const Dashboard: React.FC = () => {
         <RunRateTile
           workingDays={teamWorkingDays}
           workingDaysUpToToday={workingDaysElapsedToPlayback}
-          dailyActivities={filteredActivities}
+          dailyActivities={dailyActivities}
           month={selectedMonth}
           financialYear={financialYear}
           target={performanceSummary.target}

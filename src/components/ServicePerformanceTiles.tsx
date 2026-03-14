@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { loadTargets } from '../utils/loadTargets';
 import type { FinancialYear } from '../utils/financialYear';
 
@@ -39,6 +39,10 @@ export const ServicePerformanceTiles: React.FC<ServicePerformanceTilesProps> = (
       ? staffPerformance.filter(s => s.staff_id === currentStaff.staff_id)
       : staffPerformance;
 
+  const staffIdsString = useMemo(() => 
+    effectiveStaffPerformance.map(s => s.staff_id).sort().join(','), 
+  [effectiveStaffPerformance]);
+
   useEffect(() => {
     const fetchServiceTargets = async () => {
       setLoading(true);
@@ -51,8 +55,9 @@ export const ServicePerformanceTiles: React.FC<ServicePerformanceTilesProps> = (
             targetMap[Number(sid)] = val;
           });
         } else {
-          for (const staff of effectiveStaffPerformance) {
-            const { perService } = await loadTargets(month, financialYear, staff.staff_id);
+          const staffIds = staffIdsString ? staffIdsString.split(',').map(Number) : [];
+          for (const staffId of staffIds) {
+            const { perService } = await loadTargets(month, financialYear, staffId);
             Object.entries(perService).forEach(([sid, val]) => {
               const id = Number(sid);
               targetMap[id] = (targetMap[id] || 0) + val;
@@ -68,8 +73,10 @@ export const ServicePerformanceTiles: React.FC<ServicePerformanceTilesProps> = (
       }
     };
 
-    if (effectiveStaffPerformance.length) fetchServiceTargets();
-  }, [dashboardMode, currentStaff?.staff_id, month, financialYear, effectiveStaffPerformance.length]);
+    if (staffIdsString || (dashboardMode === "individual" && currentStaff)) {
+      fetchServiceTargets();
+    }
+  }, [dashboardMode, currentStaff?.staff_id, month, financialYear, staffIdsString]);
 
   const getStatus = (delivered: number, expected: number) => {
     if (expected <= 0) {
@@ -113,7 +120,7 @@ export const ServicePerformanceTiles: React.FC<ServicePerformanceTilesProps> = (
             </div>
 
             <div className="text-sm space-y-1 mb-3">
-              <div className="flex justify-between"><span>Delivered</span><span className="font-bold">{delivered}</span></div>
+              <div className="flex justify-between"><span>Delivered</span><span className="font-bold">{Math.round(delivered)}</span></div>
               <div className="flex justify-between"><span>Target</span><span className="font-bold">{target}</span></div>
               <div className="flex justify-between"><span>Expected</span><span className="font-bold">{Math.round(expectedSoFar)}</span></div>
             </div>
@@ -122,7 +129,7 @@ export const ServicePerformanceTiles: React.FC<ServicePerformanceTilesProps> = (
             <div className="relative w-full h-2 bg-gray-300 rounded overflow-hidden">
               {/* Actual progress */}
               <div
-                className={`h-full ${status.bar}`}
+                className={`h-full ${status.bar} transition-all duration-300 ease-in-out`}
                 style={{ width: `${Math.min(status.pct, 100)}%` }}
               />
 
@@ -130,11 +137,11 @@ export const ServicePerformanceTiles: React.FC<ServicePerformanceTilesProps> = (
               {expectedSoFar > 0 && (
                 <>
                   <div
-                    className="absolute top-0 bottom-0 w-[2px] bg-black"
+                    className="absolute top-0 bottom-0 w-[2px] bg-black transition-all duration-300 ease-in-out"
                     style={{ left: '100%' }}
                   />
                   <div
-                    className={`absolute -top-5 text-xs font-bold ${
+                    className={`absolute -top-5 text-xs font-bold transition-all duration-300 ease-in-out ${
                       variance >= 0 ? 'text-green-700' : 'text-red-700'
                     }`}
                     style={{ left: '100%', transform: 'translateX(4px)' }}
