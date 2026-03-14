@@ -220,20 +220,43 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             const barHeight = Math.max(0, ratio * BAR_AREA_HEIGHT);
             const x = day * 15 + LEFT_AXIS_MARGIN;
 
+            const isVisible = day <= wholeDaysToRender || (day === wholeDaysToRender + 1 && partialDayProgress > 0);
+            
+            const interpolatedRawValue = viewMode === "percent" ? (target > 0 ? (value / 100) * target : 0) : value;
+            const rawVariance = interpolatedRawValue - expectedCumulative[idx];
+            const roundedVariance = Math.round(rawVariance);
+            
+            const varianceText = roundedVariance > 0 ? `+${roundedVariance}` : roundedVariance === 0 ? "0" : `${roundedVariance}`;
+            const varianceColor = roundedVariance > 0 ? "fill-green-600 dark:fill-green-400" : roundedVariance < 0 ? "fill-red-600 dark:fill-red-400" : "fill-gray-500 dark:fill-gray-400";
+
             return (
-              <rect
-                key={day}
-                x={x - 5}
-                y={BASELINE_Y - barHeight}
-                width={10}
-                height={barHeight}
-                fill="#001B47"
-                rx={2}
-                style={{
-                  transition: "y 180ms ease-out, height 180ms ease-out",
-                  transform: "translateZ(0)",
-                }}
-              />
+              <g key={day}>
+                <rect
+                  x={x - 5}
+                  y={BASELINE_Y - barHeight}
+                  width={10}
+                  height={barHeight}
+                  fill="#001B47"
+                  rx={2}
+                  style={{
+                    transition: "y 180ms ease-out, height 180ms ease-out",
+                    transform: "translateZ(0)",
+                  }}
+                />
+                {isVisible && (
+                  <text
+                    x={x}
+                    y={BASELINE_Y - barHeight - 4}
+                    textAnchor="middle"
+                    className={`text-[8px] font-bold ${varianceColor}`}
+                    style={{
+                      transition: "y 180ms ease-out",
+                    }}
+                  >
+                    {varianceText}
+                  </text>
+                )}
+              </g>
             );
           })}
         </svg>
