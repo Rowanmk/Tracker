@@ -308,6 +308,11 @@ export const TeamView: React.FC = () => {
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                     Monthly actuals vs 12-month rolling average
                   </p>
+                  {activeStat.service.service_name === '% of Target Achieved' && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                      * Monthly bars: (Monthly Deliveries / Monthly Target). Line: (12-Month Deliveries Sum / 12-Month Target Sum).
+                    </p>
+                  )}
                 </div>
                 <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 rounded-lg border border-gray-100 dark:border-gray-600 text-right">
                   <div className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider">
