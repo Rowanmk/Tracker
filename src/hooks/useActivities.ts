@@ -30,14 +30,12 @@ export const useActivities = (month: number, year: number) => {
         .eq('year', year);
 
       if (activitiesError) {
-        console.error('Error fetching activities:', activitiesError);
         setError('Failed to load activities');
         setActivities([]);
       } else {
         setActivities(data || []);
       }
-    } catch (err) {
-      console.error('Error in fetchActivities:', err);
+    } catch {
       setError('Failed to connect to database');
       setActivities([]);
     } finally {
@@ -50,7 +48,9 @@ export const useActivities = (month: number, year: number) => {
   }, [currentStaff?.staff_id, month, year]);
 
   useEffect(() => {
-    const handler = () => fetchActivities();
+    const handler = () => {
+      void fetchActivities();
+    };
     window.addEventListener('activity-updated', handler);
     return () => window.removeEventListener('activity-updated', handler);
   }, [currentStaff?.staff_id, month, year]);
