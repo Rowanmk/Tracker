@@ -17,18 +17,20 @@ export const DashboardPlaybackControls: React.FC<DashboardPlaybackControlsProps>
   onDaySelect,
   onTogglePlay,
 }) => {
-  const clampedProgress = Math.max(1, Math.min(daysInMonth, playbackProgress));
+  const safeDaysInMonth = Math.max(1, daysInMonth);
+  const clampedProgress = Math.max(1, Math.min(safeDaysInMonth, playbackProgress));
+  const clampedSelectedDay = Math.max(1, Math.min(safeDaysInMonth, selectedDay));
   const progressPercent =
-    daysInMonth > 1 ? ((clampedProgress - 1) / (daysInMonth - 1)) * 100 : 100;
+    safeDaysInMonth > 1 ? ((clampedProgress - 1) / (safeDaysInMonth - 1)) * 100 : 100;
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4 transition-all duration-300 ease-in-out">
       <div className="flex flex-col lg:flex-row lg:items-center gap-4">
         <div className="flex-1 overflow-x-auto">
           <div className="flex items-center gap-2 min-w-max pr-2">
-            {Array.from({ length: daysInMonth }, (_, index) => {
+            {Array.from({ length: safeDaysInMonth }, (_, index) => {
               const day = index + 1;
-              const isActive = day === selectedDay;
+              const isActive = day === clampedSelectedDay;
 
               return (
                 <button

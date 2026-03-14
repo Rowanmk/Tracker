@@ -21,7 +21,6 @@ const RIGHT_PADDING = 20;
 
 export const RunRateTile: React.FC<RunRateTileProps> = ({
   workingDays,
-  workingDaysUpToToday,
   dailyActivities,
   month,
   financialYear,
@@ -69,7 +68,8 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     expectedCumulative = expectedCumulative.map((value) => value * scaleFactor);
   }
 
-  const progressLimit = playbackDay ?? (isCurrentMonth ? Math.min(currentDay, daysInSelectedMonth) : daysInSelectedMonth);
+  const defaultProgressLimit = isCurrentMonth ? Math.min(currentDay, daysInSelectedMonth) : daysInSelectedMonth;
+  const progressLimit = playbackDay ?? defaultProgressLimit;
   const clampedPlaybackDay = Math.max(1, Math.min(progressLimit, daysInSelectedMonth));
   const wholeDaysToRender = Math.floor(clampedPlaybackDay);
   const partialDayProgress = clampedPlaybackDay - wholeDaysToRender;
@@ -120,16 +120,20 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     }
 
     if (day === wholeDaysToRender + 1 && partialDayProgress > 0) {
-      return value * partialDayProgress;
+      const previousValue = index > 0 ? barValues[index - 1] : 0;
+      return previousValue + (value - previousValue) * partialDayProgress;
     }
 
-    return 0;
+    const previousValue = index > 0 ? barValues[index - 1] : 0;
+    return previousValue;
   });
+
+  const safeMaxValue = Math.max(maxValue, 1);
 
   const yAxisSteps =
     viewMode === "percent"
       ? [0, 25, 50, 75, 100]
-      : Array.from({ length: 5 }, (_, index) => Math.round((maxValue / 4) * index));
+      : Array.from({ length: 5 }, (_, index) => Math.round((safeMaxValue / 4) * index));
 
   const formatYAxisValue = (value: number) => {
     if (viewMode === "percent") {
@@ -173,7 +177,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
           />
 
           {yAxisSteps.map((tick) => {
-            const y = BASELINE_Y - (tick / maxValue) * BAR_AREA_HEIGHT;
+            const y = BASELINE_Y - (tick / safeMaxValue) * BAR_AREA_HEIGHT;
 
             return (
               <g key={tick}>
@@ -222,7 +226,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             points={interpolatedExpectedValues
               .map((v, i) => {
                 const x = (i + 1) * 15 + LEFT_AXIS_MARGIN;
-                const y = BASELINE_Y - (v / maxValue) * BAR_AREA_HEIGHT;
+                const y = BASELINE_Y - (v / safeMaxValue) * BAR_AREA_HEIGHT;
                 return `${x},${y}`;
               })
               .join(" ")}
@@ -234,13 +238,12 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
           />
 
           {displayedBarValues.map((value, idx) => {
-            const day = idx + 1;
-
             if (value <= 0) {
               return null;
             }
 
-            const ratio = value / maxValue;
+            const day = idx + 1;
+            const ratio = value / safeMaxValue;
             const barHeight = ratio * BAR_AREA_HEIGHT;
             const x = day * 15 + LEFT_AXIS_MARGIN;
 

@@ -35,18 +35,21 @@ export const Dashboard: React.FC = () => {
   const isCurrentMonth =
     selectedMonth === today.getMonth() + 1 && selectedYear === today.getFullYear();
 
-  const maxPlayableDay = isCurrentMonth ? Math.min(today.getDate(), daysInMonth) : daysInMonth;
+  const maxPlayableDay = Math.max(
+    1,
+    isCurrentMonth ? Math.min(today.getDate(), daysInMonth) : daysInMonth
+  );
 
-  const [selectedPlaybackDay, setSelectedPlaybackDay] = useState<number>(Math.max(1, maxPlayableDay));
-  const [playbackProgress, setPlaybackProgress] = useState<number>(Math.max(1, maxPlayableDay));
+  const [selectedPlaybackDay, setSelectedPlaybackDay] = useState<number>(maxPlayableDay);
+  const [playbackProgress, setPlaybackProgress] = useState<number>(maxPlayableDay);
   const [isPlaying, setIsPlaying] = useState(false);
   const animationFrameRef = useRef<number | null>(null);
   const animationStartTimeRef = useRef<number | null>(null);
   const animationStartProgressRef = useRef<number>(1);
 
   useEffect(() => {
-    setSelectedPlaybackDay(Math.max(1, maxPlayableDay));
-    setPlaybackProgress(Math.max(1, maxPlayableDay));
+    setSelectedPlaybackDay(maxPlayableDay);
+    setPlaybackProgress(maxPlayableDay);
     setIsPlaying(false);
   }, [selectedMonth, selectedYear, selectedTeamId, maxPlayableDay]);
 
@@ -60,10 +63,12 @@ export const Dashboard: React.FC = () => {
       return;
     }
 
-    animationStartProgressRef.current = playbackProgress;
+    const startProgress = Math.max(1, Math.min(maxPlayableDay, animationStartProgressRef.current || playbackProgress || 1));
+    animationStartProgressRef.current = startProgress;
     animationStartTimeRef.current = null;
 
-    const durationMs = Math.max(900, (maxPlayableDay - animationStartProgressRef.current) * 140);
+    const remainingDistance = Math.max(0, maxPlayableDay - startProgress);
+    const durationMs = Math.max(1200, remainingDistance * 180);
 
     const step = (timestamp: number) => {
       if (animationStartTimeRef.current === null) {
@@ -74,11 +79,13 @@ export const Dashboard: React.FC = () => {
       const progressRatio = Math.min(elapsed / durationMs, 1);
       const easedRatio = 1 - Math.pow(1 - progressRatio, 3);
       const nextProgress =
-        animationStartProgressRef.current +
-        (maxPlayableDay - animationStartProgressRef.current) * easedRatio;
+        startProgress +
+        (maxPlayableDay - startProgress) * easedRatio;
 
-      setPlaybackProgress(nextProgress);
-      setSelectedPlaybackDay(Math.max(1, Math.min(maxPlayableDay, Math.round(nextProgress))));
+      const clampedNextProgress = Math.max(1, Math.min(maxPlayableDay, nextProgress));
+
+      setPlaybackProgress(clampedNextProgress);
+      setSelectedPlaybackDay(Math.max(1, Math.min(maxPlayableDay, Math.round(clampedNextProgress))));
 
       if (progressRatio < 1) {
         animationFrameRef.current = window.requestAnimationFrame(step);
@@ -100,34 +107,31 @@ export const Dashboard: React.FC = () => {
   }, [isPlaying, maxPlayableDay]);
 
   const filteredActivities = useMemo(() => {
-    const wholeDay = Math.floor(playbackProgress);
-    const partialDayProgress = playbackProgress - wholeDay;
-
-    const activityWeightsByIndex = new Map<number, number>();
-
-    dailyActivities.forEach((activity, index) => {
-      if (activity.day <= wholeDay) {
-        activityWeightsByIndex.set(index, 1);
-        return;
-      }
-
-      if (activity.day === wholeDay + 1 && partialDayProgress > 0) {
-        activityWeightsByIndex.set(index, partialDayProgress);
-      }
-    });
+    const safeProgress = Math.max(1, Math.min(maxPlayableDay, playbackProgress));
+    const wholeDay = Math.floor(safeProgress);
+    const partialDayProgress = safeProgress - wholeDay;
 
     return dailyActivities
-      .map((activity, index) => {
-        const weight = activityWeightsByIndex.get(index);
-        if (!weight || weight <= 0) return null;
+      .map((activity) => {
+        if (activity.day < wholeDay) {
+          return activity;
+        }
 
-        return {
-          ...activity,
-          delivered_count: activity.delivered_count * weight,
-        };
+        if (activity.day === wholeDay) {
+          return activity;
+        }
+
+        if (activity.day === wholeDay + 1 && partialDayProgress > 0) {
+          return {
+            ...activity,
+            delivered_count: activity.delivered_count * partialDayProgress,
+          };
+        }
+
+        return null;
       })
       .filter((activity): activity is NonNullable<typeof activity> => activity !== null);
-  }, [dailyActivities, playbackProgress]);
+  }, [dailyActivities, playbackProgress, maxPlayableDay]);
 
   const historicalStaffPerformance = useMemo(() => {
     const activityTotalsByStaff = new Map<number, number>();
@@ -169,9 +173,10 @@ export const Dashboard: React.FC = () => {
   }, [filteredActivities, services, staffPerformance]);
 
   const workingDaysElapsedToPlayback = useMemo(() => {
+    const safeProgress = Math.max(1, Math.min(maxPlayableDay, playbackProgress));
     let count = 0;
-    const wholeDay = Math.floor(playbackProgress);
-    const partialDayProgress = playbackProgress - wholeDay;
+    const wholeDay = Math.floor(safeProgress);
+    const partialDayProgress = safeProgress - wholeDay;
 
     for (let day = 1; day <= Math.min(wholeDay, daysInMonth); day++) {
       const currentDate = new Date(yearForMonth, selectedMonth - 1, day);
@@ -195,7 +200,7 @@ export const Dashboard: React.FC = () => {
     }
 
     return Math.min(count, teamWorkingDays);
-  }, [playbackProgress, selectedMonth, yearForMonth, daysInMonth, isCurrentMonth, workingDaysUpToToday, teamWorkingDays]);
+  }, [playbackProgress, selectedMonth, yearForMonth, daysInMonth, isCurrentMonth, workingDaysUpToToday, teamWorkingDays, maxPlayableDay]);
 
   const performanceSummary = usePerformanceSummary({
     staffPerformance: historicalStaffPerformance,
@@ -211,22 +216,28 @@ export const Dashboard: React.FC = () => {
   const isAhead = variance >= 0;
 
   const handleDaySelect = (day: number) => {
-    setSelectedPlaybackDay(day);
-    setPlaybackProgress(day);
+    const safeDay = Math.max(1, Math.min(maxPlayableDay, day));
+    setSelectedPlaybackDay(safeDay);
+    setPlaybackProgress(safeDay);
+    animationStartProgressRef.current = safeDay;
     setIsPlaying(false);
   };
 
   const handleTogglePlay = () => {
     if (isPlaying) {
+      animationStartProgressRef.current = Math.max(1, Math.min(maxPlayableDay, playbackProgress));
       setIsPlaying(false);
       return;
     }
 
-    if (playbackProgress >= maxPlayableDay) {
-      setSelectedPlaybackDay(1);
-      setPlaybackProgress(1);
-    }
+    const startFrom =
+      playbackProgress >= maxPlayableDay
+        ? 1
+        : Math.max(1, Math.min(maxPlayableDay, playbackProgress));
 
+    setSelectedPlaybackDay(Math.round(startFrom));
+    setPlaybackProgress(startFrom);
+    animationStartProgressRef.current = startFrom;
     setIsPlaying(true);
   };
 
