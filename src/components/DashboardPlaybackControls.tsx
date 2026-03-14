@@ -4,6 +4,7 @@ interface DashboardPlaybackControlsProps {
   daysInMonth: number;
   selectedDay: number;
   isPlaying: boolean;
+  playbackProgress: number;
   onDaySelect: (day: number) => void;
   onTogglePlay: () => void;
 }
@@ -12,9 +13,14 @@ export const DashboardPlaybackControls: React.FC<DashboardPlaybackControlsProps>
   daysInMonth,
   selectedDay,
   isPlaying,
+  playbackProgress,
   onDaySelect,
   onTogglePlay,
 }) => {
+  const clampedProgress = Math.max(1, Math.min(daysInMonth, playbackProgress));
+  const progressPercent =
+    daysInMonth > 1 ? ((clampedProgress - 1) / (daysInMonth - 1)) * 100 : 100;
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4 transition-all duration-300 ease-in-out">
       <div className="flex flex-col lg:flex-row lg:items-center gap-4">
@@ -65,6 +71,19 @@ export const DashboardPlaybackControls: React.FC<DashboardPlaybackControlsProps>
               </svg>
             )}
           </button>
+        </div>
+      </div>
+
+      <div className="mt-4 px-1">
+        <div className="relative h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+          <div
+            className="absolute inset-y-0 left-0 bg-[#001B47] rounded-full transition-[width] duration-75 ease-linear"
+            style={{ width: `${progressPercent}%` }}
+          />
+          <div
+            className="absolute top-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-[#001B47] border-2 border-white dark:border-gray-800 shadow-sm transition-[left] duration-75 ease-linear"
+            style={{ left: `calc(${progressPercent}% - 8px)` }}
+          />
         </div>
       </div>
     </div>

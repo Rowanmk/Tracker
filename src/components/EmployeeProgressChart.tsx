@@ -36,6 +36,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   const [loading, setLoading] = useState(false);
 
   const isAllTeams = selectedTeamId === "all";
+  const roundedPlaybackDay = playbackDay ? Math.max(1, Math.round(playbackDay)) : undefined;
 
   useEffect(() => {
     const fetchServiceTargets = async () => {
@@ -147,7 +148,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
       <div className="tile-header px-4 py-1.5">
         {isAllTeams ? "Team Progress Chart" : "Service Progress Chart"}
-        {playbackDay ? <span className="ml-2 text-white/80">Day {playbackDay}</span> : null}
+        {roundedPlaybackDay ? <span className="ml-2 text-white/80">Day {roundedPlaybackDay}</span> : null}
       </div>
 
       <div className="flex-1 flex flex-col justify-end p-3 pb-4">
@@ -192,14 +193,20 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                   height={barHeight}
                   fill={barColor}
                   rx="4"
-                  className="transition-all duration-500 ease-in-out"
+                  style={{
+                    transition:
+                      "y 120ms linear, height 120ms linear, fill 180ms linear",
+                  }}
                 />
 
                 <text
                   x={x}
                   y={BASELINE_Y - barHeight - 8}
                   textAnchor="middle"
-                  className="text-[10px] font-bold fill-gray-700 dark:fill-gray-300 transition-all duration-300 ease-in-out"
+                  className="text-[10px] font-bold fill-gray-700 dark:fill-gray-300"
+                  style={{
+                    transition: "y 120ms linear, opacity 120ms linear",
+                  }}
                 >
                   {viewMode === "percent" ? `${Math.round(runRatePercent)}%` : Math.round(display)}
                 </text>
@@ -208,7 +215,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                   x={x}
                   y={axisLabelY}
                   textAnchor="middle"
-                  className="text-[10px] font-medium fill-gray-600 dark:fill-gray-400 transition-all duration-300 ease-in-out"
+                  className="text-[10px] font-medium fill-gray-600 dark:fill-gray-400"
                   transform={shouldRotateLabels ? `rotate(-35 ${x} ${axisLabelY})` : undefined}
                 >
                   <title>{label}</title>
@@ -227,7 +234,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
               stroke="#555"
               strokeDasharray="6,4"
               strokeWidth="2"
-              className="transition-all duration-300 ease-in-out"
+              style={{ transition: "y1 120ms linear, y2 120ms linear" }}
             />
           )}
         </svg>

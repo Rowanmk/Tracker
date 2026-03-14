@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { TeamProgressTile } from "../components/TeamProgressTile";
 import { EmployeeProgressChart } from "../components/EmployeeProgressChart";
 import { RunRateTile } from "../components/RunRateTile";
@@ -38,33 +38,96 @@ export const Dashboard: React.FC = () => {
   const maxPlayableDay = isCurrentMonth ? Math.min(today.getDate(), daysInMonth) : daysInMonth;
 
   const [selectedPlaybackDay, setSelectedPlaybackDay] = useState<number>(Math.max(1, maxPlayableDay));
+  const [playbackProgress, setPlaybackProgress] = useState<number>(Math.max(1, maxPlayableDay));
   const [isPlaying, setIsPlaying] = useState(false);
+  const animationFrameRef = useRef<number | null>(null);
+  const animationStartTimeRef = useRef<number | null>(null);
+  const animationStartProgressRef = useRef<number>(1);
 
   useEffect(() => {
     setSelectedPlaybackDay(Math.max(1, maxPlayableDay));
+    setPlaybackProgress(Math.max(1, maxPlayableDay));
     setIsPlaying(false);
   }, [selectedMonth, selectedYear, selectedTeamId, maxPlayableDay]);
 
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isPlaying) {
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      animationStartTimeRef.current = null;
+      return;
+    }
 
-    const timer = window.setInterval(() => {
-      setSelectedPlaybackDay((current) => {
-        if (current >= maxPlayableDay) {
-          window.clearInterval(timer);
-          setIsPlaying(false);
-          return maxPlayableDay;
-        }
-        return current + 1;
-      });
-    }, 700);
+    animationStartProgressRef.current = playbackProgress;
+    animationStartTimeRef.current = null;
 
-    return () => window.clearInterval(timer);
+    const durationMs = Math.max(900, (maxPlayableDay - animationStartProgressRef.current) * 140);
+
+    const step = (timestamp: number) => {
+      if (animationStartTimeRef.current === null) {
+        animationStartTimeRef.current = timestamp;
+      }
+
+      const elapsed = timestamp - animationStartTimeRef.current;
+      const progressRatio = Math.min(elapsed / durationMs, 1);
+      const easedRatio = 1 - Math.pow(1 - progressRatio, 3);
+      const nextProgress =
+        animationStartProgressRef.current +
+        (maxPlayableDay - animationStartProgressRef.current) * easedRatio;
+
+      setPlaybackProgress(nextProgress);
+      setSelectedPlaybackDay(Math.max(1, Math.min(maxPlayableDay, Math.round(nextProgress))));
+
+      if (progressRatio < 1) {
+        animationFrameRef.current = window.requestAnimationFrame(step);
+      } else {
+        setPlaybackProgress(maxPlayableDay);
+        setSelectedPlaybackDay(maxPlayableDay);
+        setIsPlaying(false);
+      }
+    };
+
+    animationFrameRef.current = window.requestAnimationFrame(step);
+
+    return () => {
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
   }, [isPlaying, maxPlayableDay]);
 
   const filteredActivities = useMemo(() => {
-    return dailyActivities.filter((activity) => activity.day <= selectedPlaybackDay);
-  }, [dailyActivities, selectedPlaybackDay]);
+    const wholeDay = Math.floor(playbackProgress);
+    const partialDayProgress = playbackProgress - wholeDay;
+
+    const activityWeightsByIndex = new Map<number, number>();
+
+    dailyActivities.forEach((activity, index) => {
+      if (activity.day <= wholeDay) {
+        activityWeightsByIndex.set(index, 1);
+        return;
+      }
+
+      if (activity.day === wholeDay + 1 && partialDayProgress > 0) {
+        activityWeightsByIndex.set(index, partialDayProgress);
+      }
+    });
+
+    return dailyActivities
+      .map((activity, index) => {
+        const weight = activityWeightsByIndex.get(index);
+        if (!weight || weight <= 0) return null;
+
+        return {
+          ...activity,
+          delivered_count: activity.delivered_count * weight,
+        };
+      })
+      .filter((activity): activity is NonNullable<typeof activity> => activity !== null);
+  }, [dailyActivities, playbackProgress]);
 
   const historicalStaffPerformance = useMemo(() => {
     const activityTotalsByStaff = new Map<number, number>();
@@ -106,26 +169,33 @@ export const Dashboard: React.FC = () => {
   }, [filteredActivities, services, staffPerformance]);
 
   const workingDaysElapsedToPlayback = useMemo(() => {
-    const countUntilSelectedDay = (limitDay: number) => {
-      let count = 0;
-      for (let day = 1; day <= Math.min(limitDay, daysInMonth); day++) {
-        const currentDate = new Date(yearForMonth, selectedMonth - 1, day);
-        const dayOfWeek = currentDate.getDay();
-        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-          count += 1;
-        }
+    let count = 0;
+    const wholeDay = Math.floor(playbackProgress);
+    const partialDayProgress = playbackProgress - wholeDay;
+
+    for (let day = 1; day <= Math.min(wholeDay, daysInMonth); day++) {
+      const currentDate = new Date(yearForMonth, selectedMonth - 1, day);
+      const dayOfWeek = currentDate.getDay();
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        count += 1;
       }
-      return count;
-    };
-
-    const rawCount = countUntilSelectedDay(selectedPlaybackDay);
-
-    if (isCurrentMonth) {
-      return Math.min(rawCount, workingDaysUpToToday);
     }
 
-    return Math.min(rawCount, teamWorkingDays);
-  }, [selectedPlaybackDay, selectedMonth, yearForMonth, daysInMonth, isCurrentMonth, workingDaysUpToToday, teamWorkingDays]);
+    const nextDay = wholeDay + 1;
+    if (partialDayProgress > 0 && nextDay <= daysInMonth) {
+      const currentDate = new Date(yearForMonth, selectedMonth - 1, nextDay);
+      const dayOfWeek = currentDate.getDay();
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        count += partialDayProgress;
+      }
+    }
+
+    if (isCurrentMonth) {
+      return Math.min(count, workingDaysUpToToday);
+    }
+
+    return Math.min(count, teamWorkingDays);
+  }, [playbackProgress, selectedMonth, yearForMonth, daysInMonth, isCurrentMonth, workingDaysUpToToday, teamWorkingDays]);
 
   const performanceSummary = usePerformanceSummary({
     staffPerformance: historicalStaffPerformance,
@@ -142,6 +212,7 @@ export const Dashboard: React.FC = () => {
 
   const handleDaySelect = (day: number) => {
     setSelectedPlaybackDay(day);
+    setPlaybackProgress(day);
     setIsPlaying(false);
   };
 
@@ -151,12 +222,23 @@ export const Dashboard: React.FC = () => {
       return;
     }
 
-    if (selectedPlaybackDay >= maxPlayableDay) {
+    if (playbackProgress >= maxPlayableDay) {
       setSelectedPlaybackDay(1);
+      setPlaybackProgress(1);
     }
 
     setIsPlaying(true);
   };
+
+  const deliveredPercent =
+    performanceSummary.target > 0
+      ? Math.min((performanceSummary.delivered / performanceSummary.target) * 100, 100)
+      : 0;
+
+  const expectedPercent =
+    performanceSummary.target > 0
+      ? Math.min((performanceSummary.expected / performanceSummary.target) * 100, 100)
+      : 0;
 
   return (
     <div className="space-y-6">
@@ -175,6 +257,7 @@ export const Dashboard: React.FC = () => {
           daysInMonth={maxPlayableDay}
           selectedDay={selectedPlaybackDay}
           isPlaying={isPlaying}
+          playbackProgress={playbackProgress}
           onDaySelect={handleDaySelect}
           onTogglePlay={handleTogglePlay}
         />
@@ -185,18 +268,18 @@ export const Dashboard: React.FC = () => {
           <span className="text-gray-700 dark:text-gray-300">
             {isAllTeams ? "Global Progress" : `${selectedTeam?.name} Progress`}
           </span>
-          <span className="text-gray-900 dark:text-white font-bold">
-            {performanceSummary.delivered} / {performanceSummary.target} ({performanceSummary.target > 0 ? Math.round((performanceSummary.delivered / performanceSummary.target) * 100) : 0}%)
+          <span className="text-gray-900 dark:text-white font-bold transition-[opacity,transform] duration-150 ease-linear">
+            {Math.round(performanceSummary.delivered)} / {performanceSummary.target} ({performanceSummary.target > 0 ? Math.round((performanceSummary.delivered / performanceSummary.target) * 100) : 0}%)
           </span>
         </div>
         <div className="relative w-full h-6 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner">
           <div
-            className={`h-6 rounded-full transition-all duration-500 ease-in-out ${isAhead ? "bg-green-600" : "bg-red-600"}`}
-            style={{ width: `${performanceSummary.target > 0 ? Math.min((performanceSummary.delivered / performanceSummary.target) * 100, 100) : 0}%` }}
+            className={`h-6 rounded-full transition-[width] duration-100 ease-linear ${isAhead ? "bg-green-600" : "bg-red-600"}`}
+            style={{ width: `${deliveredPercent}%` }}
           />
           <div
-            className="absolute top-0 h-6 w-0.5 bg-[#001B47] transition-all duration-300"
-            style={{ left: `${performanceSummary.target > 0 ? Math.min((performanceSummary.expected / performanceSummary.target) * 100, 100) : 0}%` }}
+            className="absolute top-0 h-6 w-0.5 bg-[#001B47] transition-[left] duration-100 ease-linear"
+            style={{ left: `${expectedPercent}%` }}
           />
           <div className={`absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold ${isAhead ? "text-green-700" : "text-red-700"}`}>
             {isAhead ? "+" : "-"}{Math.abs(Math.round(variance))}
@@ -224,7 +307,7 @@ export const Dashboard: React.FC = () => {
           financialYear={financialYear}
           selectedTeamId={selectedTeamId}
           teams={teams}
-          playbackDay={selectedPlaybackDay}
+          playbackDay={playbackProgress}
         />
         <RunRateTile
           workingDays={teamWorkingDays}
@@ -234,7 +317,7 @@ export const Dashboard: React.FC = () => {
           financialYear={financialYear}
           target={performanceSummary.target}
           viewMode={viewMode}
-          playbackDay={selectedPlaybackDay}
+          playbackDay={playbackProgress}
         />
       </div>
     </div>

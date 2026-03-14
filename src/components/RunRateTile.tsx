@@ -69,6 +69,11 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     expectedCumulative = expectedCumulative.map((value) => value * scaleFactor);
   }
 
+  const progressLimit = playbackDay ?? (isCurrentMonth ? Math.min(currentDay, daysInSelectedMonth) : daysInSelectedMonth);
+  const clampedPlaybackDay = Math.max(1, Math.min(progressLimit, daysInSelectedMonth));
+  const wholeDaysToRender = Math.floor(clampedPlaybackDay);
+  const partialDayProgress = clampedPlaybackDay - wholeDaysToRender;
+
   let maxValue: number;
   const barValues: number[] = [];
   const expectedValues: number[] = [];
@@ -91,6 +96,36 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     }
   }
 
+  const interpolatedExpectedValues = expectedValues.map((value, index) => {
+    const day = index + 1;
+
+    if (day <= wholeDaysToRender) {
+      return value;
+    }
+
+    if (day === wholeDaysToRender + 1 && partialDayProgress > 0) {
+      const previousValue = index > 0 ? expectedValues[index - 1] : 0;
+      return previousValue + (value - previousValue) * partialDayProgress;
+    }
+
+    const previousValue = index > 0 ? expectedValues[index - 1] : 0;
+    return previousValue;
+  });
+
+  const displayedBarValues = barValues.map((value, index) => {
+    const day = index + 1;
+
+    if (day <= wholeDaysToRender) {
+      return value;
+    }
+
+    if (day === wholeDaysToRender + 1 && partialDayProgress > 0) {
+      return value * partialDayProgress;
+    }
+
+    return 0;
+  });
+
   const yAxisSteps =
     viewMode === "percent"
       ? [0, 25, 50, 75, 100]
@@ -104,15 +139,13 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     return Number.isInteger(value) ? value.toString() : value.toFixed(0);
   };
 
-  const playbackLimit = playbackDay ?? (isCurrentMonth ? Math.min(currentDay, daysInSelectedMonth) : daysInSelectedMonth);
-  const daysToRenderBars = Math.min(playbackLimit, daysInSelectedMonth);
   const chartWidth = daysInSelectedMonth * 15 + LEFT_AXIS_MARGIN + RIGHT_PADDING;
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
       <div className="tile-header px-4 py-1.5">
         Run Rate
-        {playbackDay ? <span className="ml-2 text-white/80">Day {playbackDay}</span> : null}
+        {playbackDay ? <span className="ml-2 text-white/80">Day {Math.round(clampedPlaybackDay)}</span> : null}
       </div>
 
       <div className="flex-1 flex flex-col justify-end p-3 pb-4 overflow-hidden">
@@ -186,7 +219,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
           })}
 
           <polyline
-            points={expectedValues
+            points={interpolatedExpectedValues
               .map((v, i) => {
                 const x = (i + 1) * 15 + LEFT_AXIS_MARGIN;
                 const y = BASELINE_Y - (v / maxValue) * BAR_AREA_HEIGHT;
@@ -197,11 +230,16 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             stroke="#6B7280"
             strokeWidth="3"
             strokeDasharray="8,4"
-            className="transition-all duration-300 ease-in-out"
+            style={{ transition: "all 80ms linear" }}
           />
 
-          {barValues.slice(0, daysToRenderBars).map((value, idx) => {
+          {displayedBarValues.map((value, idx) => {
             const day = idx + 1;
+
+            if (value <= 0) {
+              return null;
+            }
+
             const ratio = value / maxValue;
             const barHeight = ratio * BAR_AREA_HEIGHT;
             const x = day * 15 + LEFT_AXIS_MARGIN;
@@ -215,7 +253,9 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
                 height={barHeight}
                 fill="#001B47"
                 rx={2}
-                className="transition-all duration-300 ease-in-out"
+                style={{
+                  transition: "y 80ms linear, height 80ms linear",
+                }}
               />
             );
           })}
