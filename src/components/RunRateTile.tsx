@@ -74,26 +74,22 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
   const wholeDaysToRender = Math.floor(clampedPlaybackDay);
   const partialDayProgress = clampedPlaybackDay - wholeDaysToRender;
 
-  let maxValue: number;
-  const barValues: number[] = [];
-  const expectedValues: number[] = [];
+  let barValues: number[] = [];
+  let expectedValues: number[] = [];
+  let safeMaxValue: number;
 
   if (viewMode === "percent") {
-    maxValue = 100;
-    for (let d = 1; d <= daysInSelectedMonth; d++) {
-      const actualPercent =
-        target > 0 ? Math.min((actualCumulative[d - 1] / target) * 100, 100) : 0;
-      const expectedPercent =
-        target > 0 ? Math.min((expectedCumulative[d - 1] / target) * 100, 100) : 0;
-      barValues.push(actualPercent);
-      expectedValues.push(expectedPercent);
-    }
+    barValues = actualCumulative.map((value) =>
+      target > 0 ? Math.min((value / target) * 100, 100) : 0
+    );
+    expectedValues = expectedCumulative.map((value) =>
+      target > 0 ? Math.min((value / target) * 100, 100) : 0
+    );
+    safeMaxValue = 100;
   } else {
-    maxValue = Math.max(...actualCumulative, ...expectedCumulative, 1);
-    for (let d = 1; d <= daysInSelectedMonth; d++) {
-      barValues.push(actualCumulative[d - 1]);
-      expectedValues.push(expectedCumulative[d - 1]);
-    }
+    barValues = [...actualCumulative];
+    expectedValues = [...expectedCumulative];
+    safeMaxValue = Math.max(...actualCumulative, ...expectedCumulative, target, 1);
   }
 
   const interpolatedExpectedValues = expectedValues.map((value, index) => {
@@ -127,8 +123,6 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     const previousValue = index > 0 ? barValues[index - 1] : 0;
     return previousValue;
   });
-
-  const safeMaxValue = Math.max(maxValue, 1);
 
   const yAxisSteps =
     viewMode === "percent"
@@ -234,14 +228,10 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             stroke="#6B7280"
             strokeWidth="3"
             strokeDasharray="8,4"
-            style={{ transition: "all 80ms linear" }}
+            style={{ transition: "all 180ms linear" }}
           />
 
           {displayedBarValues.map((value, idx) => {
-            if (value <= 0) {
-              return null;
-            }
-
             const day = idx + 1;
             const ratio = value / safeMaxValue;
             const barHeight = ratio * BAR_AREA_HEIGHT;
@@ -253,11 +243,11 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
                 x={x - 5}
                 y={BASELINE_Y - barHeight}
                 width={10}
-                height={barHeight}
+                height={Math.max(barHeight, 0)}
                 fill="#001B47"
                 rx={2}
                 style={{
-                  transition: "y 80ms linear, height 80ms linear",
+                  transition: "y 180ms linear, height 180ms linear",
                 }}
               />
             );
