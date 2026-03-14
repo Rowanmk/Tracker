@@ -5,7 +5,7 @@ A React-based performance tracking application for contracting division staff wi
 ## Features
 
 - **Dashboard**: Monthly performance overview with charts and analytics
-- **Team View**: Comprehensive team performance monitoring
+- **Stats and Figures**: Comprehensive team performance monitoring
 - **Annual Summary**: Year-to-date performance analysis
 - **Staff Tracker**: Individual daily activity tracking
 - **Targets Control**: Admin interface for setting monthly targets

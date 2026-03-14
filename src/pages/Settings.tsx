@@ -79,7 +79,7 @@ export const Settings: React.FC = () => {
     { path: "/", label: "Dashboard" },
     { path: "/tracker", label: "My Tracker" },
     { path: "/sa-progress", label: "Self Assessment Progress" },
-    { path: "/team", label: "Team View" },
+    { path: "/team", label: "Stats and Figures" },
     { path: "/annual", label: "Annual Summary" },
     { path: "/targets", label: "Targets Control" },
     { path: "/settings", label: "Settings" },

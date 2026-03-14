@@ -17,7 +17,7 @@ const PAGE_OPTIONS = [
   { value: '/', label: 'Dashboard' },
   { value: '/tracker', label: 'My Tracker' },
   { value: '/sa-progress', label: 'Self Assessment Progress' },
-  { value: '/team', label: 'Team View' },
+  { value: '/team', label: 'Stats and Figures' },
   { value: '/annual', label: 'Annual Summary' },
   { value: '/targets', label: 'Targets Control' },
   { value: '/settings', label: 'Settings' },

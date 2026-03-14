@@ -158,7 +158,7 @@ export const TeamView: React.FC = () => {
         setStatsData(processedStats);
       } catch (err) {
         console.error(err);
-        setError('Failed to load stats and figures');
+        setError('Failed to load Stats and Figures');
       } finally {
         setLoading(false);
       }
@@ -168,7 +168,7 @@ export const TeamView: React.FC = () => {
   }, [allStaff, services, selectedTeamId, authLoading, servicesLoading]);
 
   if (loading || authLoading || servicesLoading) {
-    return <div className="py-6 text-center text-gray-500">Loading stats and figures…</div>;
+    return <div className="py-6 text-center text-gray-500">Loading Stats and Figures…</div>;
   }
 
   if (error) {
@@ -178,7 +178,7 @@ export const TeamView: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="page-header">
-        <h2 className="page-title">Stats and figures</h2>
+        <h2 className="page-title">Stats and Figures</h2>
         <p className="page-subtitle">12-month performance actuals and rolling averages</p>
       </div>
 
