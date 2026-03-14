@@ -19,6 +19,9 @@ const VIEWBOX_HEIGHT = 300;
 const BASELINE_Y = 250;
 const TOP_MARGIN = 20;
 const BAR_AREA_HEIGHT = BASELINE_Y - TOP_MARGIN;
+const CHART_WIDTH = 800;
+const FIXED_LEFT_MARGIN = 60;
+const RIGHT_PADDING = 40;
 
 export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   services,
@@ -127,28 +130,21 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   }
 
   const barCount = chartData.length;
-  const FIXED_LEFT_MARGIN = 60;
-  const CHART_WIDTH = 800;
-  const AVAILABLE_WIDTH = CHART_WIDTH - FIXED_LEFT_MARGIN - 40;
-  const BAR_SLOT_WIDTH = AVAILABLE_WIDTH / Math.max(barCount, 1);
-  const BAR_WIDTH = Math.min(BAR_SLOT_WIDTH * 0.65, 60);
-
-  const maxRunRatePercent = Math.max(
-    ...chartData.map((d) => Math.max(d.runRatePercent, 100)),
-    100
-  );
-  const maxDelivered = Math.max(...chartData.map((d) => d.delivered), 1);
-  const maxExpected = Math.max(...chartData.map((d) => d.expectedByToday), 1);
-  const maxTarget = Math.max(...chartData.map((d) => d.target), 1);
-
-  const maxValue = viewMode === "percent"
-    ? maxRunRatePercent
-    : Math.max(maxDelivered, maxExpected, maxTarget);
-  const yMax = Math.max(maxValue * 1.1, 1);
+  const availableWidth = CHART_WIDTH - FIXED_LEFT_MARGIN - RIGHT_PADDING;
+  const barSlotWidth = availableWidth / Math.max(barCount, 1);
+  const barWidth = Math.min(barSlotWidth * 0.65, 60);
 
   const shouldRotateLabels = isAllTeams && (barCount > 8 || chartData.some((d) => d.label.length > 12));
   const axisLabelCharLimit = shouldRotateLabels ? 12 : 16;
   const axisLabelY = shouldRotateLabels ? BASELINE_Y + 20 : BASELINE_Y + 15;
+
+  const stablePercentMax = 140;
+  const stableNumbersMax = Math.max(
+    ...chartData.map((d) => Math.max(d.target, d.delivered, d.expectedByToday)),
+    1
+  ) || 1;
+
+  const yMax = viewMode === "percent" ? stablePercentMax : stableNumbersMax;
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[500px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
@@ -175,32 +171,28 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
           {chartData.map((data, i) => {
             const { label, delivered, expectedByToday, runRatePercent } = data;
 
-            let display;
-            let barHeight;
+            const display = viewMode === "percent"
+              ? runRatePercent
+              : Math.min(delivered, expectedByToday);
 
-            if (viewMode === "percent") {
-              display = runRatePercent;
-              barHeight = (runRatePercent / yMax) * BAR_AREA_HEIGHT;
-            } else {
-              display = Math.min(delivered, expectedByToday);
-              barHeight = (display / yMax) * BAR_AREA_HEIGHT;
-            }
-
-            const x = FIXED_LEFT_MARGIN + (i * BAR_SLOT_WIDTH) + (BAR_SLOT_WIDTH / 2);
+            const clampedDisplay = Math.max(0, Math.min(display, yMax));
+            const barHeight = (clampedDisplay / yMax) * BAR_AREA_HEIGHT;
+            const x = FIXED_LEFT_MARGIN + (i * barSlotWidth) + (barSlotWidth / 2);
             const barColor = getBarColor(runRatePercent);
             const displayLabel = formatAxisLabel(label, axisLabelCharLimit);
 
             return (
               <g key={data.id}>
                 <rect
-                  x={x - BAR_WIDTH / 2}
+                  x={x - barWidth / 2}
                   y={BASELINE_Y - barHeight}
-                  width={BAR_WIDTH}
+                  width={barWidth}
                   height={barHeight}
                   fill={barColor}
                   rx="4"
                   style={{
-                    transition: "y 120ms linear, height 120ms linear, fill 120ms linear",
+                    transition: "y 180ms ease-out, height 180ms ease-out, fill 180ms ease-out",
+                    transform: "translateZ(0)",
                   }}
                 />
 
@@ -236,7 +228,6 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
               stroke="#555"
               strokeDasharray="6,4"
               strokeWidth="2"
-              style={{ transition: "y1 120ms linear, y2 120ms linear" }}
             />
           )}
         </svg>

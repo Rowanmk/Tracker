@@ -89,7 +89,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
   } else {
     barValues = [...actualCumulative];
     expectedValues = [...expectedCumulative];
-    safeMaxValue = Math.max(...actualCumulative, ...expectedCumulative, target, 1);
+    safeMaxValue = Math.max(...expectedCumulative, target, 1);
   }
 
   const interpolatedExpectedValues = expectedValues.map((value, index) => {
@@ -228,13 +228,13 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             stroke="#6B7280"
             strokeWidth="3"
             strokeDasharray="8,4"
-            style={{ transition: "all 120ms linear" }}
+            style={{ transition: "all 180ms ease-out" }}
           />
 
           {displayedBarValues.map((value, idx) => {
             const day = idx + 1;
-            const ratio = value / safeMaxValue;
-            const barHeight = ratio * BAR_AREA_HEIGHT;
+            const ratio = safeMaxValue > 0 ? value / safeMaxValue : 0;
+            const barHeight = Math.max(0, ratio * BAR_AREA_HEIGHT);
             const x = day * 15 + LEFT_AXIS_MARGIN;
 
             return (
@@ -243,11 +243,12 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
                 x={x - 5}
                 y={BASELINE_Y - barHeight}
                 width={10}
-                height={Math.max(barHeight, 0)}
+                height={barHeight}
                 fill="#001B47"
                 rx={2}
                 style={{
-                  transition: "y 120ms linear, height 120ms linear",
+                  transition: "y 180ms ease-out, height 180ms ease-out",
+                  transform: "translateZ(0)",
                 }}
               />
             );

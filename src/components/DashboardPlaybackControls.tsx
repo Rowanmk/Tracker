@@ -79,11 +79,11 @@ export const DashboardPlaybackControls: React.FC<DashboardPlaybackControlsProps>
       <div className="mt-4 px-1">
         <div className="relative h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
           <div
-            className="absolute inset-y-0 left-0 bg-[#001B47] rounded-full transition-[width] duration-75 ease-linear"
+            className="absolute inset-y-0 left-0 bg-[#001B47] rounded-full transition-[width] duration-150 ease-linear"
             style={{ width: `${progressPercent}%` }}
           />
           <div
-            className="absolute top-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-[#001B47] border-2 border-white dark:border-gray-800 shadow-sm transition-[left] duration-75 ease-linear"
+            className="absolute top-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-[#001B47] border-2 border-white dark:border-gray-800 shadow-sm transition-[left] duration-150 ease-linear"
             style={{ left: `calc(${progressPercent}% - 8px)` }}
           />
         </div>

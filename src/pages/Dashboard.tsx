@@ -12,6 +12,8 @@ import { useDashboardView } from "../context/DashboardViewContext";
 import { useStaffPerformance } from "../hooks/useStaffPerformance";
 import { usePerformanceSummary } from "../hooks/usePerformanceSummary";
 
+const PLAYBACK_STEP_DURATION_MS = 220;
+
 export const Dashboard: React.FC = () => {
   const { viewMode } = useDashboardView();
   const { selectedMonth, selectedYear, financialYear } = useDate();
@@ -46,13 +48,15 @@ export const Dashboard: React.FC = () => {
 
   const animationFrameRef = useRef<number | null>(null);
   const animationStartTimeRef = useRef<number | null>(null);
-  const animationStartProgressRef = useRef<number>(1);
+  const playbackStartDayRef = useRef<number>(1);
+  const playbackTargetDayRef = useRef<number>(1);
 
   useEffect(() => {
     setSelectedPlaybackDay(maxPlayableDay);
     setPlaybackProgress(maxPlayableDay);
     setIsPlaying(false);
-    animationStartProgressRef.current = maxPlayableDay;
+    playbackStartDayRef.current = maxPlayableDay;
+    playbackTargetDayRef.current = maxPlayableDay;
     animationStartTimeRef.current = null;
 
     if (animationFrameRef.current !== null) {
@@ -71,22 +75,17 @@ export const Dashboard: React.FC = () => {
       return;
     }
 
-    const startProgress = Math.max(
-      1,
-      Math.min(maxPlayableDay, animationStartProgressRef.current || 1)
-    );
+    const startDay = Math.max(1, Math.min(maxPlayableDay, playbackStartDayRef.current));
+    const targetDay = Math.max(startDay, Math.min(maxPlayableDay, playbackTargetDayRef.current));
 
-    if (startProgress >= maxPlayableDay) {
-      setPlaybackProgress(maxPlayableDay);
-      setSelectedPlaybackDay(maxPlayableDay);
+    if (startDay >= targetDay) {
+      setPlaybackProgress(targetDay);
+      setSelectedPlaybackDay(targetDay);
       setIsPlaying(false);
       return;
     }
 
     animationStartTimeRef.current = null;
-
-    const remainingDistance = maxPlayableDay - startProgress;
-    const durationMs = Math.max(1400, remainingDistance * 220);
 
     const step = (timestamp: number) => {
       if (animationStartTimeRef.current === null) {
@@ -94,21 +93,27 @@ export const Dashboard: React.FC = () => {
       }
 
       const elapsed = timestamp - animationStartTimeRef.current;
-      const progressRatio = Math.min(elapsed / durationMs, 1);
-      const easedRatio = 1 - Math.pow(1 - progressRatio, 3);
+      const completedSegments = Math.floor(elapsed / PLAYBACK_STEP_DURATION_MS);
+      const segmentProgress = (elapsed % PLAYBACK_STEP_DURATION_MS) / PLAYBACK_STEP_DURATION_MS;
 
-      const nextProgress = startProgress + remainingDistance * easedRatio;
-      const clampedNextProgress = Math.max(1, Math.min(maxPlayableDay, nextProgress));
+      const currentBaseDay = Math.min(startDay + completedSegments, targetDay);
+      const nextDay = Math.min(currentBaseDay + 1, targetDay);
 
-      setPlaybackProgress(clampedNextProgress);
-      setSelectedPlaybackDay(Math.max(1, Math.min(maxPlayableDay, Math.ceil(clampedNextProgress))));
+      const easedSegmentProgress = 1 - Math.pow(1 - segmentProgress, 3);
+      const interpolatedProgress =
+        currentBaseDay >= targetDay
+          ? targetDay
+          : currentBaseDay + (nextDay - currentBaseDay) * easedSegmentProgress;
 
-      if (progressRatio < 1) {
+      setPlaybackProgress(interpolatedProgress);
+      setSelectedPlaybackDay(Math.round(interpolatedProgress));
+
+      if (currentBaseDay < targetDay) {
         animationFrameRef.current = window.requestAnimationFrame(step);
       } else {
-        setPlaybackProgress(maxPlayableDay);
-        setSelectedPlaybackDay(maxPlayableDay);
-        animationStartProgressRef.current = maxPlayableDay;
+        setPlaybackProgress(targetDay);
+        setSelectedPlaybackDay(targetDay);
+        playbackStartDayRef.current = targetDay;
         animationFrameRef.current = null;
         animationStartTimeRef.current = null;
         setIsPlaying(false);
@@ -256,7 +261,8 @@ export const Dashboard: React.FC = () => {
     }
 
     animationStartTimeRef.current = null;
-    animationStartProgressRef.current = safeDay;
+    playbackStartDayRef.current = safeDay;
+    playbackTargetDayRef.current = safeDay;
     setSelectedPlaybackDay(safeDay);
     setPlaybackProgress(safeDay);
     setIsPlaying(false);
@@ -264,21 +270,22 @@ export const Dashboard: React.FC = () => {
 
   const handleTogglePlay = () => {
     if (isPlaying) {
-      animationStartProgressRef.current = Math.max(
-        1,
-        Math.min(maxPlayableDay, playbackProgress)
-      );
+      const pausedDay = Math.max(1, Math.min(maxPlayableDay, Math.round(playbackProgress)));
+      playbackStartDayRef.current = pausedDay;
+      playbackTargetDayRef.current = maxPlayableDay;
+      setSelectedPlaybackDay(pausedDay);
+      setPlaybackProgress(pausedDay);
       setIsPlaying(false);
       return;
     }
 
-    const startFrom =
-      playbackProgress >= maxPlayableDay
-        ? 1
-        : Math.max(1, Math.min(maxPlayableDay, playbackProgress));
+    const currentRoundedDay = Math.max(1, Math.min(maxPlayableDay, Math.round(playbackProgress)));
+    const startFrom = currentRoundedDay >= maxPlayableDay ? 1 : currentRoundedDay;
+    const targetDay = maxPlayableDay;
 
-    animationStartProgressRef.current = startFrom;
-    setSelectedPlaybackDay(Math.ceil(startFrom));
+    playbackStartDayRef.current = startFrom;
+    playbackTargetDayRef.current = targetDay;
+    setSelectedPlaybackDay(startFrom);
     setPlaybackProgress(startFrom);
     setIsPlaying(true);
   };
@@ -331,13 +338,13 @@ export const Dashboard: React.FC = () => {
         </div>
         <div className="relative w-full h-6 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner">
           <div
-            className={`h-6 rounded-full transition-[width] duration-100 ease-linear ${
+            className={`h-6 rounded-full transition-[width] duration-150 ease-linear ${
               isAhead ? "bg-green-600" : "bg-red-600"
             }`}
             style={{ width: `${deliveredPercent}%` }}
           />
           <div
-            className="absolute top-0 h-6 w-0.5 bg-[#001B47] transition-[left] duration-100 ease-linear"
+            className="absolute top-0 h-6 w-0.5 bg-[#001B47] transition-[left] duration-150 ease-linear"
             style={{ left: `${expectedPercent}%` }}
           />
           <div
