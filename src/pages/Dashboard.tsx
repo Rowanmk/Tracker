@@ -20,7 +20,7 @@ export const Dashboard: React.FC = () => {
   const { selectedTeamId, teams } = useAuth();
 
   const { services } = useServices();
-  const { staffPerformance, dailyActivities } = useStaffPerformance("desc");
+  const { staffPerformance, dailyActivities, loading } = useStaffPerformance("desc");
 
   const isAllTeams = selectedTeamId === "all";
   const selectedTeam = !isAllTeams ? teams.find((t) => t.id.toString() === selectedTeamId) : null;
@@ -106,7 +106,7 @@ export const Dashboard: React.FC = () => {
           : currentBaseDay + (nextDay - currentBaseDay) * easedSegmentProgress;
 
       setPlaybackProgress(interpolatedProgress);
-      setSelectedPlaybackDay(Math.round(interpolatedProgress));
+      setSelectedPlaybackDay(Math.max(1, Math.min(maxPlayableDay, Math.round(interpolatedProgress))));
 
       if (currentBaseDay < targetDay) {
         animationFrameRef.current = window.requestAnimationFrame(step);
@@ -299,6 +299,19 @@ export const Dashboard: React.FC = () => {
     performanceSummary.target > 0
       ? Math.min((performanceSummary.expected / performanceSummary.target) * 100, 100)
       : 0;
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="page-header">
+          <h2 className="page-title">
+            {isAllTeams ? "All Teams Dashboard" : `${selectedTeam?.name} Dashboard`}
+          </h2>
+        </div>
+        <div className="py-10 text-center text-gray-500">Loading dashboard…</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
