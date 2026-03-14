@@ -33,7 +33,7 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 const PERMANENT_ADMIN_NAME = 'rowan';
 
-const normalizeFirstName = (name: string) => name.split(' ')[0]?.trim().toLowerCase() || '';
+const normalizeFirstName = (name?: string | null) => (name || '').split(' ')[0]?.trim().toLowerCase() || '';
 
 const enforcePermanentAdmin = (staffMember: Staff): Staff => {
   const firstName = normalizeFirstName(staffMember.name);

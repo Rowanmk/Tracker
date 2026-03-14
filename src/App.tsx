@@ -27,7 +27,7 @@ const getFirstAllowedPath = (hasPermission: (path: string) => boolean) => {
     '/audit-log',
   ];
 
-  return protectedPaths.find((path) => hasPermission(path)) || '/tracker';
+  return protectedPaths.find((path) => hasPermission(path));
 };
 
 const ProtectedRoute: React.FC<{
@@ -37,7 +37,18 @@ const ProtectedRoute: React.FC<{
   const { hasPermission } = useAuth();
 
   if (!hasPermission(path)) {
-    return <Navigate to={getFirstAllowedPath(hasPermission)} replace />;
+    const fallback = getFirstAllowedPath(hasPermission);
+    if (fallback && fallback !== path) {
+      return <Navigate to={fallback} replace />;
+    }
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
+          <h2 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h2>
+          <p className="text-gray-600">You do not have permission to view any pages. Please contact an administrator.</p>
+        </div>
+      </div>
+    );
   }
 
   return element;
@@ -47,7 +58,18 @@ const AuthRedirect: React.FC = () => {
   const { isAuthenticated, hasPermission } = useAuth();
 
   if (isAuthenticated) {
-    return <Navigate to={getFirstAllowedPath(hasPermission)} replace />;
+    const fallback = getFirstAllowedPath(hasPermission);
+    if (fallback) {
+      return <Navigate to={fallback} replace />;
+    }
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
+          <h2 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h2>
+          <p className="text-gray-600">You do not have permission to view any pages. Please contact an administrator.</p>
+        </div>
+      </div>
+    );
   }
 
   return <Navigate to="/login" replace />;
@@ -76,7 +98,10 @@ const ProtectedApp: React.FC = () => {
   }
 
   if (location.pathname === '/login' || location.pathname === '/forgot-password') {
-    return <Navigate to={getFirstAllowedPath(hasPermission)} replace />;
+    const fallback = getFirstAllowedPath(hasPermission);
+    if (fallback) {
+      return <Navigate to={fallback} replace />;
+    }
   }
 
   return (
@@ -90,7 +115,7 @@ const ProtectedApp: React.FC = () => {
         <Route path="/targets" element={<ProtectedRoute path="/targets" element={<TargetsControl />} />} />
         <Route path="/settings" element={<ProtectedRoute path="/settings" element={<Settings />} />} />
         <Route path="/audit-log" element={<ProtectedRoute path="/audit-log" element={<AuditLog />} />} />
-        <Route path="*" element={<Navigate to={getFirstAllowedPath(hasPermission)} replace />} />
+        <Route path="*" element={<Navigate to={getFirstAllowedPath(hasPermission) || '/'} replace />} />
       </Routes>
     </Layout>
   );

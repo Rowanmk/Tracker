@@ -86,7 +86,8 @@ export const AuditLog: React.FC = () => {
     });
   }, [logs, pageFilter, staffFilter, teamFilter]);
 
-  const formatDateTime = (value: string) => {
+  const formatDateTime = (value?: string | null) => {
+    if (!value) return { date: 'Unknown', time: 'Unknown' };
     const date = new Date(value);
     return {
       date: date.toLocaleDateString('en-GB'),

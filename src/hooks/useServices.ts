@@ -8,14 +8,16 @@ const SERVICE_ORDER = ['Accounts', 'VAT', 'Self Assessments', 'Self Assessment']
 
 const sortServices = (servicesToSort: Service[]) => {
   return [...servicesToSort].sort((a, b) => {
-    const indexA = SERVICE_ORDER.indexOf(a.service_name);
-    const indexB = SERVICE_ORDER.indexOf(b.service_name);
+    const nameA = a.service_name || '';
+    const nameB = b.service_name || '';
+    const indexA = SERVICE_ORDER.indexOf(nameA);
+    const indexB = SERVICE_ORDER.indexOf(nameB);
     
     const weightA = indexA === -1 ? 999 : indexA;
     const weightB = indexB === -1 ? 999 : indexB;
     
     if (weightA === weightB) {
-      return a.service_name.localeCompare(b.service_name);
+      return nameA.localeCompare(nameB);
     }
     
     return weightA - weightB;
