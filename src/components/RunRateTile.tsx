@@ -89,24 +89,8 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
   } else {
     barValues = [...actualCumulative];
     expectedValues = [...expectedCumulative];
-    safeMaxValue = Math.max(...expectedCumulative, target, 1);
+    safeMaxValue = Math.max(...expectedCumulative, ...barValues, target, 1);
   }
-
-  const interpolatedExpectedValues = expectedValues.map((value, index) => {
-    const day = index + 1;
-
-    if (day <= wholeDaysToRender) {
-      return value;
-    }
-
-    if (day === wholeDaysToRender + 1 && partialDayProgress > 0) {
-      const previousValue = index > 0 ? expectedValues[index - 1] : 0;
-      return previousValue + (value - previousValue) * partialDayProgress;
-    }
-
-    const previousValue = index > 0 ? expectedValues[index - 1] : 0;
-    return previousValue;
-  });
 
   const displayedBarValues = barValues.map((value, index) => {
     const day = index + 1;
@@ -120,8 +104,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
       return previousValue + (value - previousValue) * partialDayProgress;
     }
 
-    const previousValue = index > 0 ? barValues[index - 1] : 0;
-    return previousValue;
+    return 0; // Do not show actuals for future days
   });
 
   const yAxisSteps =
@@ -217,7 +200,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
           })}
 
           <polyline
-            points={interpolatedExpectedValues
+            points={expectedValues
               .map((v, i) => {
                 const x = (i + 1) * 15 + LEFT_AXIS_MARGIN;
                 const y = BASELINE_Y - (v / safeMaxValue) * BAR_AREA_HEIGHT;
