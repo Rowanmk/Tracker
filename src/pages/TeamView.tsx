@@ -24,6 +24,7 @@ export const TeamView: React.FC = () => {
   const { services, loading: servicesLoading } = useServices();
 
   const [statsData, setStatsData] = useState<ServiceStats[]>([]);
+  const [activeServiceId, setActiveServiceId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -134,7 +135,6 @@ export const TeamView: React.FC = () => {
             const actual = monthlyActuals[i];
             
             // Rolling average is the sum of the current month and the 11 preceding months
-            // Example: For Jan 2026, it sums Feb 2025 to Jan 2026 (12 months) and divides by 12.
             let rollingSum = 0;
             for (let j = i - 11; j <= i; j++) {
               rollingSum += monthlyActuals[j];
@@ -167,6 +167,15 @@ export const TeamView: React.FC = () => {
     fetchStatsData();
   }, [allStaff, services, selectedTeamId, authLoading, servicesLoading]);
 
+  // Auto-select the first tab when data loads
+  useEffect(() => {
+    if (statsData.length > 0) {
+      if (!activeServiceId || !statsData.find(s => s.service.service_id === activeServiceId)) {
+        setActiveServiceId(statsData[0].service.service_id);
+      }
+    }
+  }, [statsData, activeServiceId]);
+
   if (loading || authLoading || servicesLoading) {
     return <div className="py-6 text-center text-gray-500">Loading Stats and Figures…</div>;
   }
@@ -174,6 +183,8 @@ export const TeamView: React.FC = () => {
   if (error) {
     return <div className="p-4 bg-red-50 border border-red-200 text-red-800 rounded-md">{error}</div>;
   }
+
+  const activeStat = statsData.find(s => s.service.service_id === activeServiceId);
 
   return (
     <div className="space-y-6">
@@ -187,49 +198,66 @@ export const TeamView: React.FC = () => {
           No data available for the selected team.
         </div>
       ) : (
-        <div className="space-y-8">
-          {statsData.map(stat => {
-            const latestMonth = stat.data[11];
-            
-            return (
-              <div key={stat.service.service_id} className="flex flex-col lg:flex-row gap-6">
-                {/* Left Tile: Measure Summary */}
-                <div className="w-full lg:w-1/4 bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6 flex flex-col justify-center items-center text-center transition-all duration-300">
-                  <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+        <div className="space-y-6">
+          {/* Tabbed Tiles */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {statsData.map(stat => {
+              const latestMonth = stat.data[11];
+              const isActive = activeServiceId === stat.service.service_id;
+              
+              return (
+                <button
+                  key={stat.service.service_id}
+                  onClick={() => setActiveServiceId(stat.service.service_id)}
+                  className={`p-5 rounded-xl border text-left transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001B47] ${
+                    isActive
+                      ? 'bg-[#001B47] border-[#001B47] shadow-lg transform scale-[1.02] z-10'
+                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-[#001B47] hover:shadow-md'
+                  }`}
+                >
+                  <h3 className={`text-lg font-bold mb-2 truncate ${isActive ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
                     {stat.service.service_name}
                   </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                    Performance Overview
+                  <div className="flex items-end gap-2">
+                    <span className={`text-3xl font-extrabold ${isActive ? 'text-[#FF8A2A]' : 'text-[#001B47] dark:text-blue-400'}`}>
+                      {latestMonth.rollingAverage.toFixed(1)}
+                    </span>
+                    <span className={`text-xs font-semibold uppercase tracking-wider mb-1 ${isActive ? 'text-gray-300' : 'text-gray-500 dark:text-gray-400'}`}>
+                      12m Avg
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Active Graph Area */}
+          {activeStat && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6 transition-all duration-300 animate-fade-in">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                    {activeStat.service.service_name} Performance
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    Monthly actuals vs 12-month rolling average
                   </p>
-                  
-                  <div className="w-full space-y-6">
-                    <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
-                      <div className="text-3xl font-extrabold text-[#001B47] dark:text-blue-400">
-                        {latestMonth.actual}
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mt-1 font-semibold">
-                        Latest Month Actual
-                      </div>
-                    </div>
-                    
-                    <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg">
-                      <div className="text-2xl font-bold text-[#FF8A2A]">
-                        {latestMonth.rollingAverage.toFixed(1)}
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mt-1 font-semibold">
-                        Current 12m Avg
-                      </div>
-                    </div>
+                </div>
+                <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 rounded-lg border border-gray-100 dark:border-gray-600 text-right">
+                  <div className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider">
+                    Latest Month Actual
+                  </div>
+                  <div className="text-2xl font-bold text-[#001B47] dark:text-blue-400">
+                    {activeStat.data[11].actual}
                   </div>
                 </div>
-
-                {/* Right Graph: Bar & Line Chart */}
-                <div className="w-full lg:w-3/4 bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6 transition-all duration-300">
-                  <ServiceComboChart data={stat.data} />
-                </div>
               </div>
-            );
-          })}
+              
+              <div className="w-full h-[400px]">
+                <ServiceComboChart data={activeStat.data} />
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
