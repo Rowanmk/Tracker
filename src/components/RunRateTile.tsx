@@ -16,8 +16,9 @@ const VIEWBOX_HEIGHT = 300;
 const BASELINE_Y = 250;
 const TOP_MARGIN = 20;
 const BAR_AREA_HEIGHT = BASELINE_Y - TOP_MARGIN;
-const LEFT_AXIS_MARGIN = 40;
-const RIGHT_PADDING = 20;
+const CHART_WIDTH = 800;
+const FIXED_LEFT_MARGIN = 60;
+const RIGHT_PADDING = 40;
 
 export const RunRateTile: React.FC<RunRateTileProps> = ({
   workingDays,
@@ -120,7 +121,11 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     return Number.isInteger(value) ? value.toString() : value.toFixed(0);
   };
 
-  const chartWidth = daysInSelectedMonth * 15 + LEFT_AXIS_MARGIN + RIGHT_PADDING;
+  const availableWidth = CHART_WIDTH - FIXED_LEFT_MARGIN - RIGHT_PADDING;
+  const daySlotWidth = availableWidth / Math.max(daysInSelectedMonth, 1);
+  const barWidth = Math.min(daySlotWidth * 0.8, 16);
+
+  const getX = (day: number) => FIXED_LEFT_MARGIN + ((day - 1) * daySlotWidth) + (daySlotWidth / 2);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[418px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
@@ -131,26 +136,18 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
 
       <div className="flex-1 flex flex-col justify-end p-3 pb-2 overflow-hidden">
         <svg
-          viewBox={`0 0 ${chartWidth} ${VIEWBOX_HEIGHT}`}
+          viewBox={`0 0 ${CHART_WIDTH} ${VIEWBOX_HEIGHT}`}
           preserveAspectRatio="none"
           className="w-full h-full"
           style={{ overflow: "hidden", display: "block" }}
         >
           <line
-            x1={LEFT_AXIS_MARGIN}
+            x1={FIXED_LEFT_MARGIN}
             y1={BASELINE_Y}
-            x2={LEFT_AXIS_MARGIN}
-            y2={TOP_MARGIN}
-            stroke="#999"
-            strokeWidth="1.5"
-          />
-          <line
-            x1={LEFT_AXIS_MARGIN}
-            y1={BASELINE_Y}
-            x2={daysInSelectedMonth * 15 + LEFT_AXIS_MARGIN}
+            x2={CHART_WIDTH - 20}
             y2={BASELINE_Y}
-            stroke="#001B47"
-            strokeWidth="2"
+            stroke="#6B7280"
+            strokeWidth="1"
           />
 
           {yAxisSteps.map((tick) => {
@@ -159,7 +156,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             return (
               <g key={tick}>
                 <text
-                  x={LEFT_AXIS_MARGIN - 6}
+                  x={FIXED_LEFT_MARGIN - 10}
                   y={y + 4}
                   textAnchor="end"
                   className="text-[10px] fill-gray-600 dark:fill-gray-400"
@@ -168,9 +165,9 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
                 </text>
                 {tick > 0 && (
                   <line
-                    x1={LEFT_AXIS_MARGIN}
+                    x1={FIXED_LEFT_MARGIN}
                     y1={y}
-                    x2={daysInSelectedMonth * 15 + LEFT_AXIS_MARGIN}
+                    x2={CHART_WIDTH - 20}
                     y2={y}
                     stroke="#E5E7EB"
                     strokeDasharray="4,4"
@@ -181,17 +178,17 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             );
           })}
 
-          {Array.from({ length: Math.ceil(daysInSelectedMonth / 5) }, (_, i) => {
+          {Array.from({ length: Math.floor(daysInSelectedMonth / 5) }, (_, i) => {
             const day = (i + 1) * 5;
             if (day > daysInSelectedMonth) return null;
-            const x = day * 15 + LEFT_AXIS_MARGIN;
+            const x = getX(day);
             return (
               <g key={day}>
                 <text
                   x={x}
                   y={BASELINE_Y + 15}
                   textAnchor="middle"
-                  className="text-xs fill-gray-600 dark:fill-gray-400"
+                  className="text-[10px] font-medium fill-gray-600 dark:fill-gray-400"
                 >
                   {day}
                 </text>
@@ -202,7 +199,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
           <polyline
             points={expectedValues
               .map((v, i) => {
-                const x = (i + 1) * 15 + LEFT_AXIS_MARGIN;
+                const x = getX(i + 1);
                 const y = BASELINE_Y - (v / safeMaxValue) * BAR_AREA_HEIGHT;
                 return `${x},${y}`;
               })
@@ -218,7 +215,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             const day = idx + 1;
             const ratio = safeMaxValue > 0 ? value / safeMaxValue : 0;
             const barHeight = Math.max(0, ratio * BAR_AREA_HEIGHT);
-            const x = day * 15 + LEFT_AXIS_MARGIN;
+            const x = getX(day);
 
             const isVisible = day <= wholeDaysToRender || (day === wholeDaysToRender + 1 && partialDayProgress > 0);
             
@@ -232,9 +229,9 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             return (
               <g key={day}>
                 <rect
-                  x={x - 5}
+                  x={x - barWidth / 2}
                   y={BASELINE_Y - barHeight}
-                  width={10}
+                  width={barWidth}
                   height={barHeight}
                   fill="#001B47"
                   rx={2}
@@ -246,9 +243,9 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
                 {isVisible && (
                   <text
                     x={x}
-                    y={BASELINE_Y - barHeight - 4}
+                    y={BASELINE_Y - barHeight - 6}
                     textAnchor="middle"
-                    className={`text-[8px] font-bold ${varianceColor}`}
+                    className={`text-[9px] font-bold ${varianceColor}`}
                     style={{
                       transition: "y 180ms ease-out",
                     }}
