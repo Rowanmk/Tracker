@@ -23,7 +23,7 @@ interface ServiceStats {
 const isAccountant = (role: string) => role === 'staff';
 
 export const TeamView: React.FC = () => {
-  const { allStaff, teams, selectedTeamId, loading: authLoading } = useAuth();
+  const { allStaff, selectedTeamId, loading: authLoading } = useAuth();
   const { services, loading: servicesLoading } = useServices();
 
   const [statsData, setStatsData] = useState<ServiceStats[]>([]);
@@ -85,14 +85,10 @@ export const TeamView: React.FC = () => {
 
         if (fetchError) throw fetchError;
 
-        const accountantIds = selectedTeamId === 'all' || !selectedTeamId
-          ? teams.map(t => t.id)
-          : [Number(selectedTeamId)];
-
         const { data: targets, error: targetsError } = await supabase
           .from('monthlytargets')
-          .select('team_id, month, year, target_value')
-          .in('team_id', accountantIds)
+          .select('staff_id, month, year, target_value')
+          .in('staff_id', staffIds)
           .gte('year', firstMonth.year)
           .lte('year', lastMonth.year);
 
@@ -225,7 +221,7 @@ export const TeamView: React.FC = () => {
     };
 
     fetchStatsData();
-  }, [allStaff, teams, services, selectedTeamId, authLoading, servicesLoading]);
+  }, [allStaff, services, selectedTeamId, authLoading, servicesLoading]);
 
   useEffect(() => {
     if (statsData.length > 0) {

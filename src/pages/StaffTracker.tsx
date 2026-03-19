@@ -20,7 +20,7 @@ const isAccountant = (role: string) => role === 'staff';
 
 export const StaffTracker: React.FC = () => {
   const { selectedMonth, selectedFinancialYear } = useDate();
-  const { currentStaff, selectedTeamId, teams, allStaff } = useAuth();
+  const { currentStaff, selectedTeamId, allStaff } = useAuth();
   const { services } = useServices();
   const { staffPerformance, teamTarget } = useStaffPerformance("desc");
 
@@ -37,7 +37,7 @@ export const StaffTracker: React.FC = () => {
   const year = selectedMonth >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
   const daysInMonth = new Date(year, selectedMonth, 0).getDate();
 
-  const selectedTeamMembers = useMemo(() => {
+  const selectedAccountants = useMemo(() => {
     const visibleAccountants = allStaff.filter((staff) => !staff.is_hidden && isAccountant(staff.role));
 
     if (selectedTeamId === "all" || !selectedTeamId) {
@@ -50,8 +50,8 @@ export const StaffTracker: React.FC = () => {
   }, [allStaff, selectedTeamId]);
 
   const editableStaffIds = useMemo(
-    () => selectedTeamMembers.map((staff) => staff.staff_id),
-    [selectedTeamMembers]
+    () => selectedAccountants.map((staff) => staff.staff_id),
+    [selectedAccountants]
   );
 
   const tableLabel = useMemo(() => {
@@ -104,16 +104,11 @@ export const StaffTracker: React.FC = () => {
     }
 
     let aggregatedTargets: Record<number, number> = {};
-    if (selectedTeamId === 'all' || !selectedTeamId) {
-      for (const accountant of teams) {
-        const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, undefined, accountant.id);
-        Object.entries(perService).forEach(([sid, val]) => {
-          aggregatedTargets[Number(sid)] = (aggregatedTargets[Number(sid)] || 0) + val;
-        });
-      }
-    } else {
-      const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, undefined, Number(selectedTeamId));
-      aggregatedTargets = perService;
+    for (const staffId of editableStaffIds) {
+      const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, staffId);
+      Object.entries(perService).forEach(([sid, val]) => {
+        aggregatedTargets[Number(sid)] = (aggregatedTargets[Number(sid)] || 0) + val;
+      });
     }
 
     const { data: activities } = await supabase

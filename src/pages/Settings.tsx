@@ -18,7 +18,6 @@ type StaffLeaveWithStaff = StaffLeave & {
   };
 };
 
-type TeamStatus = 'active' | 'inactive' | 'all';
 type AccessLevel = 'admin' | 'user';
 type WorkCategory = 'accountant' | 'assistant';
 
@@ -30,13 +29,8 @@ type StaffWithDerivedCategories = Staff & {
 const deriveAccessLevel = (role: string | null | undefined): AccessLevel =>
   role === 'admin' ? 'admin' : 'user';
 
-const deriveWorkCategory = (staffMember: Staff): WorkCategory => {
-  const normalizedName = staffMember.name.trim().toLowerCase();
-  if (staffMember.team_id !== null || normalizedName.includes('assistant')) {
-    return 'accountant';
-  }
-  return 'assistant';
-};
+const deriveWorkCategory = (staffMember: Staff): WorkCategory =>
+  staffMember.role === 'staff' ? 'accountant' : 'assistant';
 
 const deriveStaffCategories = (staffMember: Staff): StaffWithDerivedCategories => ({
   ...staffMember,
@@ -45,7 +39,7 @@ const deriveStaffCategories = (staffMember: Staff): StaffWithDerivedCategories =
 });
 
 export const Settings: React.FC = () => {
-  const { currentStaff, isAdmin, refreshStaff, allStaff: authStaff, teams: authTeams } = useAuth();
+  const { currentStaff, isAdmin, refreshStaff } = useAuth();
   const [allUsers, setAllUsers] = useState<StaffWithDerivedCategories[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,7 +52,6 @@ export const Settings: React.FC = () => {
   const [newUserRegion, setNewUserRegion] = useState<
     'england-and-wales' | 'scotland' | 'northern-ireland'
   >('england-and-wales');
-  const [newUserAccountantId, setNewUserAccountantId] = useState<string>('');
   const [isAddingUser, setIsAddingUser] = useState(false);
 
   const [editingUser, setEditingUser] = useState<StaffWithDerivedCategories | null>(null);
@@ -71,7 +64,6 @@ export const Settings: React.FC = () => {
       | 'england-and-wales'
       | 'scotland'
       | 'northern-ireland',
-    accountantId: '',
     security_question: '',
     security_answer: '',
   });
@@ -96,17 +88,6 @@ export const Settings: React.FC = () => {
 
   const { selectedFinancialYear, setSelectedFinancialYear } = useDate();
 
-  const accountantOptions = useMemo(
-    () =>
-      authStaff
-        .filter((staffMember) => {
-          const derived = deriveStaffCategories(staffMember);
-          return !staffMember.is_hidden && derived.workCategory === 'accountant';
-        })
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [authStaff]
-  );
-
   const assistantUsers = useMemo(
     () =>
       allUsers.filter(
@@ -122,18 +103,6 @@ export const Settings: React.FC = () => {
       ),
     [allUsers]
   );
-
-  const assistantSummary = useMemo(() => {
-    return assistantUsers
-      .map((assistant) => ({
-        ...assistant,
-        assignedAccountant:
-          assistant.team_id !== null
-            ? teams.find((team) => team.id === assistant.team_id)?.name || 'Unknown'
-            : 'Unassigned',
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [assistantUsers, teams]);
 
   const pages = [
     { path: "/", label: "Dashboard" },
@@ -259,16 +228,9 @@ export const Settings: React.FC = () => {
     }
   };
 
-  const getRoleValueFromAccessLevel = (accessLevel: AccessLevel) => {
-    return accessLevel === 'admin' ? 'admin' : 'staff';
-  };
-
-  const getTeamIdFromWorkCategory = (workCategory: WorkCategory, accountantId: string) => {
-    if (workCategory === 'assistant') {
-      return accountantId ? Number(accountantId) : null;
-    }
-
-    return null;
+  const getRoleValueFromAccessLevel = (accessLevel: AccessLevel, workCategory: WorkCategory) => {
+    if (accessLevel === 'admin') return 'admin';
+    return workCategory === 'accountant' ? 'staff' : 'user';
   };
 
   const handleAddUser = async (e: React.FormEvent) => {
@@ -282,9 +244,9 @@ export const Settings: React.FC = () => {
       const insertPayload: Database['public']['Tables']['staff']['Insert'] = {
         name: newUserName.trim(),
         password: newUserPassword.trim() || null,
-        role: getRoleValueFromAccessLevel(newUserAccessLevel),
+        role: getRoleValueFromAccessLevel(newUserAccessLevel, newUserWorkCategory),
         home_region: newUserRegion,
-        team_id: getTeamIdFromWorkCategory(newUserWorkCategory, newUserAccountantId),
+        team_id: null,
         is_hidden: false,
       };
 
@@ -306,7 +268,6 @@ export const Settings: React.FC = () => {
         setNewUserAccessLevel('user');
         setNewUserWorkCategory('assistant');
         setNewUserRegion('england-and-wales');
-        setNewUserAccountantId('');
         await refreshStaff();
         await createAuditLog({
           pagePath: '/settings',
@@ -322,7 +283,6 @@ export const Settings: React.FC = () => {
             work_category: newUserWorkCategory,
             role: data.role,
             home_region: data.home_region,
-            assigned_accountant_id: data.team_id,
           },
         });
         setTimedFeedback('Successfully added user');
@@ -345,7 +305,6 @@ export const Settings: React.FC = () => {
         | 'england-and-wales'
         | 'scotland'
         | 'northern-ireland') || 'england-and-wales',
-      accountantId: user.team_id !== null ? String(user.team_id) : '',
       security_question: user.security_question || '',
       security_answer: user.security_answer || '',
     });
@@ -360,11 +319,11 @@ export const Settings: React.FC = () => {
       const updatePayload: Database['public']['Tables']['staff']['Update'] = {
         name: editForm.name.trim(),
         password: editForm.password.trim() || null,
-        role: getRoleValueFromAccessLevel(editForm.accessLevel),
+        role: getRoleValueFromAccessLevel(editForm.accessLevel, editForm.workCategory),
         home_region: editForm.home_region,
         security_question: editForm.security_question.trim() || null,
         security_answer: editForm.security_answer.trim() || null,
-        team_id: getTeamIdFromWorkCategory(editForm.workCategory, editForm.accountantId),
+        team_id: null,
       };
 
       const { data, error: updateError } = await supabase
@@ -399,7 +358,6 @@ export const Settings: React.FC = () => {
             work_category: editForm.workCategory,
             role: data.role,
             home_region: data.home_region,
-            assigned_accountant_id: data.team_id,
           },
         });
         setTimedFeedback('Successfully updated user');
@@ -698,13 +656,7 @@ export const Settings: React.FC = () => {
                 </select>
                 <select
                   value={newUserWorkCategory}
-                  onChange={e => {
-                    const value = e.target.value as WorkCategory;
-                    setNewUserWorkCategory(value);
-                    if (value === 'accountant') {
-                      setNewUserAccountantId('');
-                    }
-                  }}
+                  onChange={e => setNewUserWorkCategory(e.target.value as WorkCategory)}
                   className="px-3 py-2 border rounded-md"
                 >
                   <option value="accountant">Accountant</option>
@@ -726,20 +678,6 @@ export const Settings: React.FC = () => {
                 >
                   {isAddingUser ? 'Adding...' : 'Add User'}
                 </button>
-                {newUserWorkCategory === 'assistant' && (
-                  <select
-                    value={newUserAccountantId}
-                    onChange={e => setNewUserAccountantId(e.target.value)}
-                    className="px-3 py-2 border rounded-md md:col-span-2"
-                  >
-                    <option value="">Assign accountant (optional)</option>
-                    {accountantOptions.map(accountant => (
-                      <option key={accountant.staff_id} value={String(accountant.team_id ?? '')}>
-                        {accountant.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
               </form>
             </div>
 
@@ -756,7 +694,6 @@ export const Settings: React.FC = () => {
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Access</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Work Category</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned Accountant</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Region</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                       </tr>
@@ -772,13 +709,6 @@ export const Settings: React.FC = () => {
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-500">
                               {workCategoryLabels[user.workCategory]}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-500">
-                              {user.workCategory === 'assistant'
-                                ? user.team_id !== null
-                                  ? authTeams.find(team => team.id === user.team_id)?.name || 'Unknown'
-                                  : 'Unassigned'
-                                : '—'}
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-500">
                               {regionLabels[user.home_region as keyof typeof regionLabels]}
@@ -831,33 +761,21 @@ export const Settings: React.FC = () => {
               </div>
 
               <div className="bg-white shadow rounded-lg p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Assistant Assignments</h3>
-                {assistantSummary.length === 0 ? (
-                  <div className="py-8 text-center text-sm text-gray-500 border border-dashed border-gray-300 rounded-lg">
-                    No assistants found.
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Role Structure</h3>
+                <div className="space-y-4 text-sm text-gray-600">
+                  <div className="border border-gray-200 rounded-lg p-4">
+                    <div className="font-semibold text-gray-900 mb-1">Access Level</div>
+                    <p>Users can be categorised independently as User or Admin.</p>
                   </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assistant</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned Accountant</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Access</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {assistantSummary.map(assistant => (
-                          <tr key={assistant.staff_id}>
-                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{assistant.name}</td>
-                            <td className="px-4 py-3 text-sm text-gray-500">{assistant.assignedAccountant}</td>
-                            <td className="px-4 py-3 text-sm text-gray-500">{accessLevelLabels[assistant.accessLevel]}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="border border-gray-200 rounded-lg p-4">
+                    <div className="font-semibold text-gray-900 mb-1">Work Category</div>
+                    <p>Users can also be categorised independently as Accountant or Assistant.</p>
                   </div>
-                )}
+                  <div className="border border-gray-200 rounded-lg p-4">
+                    <div className="font-semibold text-gray-900 mb-1">Reporting Basis</div>
+                    <p>All reporting, targets, trackers and figures now run directly by accountant user records.</p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -876,7 +794,7 @@ export const Settings: React.FC = () => {
               </button>
             </div>
             <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-              Access permissions are controlled by the User/Admin categorisation. Accountant/Assistant is an operational categorisation used for settings and assignment.
+              Access permissions are controlled by the User/Admin categorisation. Accountant/Assistant is an operational categorisation used for reporting structure.
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
@@ -990,7 +908,6 @@ export const Settings: React.FC = () => {
                       setEditForm(f => ({
                         ...f,
                         workCategory: e.target.value as WorkCategory,
-                        accountantId: e.target.value === 'accountant' ? '' : f.accountantId,
                       }))
                     }
                     className="w-full px-3 py-2 border rounded-md"
@@ -1000,28 +917,6 @@ export const Settings: React.FC = () => {
                   </select>
                 </div>
               </div>
-              {editForm.workCategory === 'assistant' && (
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Assigned Accountant</label>
-                  <select
-                    value={editForm.accountantId}
-                    onChange={e =>
-                      setEditForm(f => ({
-                        ...f,
-                        accountantId: e.target.value,
-                      }))
-                    }
-                    className="w-full px-3 py-2 border rounded-md"
-                  >
-                    <option value="">Unassigned</option>
-                    {accountantOptions.map(accountant => (
-                      <option key={accountant.staff_id} value={String(accountant.team_id ?? '')}>
-                        {accountant.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Region</label>
                 <select

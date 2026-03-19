@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabase/client";
 import { loadTargets } from "../utils/loadTargets";
 import { useAuth } from "../context/AuthContext";
@@ -41,7 +41,7 @@ const isAccountant = (role: string) => role === 'staff';
 
 export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResult => {
   const { selectedMonth, selectedYear, financialYear } = useDate();
-  const { allStaff, loading: authLoading, selectedTeamId, teams } = useAuth();
+  const { allStaff, loading: authLoading, selectedTeamId } = useAuth();
   const { services, loading: servicesLoading } = useServices();
 
   const [performanceData, setPerformanceData] = useState<StaffPerformance[]>([]);
@@ -51,8 +51,13 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const accountantStaff = useMemo(
+    () => allStaff.filter(s => !s.is_hidden && isAccountant(s.role)),
+    [allStaff]
+  );
+
   const fetchPerformanceData = useCallback(async () => {
-    if (authLoading || servicesLoading || allStaff.length === 0 || services.length === 0) {
+    if (authLoading || servicesLoading || accountantStaff.length === 0 || services.length === 0) {
       setLoading(false);
       return;
     }
@@ -64,11 +69,9 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
       const startDate = new Date(financialYear.start, 3, 1);
       const endDate = new Date(financialYear.end, 2, 31);
 
-      const visibleAccountants = allStaff.filter(s => !s.is_hidden && isAccountant(s.role));
-
       const filteredStaff = selectedTeamId === "all" || !selectedTeamId
-        ? visibleAccountants
-        : visibleAccountants.filter(s => String(s.team_id) === selectedTeamId);
+        ? accountantStaff
+        : accountantStaff.filter(s => String(s.staff_id) === selectedTeamId);
 
       if (filteredStaff.length === 0) {
         setPerformanceData([]);
@@ -79,14 +82,9 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
       }
 
       let totalTeamTarget = 0;
-      if (selectedTeamId === 'all' || !selectedTeamId) {
-        for (const team of teams) {
-          const { totalTarget } = await loadTargets(selectedMonth, financialYear, undefined, team.id);
-          totalTeamTarget += totalTarget;
-        }
-      } else {
-        const { totalTarget } = await loadTargets(selectedMonth, financialYear, undefined, Number(selectedTeamId));
-        totalTeamTarget = totalTarget;
+      for (const staffMember of filteredStaff) {
+        const { totalTarget } = await loadTargets(selectedMonth, financialYear, staffMember.staff_id);
+        totalTeamTarget += totalTarget;
       }
       setTeamTarget(totalTeamTarget);
 
@@ -112,7 +110,7 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
         const bagels = generateBagelDays(finalActivities, bankHolidays, filteredStaff, bagelServiceId, startOfMonth, endOfMonth);
         finalActivities = [...finalActivities, ...bagels];
       }
-      setDailyActivities(finalActivities as any);
+      setDailyActivities(finalActivities as UseStaffPerformanceResult['dailyActivities']);
 
       const { data: historicalActivities } = await supabase
         .from("dailyactivity")
@@ -167,6 +165,8 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
             }
           });
 
+          const { totalTarget } = await loadTargets(selectedMonth, financialYear, staff.staff_id);
+
           const staffHistorical = finalHistorical.filter(a => a.staff_id === staff.staff_id);
           const monthlyTotals: Record<string, number> = {};
           staffHistorical.forEach(a => {
@@ -180,12 +180,12 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
           const totalHistorical = Object.values(monthlyTotals).reduce((s, v) => s + v, 0);
 
           const staffPrevActivities = finalPrevMonth.filter(a => a.staff_id === staff.staff_id);
-          staffPrevActivities.reduce((s, a) => {
+          const previousMonthTotal = staffPrevActivities.reduce((sum, a) => {
             const service = services.find(srv => srv.service_id === a.service_id);
             if (service?.service_name !== 'Bagel Days') {
-              return s + (a.delivered_count || 0);
+              return sum + (a.delivered_count || 0);
             }
-            return s;
+            return sum;
           }, 0);
 
           return {
@@ -193,10 +193,10 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
             name: staff.name,
             services: serviceData,
             total: totalDelivered,
-            target: 0,
-            achieved_percent: 0,
+            target: totalTarget,
+            achieved_percent: totalTarget > 0 ? (totalDelivered / totalTarget) * 100 : 0,
             historicalAverage: historicalMonthsCount > 0 ? totalHistorical / historicalMonthsCount : 0,
-            previousMonthRatio: 0,
+            previousMonthRatio: previousMonthTotal > 0 ? totalDelivered / previousMonthTotal : 0,
             team_id: staff.team_id
           };
         })
@@ -215,7 +215,7 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
     } finally {
       setLoading(false);
     }
-  }, [authLoading, servicesLoading, allStaff, selectedMonth, selectedYear, financialYear, sortMode, selectedTeamId, services, teams]);
+  }, [authLoading, servicesLoading, accountantStaff, selectedMonth, selectedYear, financialYear, sortMode, selectedTeamId, services]);
 
   useEffect(() => {
     fetchPerformanceData();

@@ -27,9 +27,7 @@ export async function loadTargets(
     .eq('month', month)
     .eq('year', expectedYear);
 
-  if (staffId && teamId) {
-    query = query.or(`staff_id.eq.${staffId},team_id.eq.${teamId}`);
-  } else if (staffId) {
+  if (staffId) {
     query = query.eq('staff_id', staffId);
   } else if (teamId) {
     query = query.eq('team_id', teamId);
