@@ -42,22 +42,26 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
       setLoading(true);
       try {
         const targetMap: Record<number, number> = {};
-        
-        if (selectedTeamId === 'all' || !selectedTeamId) {
-          for (const team of teams) {
-            const { perService } = await loadTargets(month, financialYear, undefined, team.id);
+
+        if (selectedTeamId === 'team-view' || selectedTeamId === 'all' || !selectedTeamId) {
+          for (const staffMember of staffPerformance) {
+            const { perService } = await loadTargets(month, financialYear, staffMember.staff_id);
             Object.entries(perService).forEach(([serviceId, value]) => {
-              const sid = parseInt(serviceId);
+              const sid = parseInt(serviceId, 10);
               targetMap[sid] = (targetMap[sid] || 0) + value;
             });
           }
         } else {
-          const { perService } = await loadTargets(month, financialYear, undefined, Number(selectedTeamId));
-          Object.entries(perService).forEach(([serviceId, value]) => {
-            const sid = parseInt(serviceId);
-            targetMap[sid] = (targetMap[sid] || 0) + value;
-          });
+          const selectedStaffId = Number(selectedTeamId);
+          if (!Number.isNaN(selectedStaffId)) {
+            const { perService } = await loadTargets(month, financialYear, selectedStaffId);
+            Object.entries(perService).forEach(([serviceId, value]) => {
+              const sid = parseInt(serviceId, 10);
+              targetMap[sid] = value;
+            });
+          }
         }
+
         setServiceTargets(targetMap);
       } catch {
         setServiceTargets({});
@@ -67,7 +71,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     };
 
     fetchServiceTargets();
-  }, [month, financialYear, selectedTeamId, teams]);
+  }, [month, financialYear, selectedTeamId, teams, staffPerformance]);
 
   const getBarColor = (delivered: number, target: number) => {
     const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
@@ -76,11 +80,11 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     const twentyFivePercent = target * 0.25;
 
     if (difference >= 0) {
-      return '#008A00'; // Green (ahead or on target)
+      return '#008A00';
     } else if (difference >= -twentyFivePercent) {
-      return '#FF8A2A'; // Orange (less than 25% behind)
+      return '#FF8A2A';
     } else {
-      return '#FF3B30'; // Red (more than 25% behind)
+      return '#FF3B30';
     }
   };
 
