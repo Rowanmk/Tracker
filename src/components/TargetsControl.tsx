@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
@@ -32,6 +33,7 @@ interface LocalInputState {
 }
 
 export const TargetsControl: React.FC = () => {
+  const navigate = useNavigate();
   const { teams, loading: authLoading, error: authError } = useAuth();
   const { services, loading: servicesLoading, error: servicesError } = useServices();
 
@@ -363,19 +365,6 @@ export const TargetsControl: React.FC = () => {
     }
   };
 
-  const confirmNavigation = () => {
-    setShowConfirmDialog(false);
-    if (pendingAction) {
-      pendingAction();
-      setPendingAction(null);
-    }
-  };
-
-  const cancelNavigation = () => {
-    setShowConfirmDialog(false);
-    setPendingAction(null);
-  };
-
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (hasUnsavedChanges) {
@@ -387,6 +376,29 @@ export const TargetsControl: React.FC = () => {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (!hasUnsavedChanges) return;
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+
+      const target = e.target as HTMLElement;
+      const anchor = target.closest('a');
+
+      if (anchor && anchor.href) {
+        const url = new URL(anchor.href);
+        if (url.origin === window.location.origin && url.pathname !== window.location.pathname) {
+          e.preventDefault();
+          e.stopPropagation();
+          setPendingAction(() => () => navigate(url.pathname + url.search + url.hash));
+          setShowConfirmDialog(true);
+        }
+      }
+    };
+
+    document.addEventListener('click', handleClick, { capture: true });
+    return () => document.removeEventListener('click', handleClick, { capture: true });
+  }, [hasUnsavedChanges, navigate]);
 
   const monthData = getFinancialYearMonths();
   const financialYears = getFinancialYears();
@@ -470,32 +482,54 @@ export const TargetsControl: React.FC = () => {
         </div>
       )}
 
-      {hasUnsavedChanges && (
-        <div className="fixed bottom-8 right-8 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 p-5 z-50 flex flex-col gap-4 animate-slide-up max-w-sm">
-          <div className="flex items-start gap-3">
-            <div className="bg-yellow-100 dark:bg-yellow-900/30 p-2 rounded-full">
-              <svg className="w-6 h-6 text-yellow-600 dark:text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
+      {showConfirmDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4 w-full animate-slide-up">
+            <div className="flex items-start gap-3 mb-6">
+              <div className="bg-yellow-100 dark:bg-yellow-900/30 p-2 rounded-full flex-shrink-0">
+                <svg className="w-6 h-6 text-yellow-600 dark:text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Unsaved Changes
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  You have entries that have not yet been saved. Please choose an action.
+                </p>
+              </div>
             </div>
-            <div>
-              <h4 className="text-base font-bold text-gray-900 dark:text-white">Unsaved Entries</h4>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">You have entries that have not yet been saved. Please choose an action.</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowConfirmDialog(false);
+                  setHasUnsavedChanges(false);
+                  if (pendingAction) {
+                    pendingAction();
+                    setPendingAction(null);
+                  }
+                }}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-md transition-colors"
+              >
+                Ignore
+              </button>
+              <button
+                onClick={async () => {
+                  const success = await handleSaveTargets();
+                  if (success) {
+                    setShowConfirmDialog(false);
+                    if (pendingAction) {
+                      pendingAction();
+                      setPendingAction(null);
+                    }
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-md transition-colors shadow-sm"
+              >
+                save updates
+              </button>
             </div>
-          </div>
-          <div className="flex justify-end gap-3 mt-2">
-            <button
-              onClick={() => fetchTargets(selectedFinancialYear)}
-              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-md transition-colors"
-            >
-              Ignore
-            </button>
-            <button
-              onClick={() => handleSaveTargets()}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-md transition-colors shadow-sm"
-            >
-              save updates
-            </button>
           </div>
         </div>
       )}
@@ -541,7 +575,7 @@ export const TargetsControl: React.FC = () => {
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         {targetData.map((team) => (
           <div
             key={team.team_id}
@@ -559,7 +593,7 @@ export const TargetsControl: React.FC = () => {
               style={{ scrollBehavior: 'smooth' }}
             >
               <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-                <div className="w-36 flex-shrink-0 px-3 py-2 border-r border-gray-200 dark:border-gray-600">
+                <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600">
                   <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                     Service
                   </span>
@@ -567,7 +601,7 @@ export const TargetsControl: React.FC = () => {
 
                 <div className="flex flex-1 w-full">
                   {monthData.map((m) => (
-                    <div key={m.number} className="flex-1 min-w-0 px-1 py-2 text-center border-r border-gray-200 dark:border-gray-600">
+                    <div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600">
                       <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
                         {m.name}
                       </span>
@@ -575,14 +609,14 @@ export const TargetsControl: React.FC = () => {
                   ))}
                 </div>
 
-                <div className="w-20 flex-shrink-0 px-2 py-2 text-center border-l border-gray-200 dark:border-gray-600">
+                <div className="w-20 flex-shrink-0 px-2 py-1.5 text-center border-l border-gray-200 dark:border-gray-600">
                   <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                     Total
                   </span>
                 </div>
               </div>
 
-              <div className="divide-y divide-gray-200 dark:divide-gray-700">
+              <div className="border-b border-gray-200 dark:border-gray-700">
                 {targetableServices.map((service, serviceIdx) => {
                   const annualTotal = calculateAnnualTotal(team.team_id, service.service_name);
 
@@ -595,7 +629,7 @@ export const TargetsControl: React.FC = () => {
                           : 'bg-gray-50 dark:bg-gray-700'
                       } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
                     >
-                      <div className="w-36 flex-shrink-0 px-3 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center">
+                      <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center">
                         <span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
                           {service.service_name}
                         </span>
@@ -605,7 +639,7 @@ export const TargetsControl: React.FC = () => {
                         {monthData.map((m) => {
                           const inputKey = getInputKey(team.team_id, m.number, service.service_name);
                           return (
-                            <div key={m.number} className="flex-1 min-w-0 px-1 py-1 border-r border-gray-200 dark:border-gray-600">
+                            <div key={m.number} className="flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600">
                               <input
                                 ref={(el) => {
                                   if (el) {
@@ -645,24 +679,24 @@ export const TargetsControl: React.FC = () => {
                                     e.currentTarget.value
                                   )
                                 }
-                                className="w-full px-1 py-1 h-7 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                                className="w-full h-full px-1 py-1.5 bg-transparent border-0 text-center text-xs font-medium text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-colors no-spinner"
                               />
                             </div>
                           );
                         })}
                       </div>
 
-                      <div className="w-20 flex-shrink-0 px-2 py-1.5 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center">
-                        <div className="px-1 py-1 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-xs font-bold text-gray-900 dark:text-white w-full">
+                      <div className="w-20 flex-shrink-0 p-0 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center bg-gray-50 dark:bg-gray-700/50">
+                        <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">
                           {annualTotal}
-                        </div>
+                        </span>
                       </div>
                     </div>
                   );
                 })}
 
                 <div className="flex w-full bg-gray-200 dark:bg-gray-600 border-t border-gray-300 dark:border-gray-500">
-                  <div className="w-36 flex-shrink-0 px-3 py-2 border-r border-gray-300 dark:border-gray-500 flex items-center">
+                  <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-300 dark:border-gray-500 flex items-center">
                     <span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
                       Monthly Total
                     </span>
@@ -672,19 +706,19 @@ export const TargetsControl: React.FC = () => {
                     {monthData.map((m) => {
                       const monthTotal = calculateMonthlyTotal(team.team_id, m.number);
                       return (
-                        <div key={`total-${m.number}`} className="flex-1 min-w-0 px-1 py-1.5 border-r border-gray-300 dark:border-gray-500">
-                          <div className="px-1 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-xs font-bold text-gray-900 dark:text-white">
+                        <div key={`total-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-gray-300 dark:border-gray-500 flex items-center justify-center">
+                          <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">
                             {monthTotal}
-                          </div>
+                          </span>
                         </div>
                       );
                     })}
                   </div>
 
-                  <div className="w-20 flex-shrink-0 px-2 py-1.5 border-l border-gray-300 dark:border-gray-500 flex items-center justify-center">
-                    <div className="px-1 py-1 bg-blue-600 dark:bg-blue-700 border border-blue-700 dark:border-blue-800 rounded-md text-center text-xs font-bold text-white w-full">
+                  <div className="w-20 flex-shrink-0 p-0 border-l border-gray-300 dark:border-gray-500 flex items-center justify-center bg-blue-600 dark:bg-blue-700">
+                    <span className="text-xs font-bold text-white py-1.5">
                       {monthData.reduce((sum, m) => sum + calculateMonthlyTotal(team.team_id, m.number), 0)}
-                    </div>
+                    </span>
                   </div>
                 </div>
               </div>
@@ -708,7 +742,7 @@ export const TargetsControl: React.FC = () => {
           style={{ scrollBehavior: 'smooth' }}
         >
           <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-            <div className="w-36 flex-shrink-0 px-3 py-2 border-r border-gray-200 dark:border-gray-600">
+            <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600">
               <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                 Service
               </span>
@@ -716,7 +750,7 @@ export const TargetsControl: React.FC = () => {
 
             <div className="flex flex-1 w-full">
               {monthData.map((m) => (
-                <div key={m.number} className="flex-1 min-w-0 px-1 py-2 text-center border-r border-gray-200 dark:border-gray-600">
+                <div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600">
                   <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
                     {m.name}
                   </span>
@@ -724,14 +758,14 @@ export const TargetsControl: React.FC = () => {
               ))}
             </div>
 
-            <div className="w-20 flex-shrink-0 px-2 py-2 text-center border-l border-gray-200 dark:border-gray-600">
+            <div className="w-20 flex-shrink-0 px-2 py-1.5 text-center border-l border-gray-200 dark:border-gray-600">
               <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                 Total
               </span>
             </div>
           </div>
 
-          <div className="divide-y divide-gray-200 dark:divide-gray-700">
+          <div className="border-b border-gray-200 dark:border-gray-700">
             {targetableServices.map((service, serviceIdx) => {
               const annualTotal = calculateServiceAnnualTotal(service.service_name);
 
@@ -744,7 +778,7 @@ export const TargetsControl: React.FC = () => {
                       : 'bg-gray-50 dark:bg-gray-700'
                   } hover:bg-purple-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
                 >
-                  <div className="w-36 flex-shrink-0 px-3 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center">
+                  <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center">
                     <span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
                       {service.service_name}
                     </span>
@@ -754,26 +788,26 @@ export const TargetsControl: React.FC = () => {
                     {monthData.map((m) => {
                       const monthTotal = calculateServiceMonthlyTotal(m.number, service.service_name);
                       return (
-                        <div key={`${service.service_id}-${m.number}`} className="flex-1 min-w-0 px-1 py-1.5 border-r border-gray-200 dark:border-gray-600">
-                          <div className="px-1 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-xs font-bold text-gray-900 dark:text-white">
+                        <div key={`${service.service_id}-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600 flex items-center justify-center">
+                          <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">
                             {monthTotal}
-                          </div>
+                          </span>
                         </div>
                       );
                     })}
                   </div>
 
-                  <div className="w-20 flex-shrink-0 px-2 py-1.5 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center">
-                    <div className="px-1 py-1 bg-purple-100 dark:bg-purple-900/30 border border-purple-300 dark:border-purple-700 rounded-md text-center text-xs font-bold text-purple-900 dark:text-purple-200 w-full">
+                  <div className="w-20 flex-shrink-0 p-0 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center bg-purple-50 dark:bg-purple-900/20">
+                    <span className="text-xs font-bold text-purple-900 dark:text-purple-200 py-1.5">
                       {annualTotal}
-                    </div>
+                    </span>
                   </div>
                 </div>
               );
             })}
 
             <div className="flex w-full bg-purple-200 dark:bg-purple-900/50 border-t border-purple-300 dark:border-purple-700">
-              <div className="w-36 flex-shrink-0 px-3 py-2 border-r border-purple-300 dark:border-purple-700 flex items-center">
+              <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-purple-300 dark:border-purple-700 flex items-center">
                 <span className="text-xs font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
                   Grand Total
                 </span>
@@ -785,62 +819,24 @@ export const TargetsControl: React.FC = () => {
                     return sum + calculateServiceMonthlyTotal(m.number, service.service_name);
                   }, 0);
                   return (
-                    <div key={`grand-${m.number}`} className="flex-1 min-w-0 px-1 py-1.5 border-r border-purple-300 dark:border-purple-700">
-                      <div className="px-1 py-1 bg-white dark:bg-gray-700 border border-purple-300 dark:border-purple-700 rounded-md text-center text-xs font-bold text-purple-900 dark:text-purple-200">
+                    <div key={`grand-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-purple-300 dark:border-purple-700 flex items-center justify-center">
+                      <span className="text-xs font-bold text-purple-900 dark:text-purple-200 py-1.5">
                         {monthGrandTotal}
-                      </div>
+                      </span>
                     </div>
                   );
                 })}
               </div>
 
-              <div className="w-20 flex-shrink-0 px-2 py-1.5 border-l border-purple-300 dark:border-purple-700 flex items-center justify-center">
-                <div className="px-1 py-1 bg-purple-600 dark:bg-purple-700 border border-purple-700 dark:border-purple-800 rounded-md text-center text-xs font-bold text-white w-full">
+              <div className="w-20 flex-shrink-0 p-0 border-l border-purple-300 dark:border-purple-700 flex items-center justify-center bg-purple-600 dark:bg-purple-700">
+                <span className="text-xs font-bold text-white py-1.5">
                   {targetableServices.reduce((sum, service) => sum + calculateServiceAnnualTotal(service.service_name), 0)}
-                </div>
+                </span>
               </div>
             </div>
           </div>
         </div>
       </div>
-
-      {showConfirmDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 max-w-sm mx-4">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
-              Unsaved Changes
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              You have unsaved target changes. Do you want to save before leaving?
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={cancelNavigation}
-                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmNavigation}
-                className="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-700 font-medium"
-              >
-                Ignore
-              </button>
-              <button
-                onClick={async () => {
-                  const success = await handleSaveTargets();
-                  if (success) {
-                    confirmNavigation();
-                  }
-                }}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
-              >
-                save updates
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
