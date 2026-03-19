@@ -1,11 +1,12 @@
-import React, { useState, useRef, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import React, { useState, useRef, useEffect, useMemo } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { DashboardViewProvider } from "../context/DashboardViewContext";
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
-  const { currentStaff, teams, onTeamChange, selectedTeamId, signOut, hasPermission } = useAuth();
+  const { currentStaff, accountantStaff, onTeamChange, selectedTeamId, signOut, hasPermission } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -32,20 +33,31 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleSelectTeam = (teamId: number | "all") => {
-    onTeamChange(teamId);
+  const accountantOptions = useMemo(() => {
+    const currentStaffId = currentStaff?.staff_id;
+    return accountantStaff.filter(staffMember => staffMember.staff_id !== currentStaffId);
+  }, [accountantStaff, currentStaff?.staff_id]);
+
+  const handleSelectOption = (value: number | "all" | "team-view") => {
+    onTeamChange(value);
+
+    if (value === "team-view") {
+      navigate("/team");
+    } else if (location.pathname === "/team" && (typeof value === "number" || value === "all")) {
+      navigate("/");
+    }
+
     setDropdownOpen(false);
   };
 
   const buttonLabel = (() => {
     if (selectedTeamId === "all") return "All Accountants";
-    const found = teams.find(t => t.id.toString() === selectedTeamId);
-    return found ? found.name : "Select Accountant";
-  })();
+    if (selectedTeamId === "team-view") return "Team View";
+    if (currentStaff && selectedTeamId === String(currentStaff.staff_id)) return currentStaff.name;
 
-  const userTeamId = currentStaff?.team_id;
-  const userTeam = userTeamId ? teams.find(t => t.id === userTeamId) : null;
-  const otherTeams = teams.filter(t => t.id !== userTeamId);
+    const found = accountantStaff.find(staffMember => String(staffMember.staff_id) === selectedTeamId);
+    return found ? found.name : currentStaff?.name || "Select Accountant";
+  })();
 
   return (
     <DashboardViewProvider>
@@ -70,17 +82,24 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
               {dropdownOpen && (
                 <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden z-50">
                   <div className="bg-blue-50/50 border-b border-blue-100">
-                    {userTeam && (
+                    {currentStaff && (
                       <button
-                        onClick={() => handleSelectTeam(userTeam.id)}
-                        className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === userTeam.id.toString() ? "bg-blue-100" : ""}`}
+                        onClick={() => handleSelectOption(currentStaff.staff_id)}
+                        className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === String(currentStaff.staff_id) ? "bg-blue-100" : ""}`}
                       >
-                        <span className="truncate">{userTeam.name}</span>
+                        <span className="truncate">{currentStaff.name}</span>
                       </button>
                     )}
 
                     <button
-                      onClick={() => handleSelectTeam("all")}
+                      onClick={() => handleSelectOption("team-view")}
+                      className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === "team-view" || location.pathname === "/team" ? "bg-blue-100" : ""}`}
+                    >
+                      Team View
+                    </button>
+
+                    <button
+                      onClick={() => handleSelectOption("all")}
                       className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === "all" ? "bg-blue-100" : ""}`}
                     >
                       All Accountants
@@ -88,18 +107,18 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                   </div>
 
                   <div className="max-h-64 overflow-y-auto">
-                    {otherTeams.length > 0 && (
+                    {accountantOptions.length > 0 && (
                       <div className="px-4 py-2 bg-gray-50/50 border-b border-gray-100">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Other Accountants</span>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Accountants</span>
                       </div>
                     )}
-                    {otherTeams.map((t) => (
+                    {accountantOptions.map((staffMember) => (
                       <button
-                        key={t.id}
-                        onClick={() => handleSelectTeam(t.id)}
-                        className={`w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition ${selectedTeamId === t.id.toString() ? "bg-blue-50" : ""}`}
+                        key={staffMember.staff_id}
+                        onClick={() => handleSelectOption(staffMember.staff_id)}
+                        className={`w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition ${selectedTeamId === String(staffMember.staff_id) ? "bg-blue-50" : ""}`}
                       >
-                        {t.name}
+                        {staffMember.name}
                       </button>
                     ))}
                   </div>

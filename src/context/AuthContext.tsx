@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback, useMemo } from 'react';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
 
@@ -20,13 +20,14 @@ interface AuthContextType {
   isAdmin: boolean;
   isAuthenticated: boolean;
   selectedTeamId: string | null;
-  onTeamChange: (teamId: number | "all") => void;
+  onTeamChange: (teamId: number | "all" | "team-view") => void;
   showFallbackWarning: boolean;
   error: string | null;
   staffLoaded: boolean;
   permissions: Permission[];
   hasPermission: (path: string) => boolean;
   refreshStaff: () => Promise<void>;
+  accountantStaff: Staff[];
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -34,7 +35,12 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 const PERMANENT_ADMIN_NAME = 'rowan';
 
 const normalizeFirstName = (name?: string | null) => (name || '').split(' ')[0]?.trim().toLowerCase() || '';
-const isAccountant = (staffMember: Staff) => staffMember.role === 'staff';
+
+const isAccountant = (staffMember: Staff) => {
+  const role = staffMember.role || '';
+  const normalizedName = (staffMember.name || '').toLowerCase();
+  return role === 'staff' || normalizedName.includes('accountant');
+};
 
 const enforcePermanentAdmin = (staffMember: Staff): Staff => {
   const firstName = normalizeFirstName(staffMember.name);
@@ -79,7 +85,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (found) {
           setCurrentStaff(found);
           setIsAuthenticated(true);
-          setSelectedTeamId('all');
+          setSelectedTeamId(String(found.staff_id));
         }
       }
     } catch (err: unknown) {
@@ -108,7 +114,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setCurrentStaff(matched);
     setIsAuthenticated(true);
     localStorage.setItem('crew_tracker_staff_id', matched.staff_id.toString());
-    setSelectedTeamId('all');
+    setSelectedTeamId(String(matched.staff_id));
     return {};
   };
 
@@ -119,7 +125,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.removeItem('crew_tracker_staff_id');
   };
 
-  const onTeamChange = (teamId: number | 'all') => {
+  const onTeamChange = (teamId: number | 'all' | 'team-view') => {
     setSelectedTeamId(teamId.toString());
   };
 
@@ -180,12 +186,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const hasPermission = useCallback((path: string): boolean => {
     if (!currentStaff) return false;
-    const perm = permissions.find(p => p.role === currentStaff.role && p.page_path === path);
+    const roleForPermissions = currentStaff.role === 'user' ? 'staff' : currentStaff.role;
+    const perm = permissions.find(p => p.role === roleForPermissions && p.page_path === path);
     return perm ? perm.is_visible !== false : true;
   }, [currentStaff, permissions]);
 
-  const accountantTeams = teams.filter(team =>
-    allStaff.some(staffMember => !staffMember.is_hidden && isAccountant(staffMember) && staffMember.team_id === team.id)
+  const accountantStaff = useMemo(
+    () =>
+      allStaff
+        .filter(staffMember => !staffMember.is_hidden && isAccountant(staffMember))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [allStaff]
+  );
+
+  const accountantTeams = useMemo(
+    () =>
+      teams.filter(team =>
+        accountantStaff.some(staffMember => staffMember.team_id === team.id)
+      ),
+    [teams, accountantStaff]
   );
 
   const value: AuthContextType = {
@@ -209,6 +228,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     permissions,
     hasPermission,
     refreshStaff: fetchStaff,
+    accountantStaff,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
