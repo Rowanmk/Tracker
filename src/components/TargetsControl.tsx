@@ -7,6 +7,10 @@ import { getFinancialYearMonths, getFinancialYears } from '../utils/financialYea
 import { isTargetInFinancialYear } from '../utils/loadTargets';
 import { unparse } from 'papaparse';
 import type { FinancialYear } from '../utils/financialYear';
+import type { Database } from '../supabase/types';
+
+type Staff = Database['public']['Tables']['staff']['Row'];
+type Team = Database['public']['Tables']['teams']['Row'];
 
 interface TargetData {
   team_id: number;
@@ -32,12 +36,33 @@ interface LocalInputState {
   [key: string]: string;
 }
 
+const isAccountant = (staffMember: Staff) => staffMember.role === 'staff';
+
 export const TargetsControl: React.FC = () => {
   const navigate = useNavigate();
-  const { teams, loading: authLoading, error: authError } = useAuth();
+  const {
+    teams,
+    allStaff,
+    loading: authLoading,
+    error: authError,
+  } = useAuth();
   const { services, loading: servicesLoading, error: servicesError } = useServices();
 
   const targetableServices = useMemo(() => services.filter(s => s.service_name !== 'Bagel Days'), [services]);
+
+  const activeAccountantTeams = useMemo<Team[]>(
+    () =>
+      teams.filter((team) =>
+        team.is_active &&
+        allStaff.some(
+          (staffMember) =>
+            !staffMember.is_hidden &&
+            isAccountant(staffMember) &&
+            staffMember.team_id === team.id
+        )
+      ),
+    [teams, allStaff]
+  );
 
   const [selectedFinancialYear, setSelectedFinancialYear] = useState<FinancialYear>({
     label: '2025/26',
@@ -55,11 +80,11 @@ export const TargetsControl: React.FC = () => {
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const scrollPositionRef = useRef<number>(0);
+  const scrollPositionsRef = useRef<Record<number, number>>({});
 
   const fetchTargets = async (fy: FinancialYear) => {
-    if (!teams.length || !targetableServices.length) {
+    if (!activeAccountantTeams.length || !targetableServices.length) {
+      setTargetData([]);
       setLoading(false);
       return;
     }
@@ -71,7 +96,7 @@ export const TargetsControl: React.FC = () => {
       const monthData = getFinancialYearMonths();
 
       const data = await Promise.all(
-        teams.map(async (team) => {
+        activeAccountantTeams.map(async (team) => {
           const { data: dbTargets } = await supabase
             .from('monthlytargets')
             .select('month, service_id, target_value, year')
@@ -103,6 +128,7 @@ export const TargetsControl: React.FC = () => {
       setLocalInputState({});
       setHasUnsavedChanges(false);
       inputRefs.current.clear();
+      scrollPositionsRef.current = {};
     } catch {
       setError('Failed to load targets data');
     } finally {
@@ -112,19 +138,11 @@ export const TargetsControl: React.FC = () => {
 
   useEffect(() => {
     fetchTargets(selectedFinancialYear);
-  }, [selectedFinancialYear, teams.length, targetableServices.length]);
+  }, [selectedFinancialYear, activeAccountantTeams, targetableServices]);
 
-  const saveScrollPosition = () => {
-    if (scrollContainerRef.current) {
-      scrollPositionRef.current = scrollContainerRef.current.scrollLeft;
-    }
+  const saveScrollPosition = (teamId: number, scrollLeft: number) => {
+    scrollPositionsRef.current[teamId] = scrollLeft;
   };
-
-  useEffect(() => {
-    if (scrollContainerRef.current && scrollPositionRef.current > 0) {
-      scrollContainerRef.current.scrollLeft = scrollPositionRef.current;
-    }
-  }, [targetData, localInputState]);
 
   const getInputKey = (teamId: number, month: number, serviceName: string): string => {
     return `${teamId}-${month}-${serviceName}`;
@@ -136,7 +154,6 @@ export const TargetsControl: React.FC = () => {
     serviceName: string,
     value: string
   ) => {
-    saveScrollPosition();
     const key = getInputKey(teamId, month, serviceName);
     setLocalInputState(prev => ({
       ...prev,
@@ -168,7 +185,6 @@ export const TargetsControl: React.FC = () => {
       }
     }
 
-    saveScrollPosition();
     setTargetData((prev) =>
       prev.map((team) =>
         team.team_id === teamId
@@ -588,9 +604,17 @@ export const TargetsControl: React.FC = () => {
             </div>
 
             <div
-              ref={scrollContainerRef}
               className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800"
               style={{ scrollBehavior: 'smooth' }}
+              onScroll={(e) => saveScrollPosition(team.team_id, e.currentTarget.scrollLeft)}
+              ref={(el) => {
+                if (el) {
+                  const savedScroll = scrollPositionsRef.current[team.team_id] || 0;
+                  if (el.scrollLeft !== savedScroll) {
+                    el.scrollLeft = savedScroll;
+                  }
+                }
+              }}
             >
               <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                 <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600">
@@ -725,6 +749,14 @@ export const TargetsControl: React.FC = () => {
             </div>
           </div>
         ))}
+
+        {targetData.length === 0 && (
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-6">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              No active accountants found for this year.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden mt-4">
@@ -733,7 +765,7 @@ export const TargetsControl: React.FC = () => {
             Service Totals by Month
           </h4>
           <p className="text-xs text-purple-100 mt-0.5">
-            Aggregated targets across all accountants (Read-Only)
+            Aggregated targets across all active accountants (Read-Only)
           </p>
         </div>
 
