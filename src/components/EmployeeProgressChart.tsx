@@ -254,7 +254,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                   fill={barColor}
                   rx="4"
                   style={{
-                    transition: "y 180ms ease-out, height 180ms ease-out, fill 180ms ease-out",
+                    transition: "none",
                     transform: "translateZ(0)",
                   }}
                 />
@@ -264,7 +264,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                   y={BASELINE_Y - barHeight - 8}
                   textAnchor="middle"
                   className="text-[12px] font-bold fill-gray-700 dark:fill-gray-300"
-                  style={{ transition: "y 180ms ease-out" }}
+                  style={{ transition: "none" }}
                 >
                   {viewMode === "percent" ? `${Math.round(runRatePercent)}%` : Math.round(display)}
                 </text>
