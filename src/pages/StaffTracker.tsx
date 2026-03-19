@@ -16,7 +16,10 @@ interface DailyEntry {
   services: Record<string, number>;
 }
 
-const isAccountant = (role: string) => role === 'staff';
+const isAccountant = (role: string) => {
+  const normalizedRole = (role || '').toLowerCase();
+  return normalizedRole === 'staff' || normalizedRole === 'admin';
+};
 
 export const StaffTracker: React.FC = () => {
   const { selectedMonth, selectedFinancialYear } = useDate();

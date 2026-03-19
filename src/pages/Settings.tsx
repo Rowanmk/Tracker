@@ -30,9 +30,9 @@ const deriveAccessLevel = (role: string | null | undefined): AccessLevel =>
   role === 'admin' ? 'admin' : 'user';
 
 const deriveWorkCategory = (staffMember: Staff): WorkCategory => {
-  const role = staffMember.role || '';
+  const role = (staffMember.role || '').toLowerCase();
   const normalizedName = (staffMember.name || '').toLowerCase();
-  return role === 'staff' || normalizedName.includes('accountant') ? 'accountant' : 'assistant';
+  return role === 'staff' || role === 'admin' || normalizedName.includes('accountant') ? 'accountant' : 'assistant';
 };
 
 const deriveStaffCategories = (staffMember: Staff): StaffWithDerivedCategories => ({
@@ -232,8 +232,7 @@ export const Settings: React.FC = () => {
   };
 
   const getRoleValueFromAccessLevel = (accessLevel: AccessLevel, workCategory: WorkCategory) => {
-    if (accessLevel === 'admin' && workCategory === 'accountant') return 'admin';
-    if (accessLevel === 'admin' && workCategory === 'assistant') return 'admin';
+    if (accessLevel === 'admin') return 'admin';
     return workCategory === 'accountant' ? 'staff' : 'user';
   };
 

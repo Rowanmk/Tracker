@@ -18,7 +18,10 @@ interface AnnualStaffData {
   totalDeliveries: number;
 }
 
-const isAccountant = (role: string) => role === 'staff';
+const isAccountant = (role: string) => {
+  const normalizedRole = (role || '').toLowerCase();
+  return normalizedRole === 'staff' || normalizedRole === 'admin';
+};
 
 export const AnnualSummary: React.FC = () => {
   const { selectedFinancialYear } = useDate();

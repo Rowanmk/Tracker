@@ -20,7 +20,10 @@ interface ServiceStats {
   isPercentage?: boolean;
 }
 
-const isAccountant = (role: string) => role === 'staff';
+const isAccountant = (role: string) => {
+  const normalizedRole = (role || '').toLowerCase();
+  return normalizedRole === 'staff' || normalizedRole === 'admin';
+};
 
 export const TeamView: React.FC = () => {
   const { allStaff, selectedTeamId, loading: authLoading } = useAuth();

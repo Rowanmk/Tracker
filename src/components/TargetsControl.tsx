@@ -35,7 +35,10 @@ interface LocalInputState {
   [key: string]: string;
 }
 
-const isAccountant = (staffMember: Staff) => staffMember.role === 'staff';
+const isAccountant = (staffMember: Staff) => {
+  const role = (staffMember.role || '').toLowerCase();
+  return role === 'staff' || role === 'admin';
+};
 
 export const TargetsControl: React.FC = () => {
   const navigate = useNavigate();

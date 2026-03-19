@@ -37,9 +37,10 @@ const PERMANENT_ADMIN_NAME = 'rowan';
 const normalizeFirstName = (name?: string | null) => (name || '').split(' ')[0]?.trim().toLowerCase() || '';
 
 const isAccountant = (staffMember: Staff) => {
-  const role = staffMember.role || '';
+  const role = (staffMember.role || '').toLowerCase();
   const normalizedName = (staffMember.name || '').toLowerCase();
-  return role === 'staff' || normalizedName.includes('accountant');
+
+  return role === 'staff' || role === 'admin' || normalizedName.includes('accountant');
 };
 
 const enforcePermanentAdmin = (staffMember: Staff): Staff => {

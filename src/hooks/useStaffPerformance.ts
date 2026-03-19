@@ -37,7 +37,10 @@ interface UseStaffPerformanceResult {
   refetch: () => void;
 }
 
-const isAccountant = (role: string) => role === 'staff';
+const isAccountant = (role: string) => {
+  const normalizedRole = (role || '').toLowerCase();
+  return normalizedRole === 'staff' || normalizedRole === 'admin';
+};
 
 export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResult => {
   const { selectedMonth, selectedYear, financialYear } = useDate();
