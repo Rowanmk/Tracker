@@ -133,7 +133,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
           };
         })
         .filter((staff) => staff.delivered > 0 || staff.target > 0)
-        .sort((a, b) => b.delivered - a.delivered);
+        .sort((a, b) => b.runRatePercent - a.runRatePercent);
     }
 
     return services.map((service) => {
@@ -192,7 +192,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   const shouldRotateLabels =
     (isAllTeams || isTeamView) && (barCount > 8 || chartData.some((d) => d.label.length > 12));
   const axisLabelCharLimit = shouldRotateLabels ? 12 : 16;
-  const axisLabelY = shouldRotateLabels ? BASELINE_Y + 20 : BASELINE_Y + 15;
+  const axisLabelY = shouldRotateLabels ? BASELINE_Y + 22 : BASELINE_Y + 17;
 
   const stablePercentMax = 140;
 
@@ -263,7 +263,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                   x={x}
                   y={BASELINE_Y - barHeight - 8}
                   textAnchor="middle"
-                  className="text-[10px] font-bold fill-gray-700 dark:fill-gray-300"
+                  className="text-[12px] font-bold fill-gray-700 dark:fill-gray-300"
                   style={{ transition: "y 180ms ease-out" }}
                 >
                   {viewMode === "percent" ? `${Math.round(runRatePercent)}%` : Math.round(display)}
@@ -273,7 +273,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                   x={x}
                   y={axisLabelY}
                   textAnchor="middle"
-                  className="text-[10px] font-medium fill-gray-600 dark:fill-gray-400"
+                  className="text-[12px] font-medium fill-gray-600 dark:fill-gray-400"
                   transform={shouldRotateLabels ? `rotate(-35 ${x} ${axisLabelY})` : undefined}
                 >
                   <title>{label}</title>
