@@ -42,7 +42,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     onTeamChange(value);
 
     if (value === "team-view") {
-      navigate("/team");
+      navigate("/");
     } else if (location.pathname === "/team" && typeof value === "number") {
       navigate("/");
     }
@@ -92,7 +92,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
 
                     <button
                       onClick={() => handleSelectOption("team-view")}
-                      className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === "team-view" || location.pathname === "/team" ? "bg-blue-100" : ""}`}
+                      className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === "team-view" ? "bg-blue-100" : ""}`}
                     >
                       Team View
                     </button>
