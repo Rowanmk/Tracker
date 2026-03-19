@@ -150,7 +150,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[418px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
       <div className="tile-header px-4 py-1.5">
-        {isAllTeams ? "Team Progress Chart" : "Service Progress Chart"}
+        {isAllTeams ? "Accountant Progress Chart" : "Service Progress Chart"}
         {roundedPlaybackDay ? <span className="ml-2 text-white/80">Day {roundedPlaybackDay}</span> : null}
       </div>
 

@@ -35,7 +35,7 @@ import React, { useState } from 'react';
       return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white">Team Progress (Actual vs Target)</h3>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white">Accountant Progress (Actual vs Target)</h3>
             <div className="flex space-x-2">
               <button
                 onClick={() => setViewMode('grouped')}
@@ -119,7 +119,7 @@ import React, { useState } from 'react';
 
           <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
             <div className="text-sm text-gray-600 dark:text-gray-400">
-              Team is {variance >= 0 ? 'ahead by' : 'behind by'} <span className={variance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>{Math.abs(Math.round(variance))} items</span>
+              Accountant is {variance >= 0 ? 'ahead by' : 'behind by'} <span className={variance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>{Math.abs(Math.round(variance))} items</span>
             </div>
           </div>
         </div>

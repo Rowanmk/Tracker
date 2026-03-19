@@ -119,7 +119,7 @@ export const AuditLog: React.FC = () => {
       <div className="page-header">
         <h2 className="page-title">Audit Log</h2>
         <p className="page-subtitle">
-          View recorded changes by page, user, team, date and time.
+          View recorded changes by page, user, accountant, date and time.
         </p>
       </div>
 
@@ -159,13 +159,13 @@ export const AuditLog: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Team</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Accountant</label>
             <select
               value={teamFilter}
               onChange={e => setTeamFilter(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
             >
-              <option value="all">All teams</option>
+              <option value="all">All accountants</option>
               {teams.map(team => (
                 <option key={team.id} value={String(team.id)}>
                   {team.name}
@@ -201,7 +201,7 @@ export const AuditLog: React.FC = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Page</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Accountant</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Change</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                 </tr>

@@ -5,9 +5,9 @@ A React-based performance tracking application for contracting division staff wi
 ## Features
 
 - **Dashboard**: Monthly performance overview with charts and analytics
-- **Stats and Figures**: Comprehensive team performance monitoring
+- **Stats and Figures**: Comprehensive accountant performance monitoring
 - **Annual Summary**: Year-to-date performance analysis
-- **Staff Tracker**: Individual daily activity tracking
+- **User Tracker**: Individual daily activity tracking
 - **Targets Control**: Admin interface for setting monthly targets
 - **Authentication**: Google OAuth integration via Supabase
 
@@ -38,10 +38,11 @@ VITE_SUPABASE_PROJECT_ID=your_project_id
 ## Database Schema
 
 The application uses the following Supabase tables:
-- `staff` - Staff member information and roles
+- `staff` - User information and roles
+- `teams` - Accountant groupings
 - `services` - Service types (Accounts, VAT, Self Assessments)
 - `daily_activity` - Daily performance entries
-- `monthly_targets` - Monthly targets per staff/service
+- `monthly_targets` - Monthly targets per user/accountant/service
 - `working_days` - Working day calendar
 
 ## Deployment
@@ -58,9 +59,9 @@ The application uses the following Supabase tables:
 
 ## User Roles
 
-- **Admin**: Full access to all features including team management and targets
-- **Staff**: Access to personal tracker and read-only team views
+- **Admin**: Full access to all features including accountant management and targets
+- **User**: Access to personal tracker and read-only accountant views
 
 ## Authentication
 
-Users authenticate via Google OAuth through Supabase Auth. Staff records must be created in the database and linked to user accounts via the `user_id` field.
+Users authenticate via Google OAuth through Supabase Auth. User records must be created in the database and linked to user accounts via the `user_id` field.

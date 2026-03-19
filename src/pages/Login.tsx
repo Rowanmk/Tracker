@@ -14,12 +14,12 @@ export const Login: React.FC = () => {
     setError(null);
 
     if (!staffLoaded) {
-      setError('Staff data is still loading. Please wait a moment and try again.');
+      setError('User data is still loading. Please wait a moment and try again.');
       return;
     }
 
     if (allStaff.length === 0) {
-      setError('No staff records available. Please contact an administrator.');
+      setError('No user records available. Please contact an administrator.');
       return;
     }
 
@@ -52,7 +52,7 @@ export const Login: React.FC = () => {
 
         {!staffLoaded ? (
           <div className="text-center py-6 text-gray-500 text-sm">
-            Loading staff data…
+            Loading user data…
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">

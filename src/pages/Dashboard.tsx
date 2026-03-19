@@ -315,7 +315,7 @@ export const Dashboard: React.FC = () => {
       <div className="space-y-6">
         <div className="page-header">
           <h2 className="page-title">
-            {isAllTeams ? "All Teams Dashboard" : `${selectedTeam?.name} Dashboard`}
+            {isAllTeams ? "All Accountants Dashboard" : `${selectedTeam?.name} Dashboard`}
           </h2>
         </div>
         <div className="py-10 text-center text-gray-500">Loading dashboard…</div>
@@ -327,7 +327,7 @@ export const Dashboard: React.FC = () => {
     <div className="space-y-6">
       <div className="page-header">
         <h2 className="page-title">
-          {isAllTeams ? "All Teams Dashboard" : `${selectedTeam?.name} Dashboard`}
+          {isAllTeams ? "All Accountants Dashboard" : `${selectedTeam?.name} Dashboard`}
         </h2>
       </div>
 
@@ -351,7 +351,7 @@ export const Dashboard: React.FC = () => {
       <div className="mb-6 space-y-2">
         <div className="flex justify-between items-center text-sm font-medium">
           <span className="text-gray-700 dark:text-gray-300">
-            {isAllTeams ? "Global Progress" : `${selectedTeam?.name} Progress`}
+            Global Progress
           </span>
           <span className="text-gray-900 dark:text-white font-bold">
             {Math.round(performanceSummary.delivered)} / {performanceSummary.target} (

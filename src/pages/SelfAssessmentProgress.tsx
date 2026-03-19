@@ -186,7 +186,7 @@ export const SelfAssessmentProgress: React.FC = () => {
               <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-bold uppercase">
-                    Team
+                    Accountant
                   </th>
                   <th className="px-4 py-3 text-center text-xs font-bold uppercase">
                     Target

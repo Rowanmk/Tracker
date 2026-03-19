@@ -168,7 +168,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     return (
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[418px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
         <div className="tile-header px-4 py-1.5">
-          Team Progress
+          Accountant Progress
         </div>
         <div className="flex-1 flex items-center justify-center text-gray-500">Loading…</div>
       </div>
@@ -178,7 +178,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[418px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
       <div className="tile-header px-4 py-1.5">
-        Team Progress
+        Accountant Progress
       </div>
 
       <div className="flex-1 flex flex-col justify-end p-3 pb-2">

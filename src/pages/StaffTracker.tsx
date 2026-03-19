@@ -52,7 +52,7 @@ export const StaffTracker: React.FC = () => {
 
   const tableLabel = useMemo(() => {
     if (selectedTeamId === "all") {
-      return "All Teams";
+      return "All Accountants";
     }
 
     return teams.find((team) => team.id.toString() === selectedTeamId)?.name || "My";

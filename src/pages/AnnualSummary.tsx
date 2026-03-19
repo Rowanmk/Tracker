@@ -104,15 +104,15 @@ export const AnnualSummary: React.FC = () => {
   return (
     <div>
       <div className="page-header">
-        <h2 className="page-title">Annual Staff Summary</h2>
+        <h2 className="page-title">Annual User Summary</h2>
       </div>
 
       <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-100 dark:bg-gray-700">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-bold uppercase">Staff</th>
-              <th className="px-4 py-3 text-left text-xs font-bold uppercase">Team</th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase">User</th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase">Accountant</th>
               {monthData.map(m => <th key={m.number} className="px-4 py-3 text-center text-xs font-bold uppercase">{m.name}</th>)}
               <th className="px-4 py-3 text-center text-xs font-bold uppercase">FY Total</th>
             </tr>

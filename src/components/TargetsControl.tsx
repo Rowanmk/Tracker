@@ -675,7 +675,7 @@ export const TargetsControl: React.FC = () => {
             Service Totals by Month
           </h4>
           <p className="text-sm text-purple-100 mt-1">
-            Aggregated targets across all teams (Read-Only)
+            Aggregated targets across all accountants (Read-Only)
           </p>
         </div>
 

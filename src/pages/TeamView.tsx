@@ -251,7 +251,7 @@ export const TeamView: React.FC = () => {
 
       {statsData.length === 0 ? (
         <div className="py-10 text-center text-gray-500 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-          No data available for the selected team.
+          No data available for the selected accountant.
         </div>
       ) : (
         <div className="space-y-6">

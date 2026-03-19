@@ -38,9 +38,9 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
   };
 
   const buttonLabel = (() => {
-    if (selectedTeamId === "all") return "All Teams";
+    if (selectedTeamId === "all") return "All Accountants";
     const found = teams.find(t => t.id.toString() === selectedTeamId);
-    return found ? found.name : "Select Team";
+    return found ? found.name : "Select Accountant";
   })();
 
   const userTeamId = currentStaff?.team_id;
@@ -83,14 +83,14 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                       onClick={() => handleSelectTeam("all")}
                       className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === "all" ? "bg-blue-100" : ""}`}
                     >
-                      All Teams
+                      All Accountants
                     </button>
                   </div>
 
                   <div className="max-h-64 overflow-y-auto">
                     {otherTeams.length > 0 && (
                       <div className="px-4 py-2 bg-gray-50/50 border-b border-gray-100">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Other Teams</span>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Other Accountants</span>
                       </div>
                     )}
                     {otherTeams.map((t) => (

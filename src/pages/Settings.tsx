@@ -326,7 +326,7 @@ export const Settings: React.FC = () => {
           entityId: String(editingUser.staff_id),
           description:
             previousTeamId !== nextTeamId
-              ? `Updated user ${data.name} and changed team to ${getTeamName(nextTeamId)}`
+              ? `Updated user ${data.name} and changed accountant to ${getTeamName(nextTeamId)}`
               : `Updated user ${data.name}`,
           actorStaffId: currentStaff.staff_id,
           teamId: nextTeamId,
@@ -413,7 +413,7 @@ export const Settings: React.FC = () => {
         .single();
 
       if (error) {
-        setTimedFeedback(getErrorMessage('Failed to add team', error));
+        setTimedFeedback(getErrorMessage('Failed to add accountant', error));
       } else {
         setTeams(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
         setNewTeamName('');
@@ -424,14 +424,14 @@ export const Settings: React.FC = () => {
           actionType: 'create',
           entityType: 'team',
           entityId: String(data.id),
-          description: `Created team ${data.name}`,
+          description: `Created accountant ${data.name}`,
           actorStaffId: currentStaff.staff_id,
           teamId: data.id,
           metadata: {
             is_active: data.is_active,
           },
         });
-        setTimedFeedback('Successfully added team');
+        setTimedFeedback('Successfully added accountant');
       }
     } catch {
       setTimedFeedback('Failed to connect to database');
@@ -472,7 +472,7 @@ export const Settings: React.FC = () => {
         .single();
 
       if (error) {
-        setTimedFeedback(getErrorMessage('Failed to update team', error));
+        setTimedFeedback(getErrorMessage('Failed to update accountant', error));
       } else {
         setTeams(prev =>
           prev.map(team => (team.id === teamId ? data : team)).sort((a, b) => a.name.localeCompare(b.name))
@@ -494,7 +494,7 @@ export const Settings: React.FC = () => {
           actionType: 'update',
           entityType: 'team',
           entityId: String(teamId),
-          description: `Updated team ${existingTeam?.name || data.name}`,
+          description: `Updated accountant ${existingTeam?.name || data.name}`,
           actorStaffId: currentStaff.staff_id,
           teamId,
           metadata: {
@@ -503,7 +503,7 @@ export const Settings: React.FC = () => {
             is_active: data.is_active,
           },
         });
-        setTimedFeedback('Successfully updated team');
+        setTimedFeedback('Successfully updated accountant');
       }
     } catch {
       setTimedFeedback('Failed to connect to database');
@@ -524,7 +524,7 @@ export const Settings: React.FC = () => {
         .single();
 
       if (error) {
-        setTimedFeedback(getErrorMessage('Failed to update team status', error));
+        setTimedFeedback(getErrorMessage('Failed to update accountant status', error));
       } else {
         setTeams(prev =>
           prev.map(item => (item.id === team.id ? data : item)).sort((a, b) => a.name.localeCompare(b.name))
@@ -545,14 +545,14 @@ export const Settings: React.FC = () => {
           actionType: 'update',
           entityType: 'team',
           entityId: String(team.id),
-          description: `Marked team ${data.name} as ${data.is_active ? 'active' : 'inactive'}`,
+          description: `Marked accountant ${data.name} as ${data.is_active ? 'active' : 'inactive'}`,
           actorStaffId: currentStaff.staff_id,
           teamId: team.id,
           metadata: {
             is_active: data.is_active,
           },
         });
-        setTimedFeedback(`Team marked as ${data.is_active ? 'active' : 'inactive'}`);
+        setTimedFeedback(`Accountant marked as ${data.is_active ? 'active' : 'inactive'}`);
       }
     } catch {
       setTimedFeedback('Failed to connect to database');
@@ -719,7 +719,7 @@ export const Settings: React.FC = () => {
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  {tab}
+                  {tab === 'teams' ? 'accountants' : tab}
                 </button>
               ))}
           </nav>
@@ -817,7 +817,7 @@ export const Settings: React.FC = () => {
                   onChange={e => setNewUserTeamId(e.target.value)}
                   className="px-3 py-2 border rounded-md"
                 >
-                  <option value={emptyTeamOption}>No team</option>
+                  <option value={emptyTeamOption}>No accountant</option>
                   {activeTeams.map(team => (
                     <option key={team.id} value={team.id}>
                       {team.name}
@@ -846,7 +846,7 @@ export const Settings: React.FC = () => {
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Accountant</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Region</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                       </tr>
@@ -883,16 +883,16 @@ export const Settings: React.FC = () => {
         {isAdmin && activeTab === 'teams' && (
           <div className="mt-6 space-y-6">
             <div className="bg-white shadow rounded-lg p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Add Team</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Add Accountant</h3>
               <form onSubmit={handleAddTeam} className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-4 items-end">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Team Name</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Accountant Name</label>
                   <input
                     type="text"
                     value={newTeamName}
                     onChange={e => setNewTeamName(e.target.value)}
                     className="w-full px-3 py-2 border rounded-md"
-                    placeholder="Enter team name"
+                    placeholder="Enter accountant name"
                     required
                   />
                 </div>
@@ -910,14 +910,14 @@ export const Settings: React.FC = () => {
                   disabled={isAddingTeam}
                   className="bg-blue-600 text-white rounded-md px-4 py-2 hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {isAddingTeam ? 'Adding...' : 'Add Team'}
+                  {isAddingTeam ? 'Adding...' : 'Add Accountant'}
                 </button>
               </form>
             </div>
 
             <div className="bg-white shadow rounded-lg p-6">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-                <h3 className="text-lg font-medium text-gray-900">Teams</h3>
+                <h3 className="text-lg font-medium text-gray-900">Accountants</h3>
                 <div className="flex items-center gap-3">
                   <label className="text-sm font-medium text-gray-700">Show</label>
                   <select
@@ -925,7 +925,7 @@ export const Settings: React.FC = () => {
                     onChange={e => setTeamFilter(e.target.value as TeamStatus)}
                     className="px-3 py-2 border rounded-md text-sm"
                   >
-                    <option value="all">All teams</option>
+                    <option value="all">All accountants</option>
                     <option value="active">Active only</option>
                     <option value="inactive">Inactive only</option>
                   </select>
@@ -1010,19 +1010,19 @@ export const Settings: React.FC = () => {
 
                 {visibleTeams.length === 0 && (
                   <div className="py-8 text-center text-sm text-gray-500 border border-dashed border-gray-300 rounded-lg">
-                    No teams found for this filter.
+                    No accountants found for this filter.
                   </div>
                 )}
               </div>
             </div>
 
             <div className="bg-white shadow rounded-lg p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Team Summary</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Accountant Summary</h3>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Accountant</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Members</th>
                     </tr>
@@ -1174,13 +1174,13 @@ export const Settings: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Team</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Accountant</label>
                 <select
                   value={editForm.team_id}
                   onChange={e => setEditForm(f => ({ ...f, team_id: e.target.value }))}
                   className="w-full px-3 py-2 border rounded-md"
                 >
-                  <option value={emptyTeamOption}>No team</option>
+                  <option value={emptyTeamOption}>No accountant</option>
                   {activeTeams.map(team => (
                     <option key={team.id} value={team.id}>
                       {team.name}
