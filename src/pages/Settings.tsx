@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDate } from '../context/DateContext';
 import { CalendarMonthYearSelector } from '../components/CalendarMonthYearSelector';
@@ -18,41 +18,65 @@ type StaffLeaveWithStaff = StaffLeave & {
   };
 };
 
-type StaffWithTeam = Staff & {
-  team?: Team | null;
+type TeamStatus = 'active' | 'inactive' | 'all';
+type AccessLevel = 'admin' | 'user';
+type WorkCategory = 'accountant' | 'assistant';
+
+type StaffWithDerivedCategories = Staff & {
+  accessLevel: AccessLevel;
+  workCategory: WorkCategory;
 };
 
-type TeamStatus = 'active' | 'inactive' | 'all';
+const deriveAccessLevel = (role: string | null | undefined): AccessLevel =>
+  role === 'admin' ? 'admin' : 'user';
+
+const deriveWorkCategory = (staffMember: Staff): WorkCategory => {
+  const normalizedName = staffMember.name.trim().toLowerCase();
+  if (staffMember.team_id !== null || normalizedName.includes('assistant')) {
+    return 'accountant';
+  }
+  return 'assistant';
+};
+
+const deriveStaffCategories = (staffMember: Staff): StaffWithDerivedCategories => ({
+  ...staffMember,
+  accessLevel: deriveAccessLevel(staffMember.role),
+  workCategory: deriveWorkCategory(staffMember),
+});
 
 export const Settings: React.FC = () => {
-  const { currentStaff, isAdmin, refreshStaff } = useAuth();
-  const [allUsers, setAllUsers] = useState<StaffWithTeam[]>([]);
+  const { currentStaff, isAdmin, refreshStaff, allStaff: authStaff, teams: authTeams } = useAuth();
+  const [allUsers, setAllUsers] = useState<StaffWithDerivedCategories[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const [newUserName, setNewUserName] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
-  const [newUserRole, setNewUserRole] = useState<'admin' | 'staff'>('staff');
+  const [newUserAccessLevel, setNewUserAccessLevel] = useState<AccessLevel>('user');
+  const [newUserWorkCategory, setNewUserWorkCategory] = useState<WorkCategory>('assistant');
   const [newUserRegion, setNewUserRegion] = useState<
     'england-and-wales' | 'scotland' | 'northern-ireland'
   >('england-and-wales');
+  const [newUserAccountantId, setNewUserAccountantId] = useState<string>('');
   const [isAddingUser, setIsAddingUser] = useState(false);
 
-  const [editingUser, setEditingUser] = useState<StaffWithTeam | null>(null);
+  const [editingUser, setEditingUser] = useState<StaffWithDerivedCategories | null>(null);
   const [editForm, setEditForm] = useState({
     name: '',
     password: '',
-    role: 'staff' as 'admin' | 'staff',
+    accessLevel: 'user' as AccessLevel,
+    workCategory: 'assistant' as WorkCategory,
     home_region: 'england-and-wales' as
       | 'england-and-wales'
       | 'scotland'
       | 'northern-ireland',
+    accountantId: '',
     security_question: '',
     security_answer: '',
   });
 
-  const [activeTab, setActiveTab] = useState<'users' | 'teams' | 'calendar' | 'permissions' | 'account'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'calendar' | 'permissions' | 'account'>('users');
 
   const [accountForm, setAccountForm] = useState({
     password: '',
@@ -60,27 +84,6 @@ export const Settings: React.FC = () => {
     security_answer: currentStaff?.security_answer || '',
   });
   const [isSavingAccount, setIsSavingAccount] = useState(false);
-
-  const [newTeamName, setNewTeamName] = useState('');
-  const [newTeamIsActive, setNewTeamIsActive] = useState(true);
-  const [isAddingTeam, setIsAddingTeam] = useState(false);
-  const [editingTeamId, setEditingTeamId] = useState<number | null>(null);
-  const [teamEditForm, setTeamEditForm] = useState<{ name: string; is_active: boolean }>({
-    name: '',
-    is_active: true,
-  });
-  const [teamFilter, setTeamFilter] = useState<TeamStatus>('all');
-
-  const pages = [
-    { path: "/", label: "Dashboard" },
-    { path: "/tracker", label: "My Tracker" },
-    { path: "/sa-progress", label: "Self Assessment Progress" },
-    { path: "/team", label: "Stats and Figures" },
-    { path: "/annual", label: "Annual Summary" },
-    { path: "/targets", label: "Targets Control" },
-    { path: "/settings", label: "Settings" },
-    { path: "/audit-log", label: "Audit Log" },
-  ];
 
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [isSavingPermissions, setIsSavingPermissions] = useState(false);
@@ -93,17 +96,71 @@ export const Settings: React.FC = () => {
 
   const { selectedFinancialYear, setSelectedFinancialYear } = useDate();
 
+  const accountantOptions = useMemo(
+    () =>
+      authStaff
+        .filter((staffMember) => {
+          const derived = deriveStaffCategories(staffMember);
+          return !staffMember.is_hidden && derived.workCategory === 'accountant';
+        })
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [authStaff]
+  );
+
+  const assistantUsers = useMemo(
+    () =>
+      allUsers.filter(
+        (user) => !user.is_hidden && user.workCategory === 'assistant'
+      ),
+    [allUsers]
+  );
+
+  const accountantUsers = useMemo(
+    () =>
+      allUsers.filter(
+        (user) => !user.is_hidden && user.workCategory === 'accountant'
+      ),
+    [allUsers]
+  );
+
+  const assistantSummary = useMemo(() => {
+    return assistantUsers
+      .map((assistant) => ({
+        ...assistant,
+        assignedAccountant:
+          assistant.team_id !== null
+            ? teams.find((team) => team.id === assistant.team_id)?.name || 'Unknown'
+            : 'Unassigned',
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [assistantUsers, teams]);
+
+  const pages = [
+    { path: "/", label: "Dashboard" },
+    { path: "/tracker", label: "My Tracker" },
+    { path: "/sa-progress", label: "Self Assessment Progress" },
+    { path: "/team", label: "Stats and Figures" },
+    { path: "/annual", label: "Annual Summary" },
+    { path: "/targets", label: "Targets Control" },
+    { path: "/settings", label: "Settings" },
+    { path: "/audit-log", label: "Audit Log" },
+  ];
+
   const regionLabels = {
     'england-and-wales': 'England & Wales',
     scotland: 'Scotland',
     'northern-ireland': 'Northern Ireland',
   };
 
-  const visibleTeams = teams.filter(team => {
-    if (teamFilter === 'active') return team.is_active;
-    if (teamFilter === 'inactive') return !team.is_active;
-    return true;
-  });
+  const accessLevelLabels: Record<AccessLevel, string> = {
+    admin: 'Admin',
+    user: 'User',
+  };
+
+  const workCategoryLabels: Record<WorkCategory, string> = {
+    accountant: 'Accountant',
+    assistant: 'Assistant',
+  };
 
   const setTimedFeedback = (message: string) => {
     setFeedback(message);
@@ -130,7 +187,7 @@ export const Settings: React.FC = () => {
       const [usersResult, permsResult, teamsResult] = await Promise.all([
         supabase
           .from('staff')
-          .select('*, team:team_id (*)')
+          .select('*')
           .order('name'),
         supabase.from('role_permissions').select('*'),
         supabase.from('teams').select('*').order('name'),
@@ -139,7 +196,7 @@ export const Settings: React.FC = () => {
       if (usersResult.error) {
         setFeedback(getErrorMessage('Failed to load users data', usersResult.error));
       } else {
-        setAllUsers((usersResult.data as StaffWithTeam[]) || []);
+        setAllUsers(((usersResult.data || []) as Staff[]).map(deriveStaffCategories));
       }
 
       if (!permsResult.error) {
@@ -202,6 +259,18 @@ export const Settings: React.FC = () => {
     }
   };
 
+  const getRoleValueFromAccessLevel = (accessLevel: AccessLevel) => {
+    return accessLevel === 'admin' ? 'admin' : 'staff';
+  };
+
+  const getTeamIdFromWorkCategory = (workCategory: WorkCategory, accountantId: string) => {
+    if (workCategory === 'assistant') {
+      return accountantId ? Number(accountantId) : null;
+    }
+
+    return null;
+  };
+
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUserName.trim() || !currentStaff) return;
@@ -210,29 +279,34 @@ export const Settings: React.FC = () => {
     setFeedback(null);
 
     try {
+      const insertPayload: Database['public']['Tables']['staff']['Insert'] = {
+        name: newUserName.trim(),
+        password: newUserPassword.trim() || null,
+        role: getRoleValueFromAccessLevel(newUserAccessLevel),
+        home_region: newUserRegion,
+        team_id: getTeamIdFromWorkCategory(newUserWorkCategory, newUserAccountantId),
+        is_hidden: false,
+      };
+
       const { data, error: insertError } = await supabase
         .from('staff')
-        .insert({
-          name: newUserName.trim(),
-          password: newUserPassword.trim() || null,
-          role: newUserRole,
-          home_region: newUserRegion,
-          team_id: null,
-          is_hidden: false,
-        })
-        .select('*, team:team_id (*)')
+        .insert(insertPayload)
+        .select('*')
         .single();
 
       if (insertError) {
         setTimedFeedback(getErrorMessage('Failed to add user', insertError));
       } else {
+        const normalizedUser = deriveStaffCategories(data as Staff);
         setAllUsers(prev =>
-          [...prev, data as StaffWithTeam].sort((a, b) => a.name.localeCompare(b.name))
+          [...prev, normalizedUser].sort((a, b) => a.name.localeCompare(b.name))
         );
         setNewUserName('');
         setNewUserPassword('');
-        setNewUserRole('staff');
+        setNewUserAccessLevel('user');
+        setNewUserWorkCategory('assistant');
         setNewUserRegion('england-and-wales');
+        setNewUserAccountantId('');
         await refreshStaff();
         await createAuditLog({
           pagePath: '/settings',
@@ -244,8 +318,11 @@ export const Settings: React.FC = () => {
           actorStaffId: currentStaff.staff_id,
           teamId: data.team_id,
           metadata: {
+            access_level: newUserAccessLevel,
+            work_category: newUserWorkCategory,
             role: data.role,
             home_region: data.home_region,
+            assigned_accountant_id: data.team_id,
           },
         });
         setTimedFeedback('Successfully added user');
@@ -257,16 +334,18 @@ export const Settings: React.FC = () => {
     }
   };
 
-  const handleEditUser = (user: StaffWithTeam) => {
+  const handleEditUser = (user: StaffWithDerivedCategories) => {
     setEditingUser(user);
     setEditForm({
       name: user.name,
       password: user.password || '',
-      role: user.role as 'admin' | 'staff',
+      accessLevel: user.accessLevel,
+      workCategory: user.workCategory,
       home_region: (user.home_region as
         | 'england-and-wales'
         | 'scotland'
         | 'northern-ireland') || 'england-and-wales',
+      accountantId: user.team_id !== null ? String(user.team_id) : '',
       security_question: user.security_question || '',
       security_answer: user.security_answer || '',
     });
@@ -278,27 +357,30 @@ export const Settings: React.FC = () => {
     setFeedback(null);
 
     try {
+      const updatePayload: Database['public']['Tables']['staff']['Update'] = {
+        name: editForm.name.trim(),
+        password: editForm.password.trim() || null,
+        role: getRoleValueFromAccessLevel(editForm.accessLevel),
+        home_region: editForm.home_region,
+        security_question: editForm.security_question.trim() || null,
+        security_answer: editForm.security_answer.trim() || null,
+        team_id: getTeamIdFromWorkCategory(editForm.workCategory, editForm.accountantId),
+      };
+
       const { data, error: updateError } = await supabase
         .from('staff')
-        .update({
-          name: editForm.name.trim(),
-          password: editForm.password.trim() || null,
-          role: editForm.role,
-          home_region: editForm.home_region,
-          security_question: editForm.security_question.trim() || null,
-          security_answer: editForm.security_answer.trim() || null,
-          team_id: null,
-        })
+        .update(updatePayload)
         .eq('staff_id', editingUser.staff_id)
-        .select('*, team:team_id (*)')
+        .select('*')
         .single();
 
       if (updateError) {
         setTimedFeedback(getErrorMessage('Failed to update user', updateError));
       } else {
+        const normalizedUser = deriveStaffCategories(data as Staff);
         setAllUsers(prev =>
           prev
-            .map(user => (user.staff_id === editingUser.staff_id ? (data as StaffWithTeam) : user))
+            .map(user => (user.staff_id === editingUser.staff_id ? normalizedUser : user))
             .sort((a, b) => a.name.localeCompare(b.name))
         );
         setEditingUser(null);
@@ -311,10 +393,13 @@ export const Settings: React.FC = () => {
           entityId: String(editingUser.staff_id),
           description: `Updated user ${data.name}`,
           actorStaffId: currentStaff.staff_id,
-          teamId: null,
+          teamId: data.team_id,
           metadata: {
+            access_level: editForm.accessLevel,
+            work_category: editForm.workCategory,
             role: data.role,
             home_region: data.home_region,
+            assigned_accountant_id: data.team_id,
           },
         });
         setTimedFeedback('Successfully updated user');
@@ -371,171 +456,6 @@ export const Settings: React.FC = () => {
       setTimedFeedback('Failed to connect to database');
     } finally {
       setIsSavingAccount(false);
-    }
-  };
-
-  const handleAddTeam = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTeamName.trim() || !currentStaff) return;
-
-    setIsAddingTeam(true);
-    setFeedback(null);
-
-    try {
-      const { data, error } = await supabase
-        .from('teams')
-        .insert({
-          name: newTeamName.trim(),
-          is_active: newTeamIsActive,
-          created_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (error) {
-        setTimedFeedback(getErrorMessage('Failed to add accountant', error));
-      } else {
-        setTeams(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
-        setNewTeamName('');
-        setNewTeamIsActive(true);
-        await createAuditLog({
-          pagePath: '/settings',
-          pageLabel: 'Settings',
-          actionType: 'create',
-          entityType: 'team',
-          entityId: String(data.id),
-          description: `Created accountant ${data.name}`,
-          actorStaffId: currentStaff.staff_id,
-          teamId: data.id,
-          metadata: {
-            is_active: data.is_active,
-          },
-        });
-        setTimedFeedback('Successfully added accountant');
-      }
-    } catch {
-      setTimedFeedback('Failed to connect to database');
-    } finally {
-      setIsAddingTeam(false);
-    }
-  };
-
-  const startEditTeam = (team: Team) => {
-    setEditingTeamId(team.id);
-    setTeamEditForm({
-      name: team.name,
-      is_active: team.is_active,
-    });
-  };
-
-  const cancelEditTeam = () => {
-    setEditingTeamId(null);
-    setTeamEditForm({ name: '', is_active: true });
-  };
-
-  const handleSaveTeam = async (teamId: number) => {
-    if (!teamEditForm.name.trim() || !currentStaff) return;
-
-    setFeedback(null);
-
-    try {
-      const existingTeam = teams.find(team => team.id === teamId) || null;
-
-      const { data, error } = await supabase
-        .from('teams')
-        .update({
-          name: teamEditForm.name.trim(),
-          is_active: teamEditForm.is_active,
-        })
-        .eq('id', teamId)
-        .select()
-        .single();
-
-      if (error) {
-        setTimedFeedback(getErrorMessage('Failed to update accountant', error));
-      } else {
-        setTeams(prev =>
-          prev.map(team => (team.id === teamId ? data : team)).sort((a, b) => a.name.localeCompare(b.name))
-        );
-        setAllUsers(prev =>
-          prev.map(user =>
-            user.team_id === teamId
-              ? {
-                  ...user,
-                  team: data,
-                }
-              : user
-          )
-        );
-        cancelEditTeam();
-        await createAuditLog({
-          pagePath: '/settings',
-          pageLabel: 'Settings',
-          actionType: 'update',
-          entityType: 'team',
-          entityId: String(teamId),
-          description: `Updated accountant ${existingTeam?.name || data.name}`,
-          actorStaffId: currentStaff.staff_id,
-          teamId,
-          metadata: {
-            previous_name: existingTeam?.name || null,
-            new_name: data.name,
-            is_active: data.is_active,
-          },
-        });
-        setTimedFeedback('Successfully updated accountant');
-      }
-    } catch {
-      setTimedFeedback('Failed to connect to database');
-    }
-  };
-
-  const handleToggleTeamActive = async (team: Team) => {
-    if (!currentStaff) return;
-
-    setFeedback(null);
-
-    try {
-      const { data, error } = await supabase
-        .from('teams')
-        .update({ is_active: !team.is_active })
-        .eq('id', team.id)
-        .select()
-        .single();
-
-      if (error) {
-        setTimedFeedback(getErrorMessage('Failed to update accountant status', error));
-      } else {
-        setTeams(prev =>
-          prev.map(item => (item.id === team.id ? data : item)).sort((a, b) => a.name.localeCompare(b.name))
-        );
-        setAllUsers(prev =>
-          prev.map(user =>
-            user.team_id === team.id
-              ? {
-                  ...user,
-                  team: data,
-                }
-              : user
-          )
-        );
-        await createAuditLog({
-          pagePath: '/settings',
-          pageLabel: 'Settings',
-          actionType: 'update',
-          entityType: 'team',
-          entityId: String(team.id),
-          description: `Marked accountant ${data.name} as ${data.is_active ? 'active' : 'inactive'}`,
-          actorStaffId: currentStaff.staff_id,
-          teamId: team.id,
-          metadata: {
-            is_active: data.is_active,
-          },
-        });
-        setTimedFeedback(`Accountant marked as ${data.is_active ? 'active' : 'inactive'}`);
-      }
-    } catch {
-      setTimedFeedback('Failed to connect to database');
     }
   };
 
@@ -646,11 +566,6 @@ export const Settings: React.FC = () => {
     return days;
   };
 
-  const usersByTeam = visibleTeams.map(team => ({
-    ...team,
-    memberCount: allUsers.filter(user => !user.is_hidden && user.role === 'staff' && user.team_id === team.id).length,
-  }));
-
   return (
     <div className="px-4 sm:px-6 lg:px-8">
       <div className="page-header">
@@ -685,11 +600,11 @@ export const Settings: React.FC = () => {
             </button>
 
             {isAdmin &&
-              ['users', 'teams', 'calendar', 'permissions'].map(tab => (
+              ['users', 'calendar', 'permissions'].map(tab => (
                 <button
                   key={tab}
                   onClick={() =>
-                    setActiveTab(tab as 'users' | 'teams' | 'calendar' | 'permissions')
+                    setActiveTab(tab as 'users' | 'calendar' | 'permissions')
                   }
                   className={`py-2 px-1 border-b-2 font-medium text-sm capitalize ${
                     activeTab === tab
@@ -697,7 +612,7 @@ export const Settings: React.FC = () => {
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  {tab === 'teams' ? 'accountants' : tab}
+                  {tab}
                 </button>
               ))}
           </nav>
@@ -757,7 +672,7 @@ export const Settings: React.FC = () => {
           <div className="mt-6 space-y-6">
             <div className="bg-white shadow rounded-lg p-6">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Add New User</h3>
-              <form onSubmit={handleAddUser} className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <form onSubmit={handleAddUser} className="grid grid-cols-1 md:grid-cols-6 gap-4">
                 <input
                   type="text"
                   value={newUserName}
@@ -774,12 +689,26 @@ export const Settings: React.FC = () => {
                   placeholder="Password (optional)"
                 />
                 <select
-                  value={newUserRole}
-                  onChange={e => setNewUserRole(e.target.value as 'admin' | 'staff')}
+                  value={newUserAccessLevel}
+                  onChange={e => setNewUserAccessLevel(e.target.value as AccessLevel)}
                   className="px-3 py-2 border rounded-md"
                 >
-                  <option value="staff">Accountant</option>
-                  <option value="admin">User</option>
+                  <option value="user">User</option>
+                  <option value="admin">Admin</option>
+                </select>
+                <select
+                  value={newUserWorkCategory}
+                  onChange={e => {
+                    const value = e.target.value as WorkCategory;
+                    setNewUserWorkCategory(value);
+                    if (value === 'accountant') {
+                      setNewUserAccountantId('');
+                    }
+                  }}
+                  className="px-3 py-2 border rounded-md"
+                >
+                  <option value="accountant">Accountant</option>
+                  <option value="assistant">Assistant</option>
                 </select>
                 <select
                   value={newUserRegion}
@@ -797,6 +726,20 @@ export const Settings: React.FC = () => {
                 >
                   {isAddingUser ? 'Adding...' : 'Add User'}
                 </button>
+                {newUserWorkCategory === 'assistant' && (
+                  <select
+                    value={newUserAccountantId}
+                    onChange={e => setNewUserAccountantId(e.target.value)}
+                    className="px-3 py-2 border rounded-md md:col-span-2"
+                  >
+                    <option value="">Assign accountant (optional)</option>
+                    {accountantOptions.map(accountant => (
+                      <option key={accountant.staff_id} value={String(accountant.team_id ?? '')}>
+                        {accountant.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </form>
             </div>
 
@@ -811,7 +754,9 @@ export const Settings: React.FC = () => {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Access</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Work Category</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned Accountant</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Region</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                       </tr>
@@ -823,7 +768,17 @@ export const Settings: React.FC = () => {
                           <tr key={user.staff_id}>
                             <td className="px-6 py-4 text-sm font-medium text-gray-900">{user.name}</td>
                             <td className="px-6 py-4 text-sm text-gray-500">
-                              {user.role === 'staff' ? 'Accountant' : 'User'}
+                              {accessLevelLabels[user.accessLevel]}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-500">
+                              {workCategoryLabels[user.workCategory]}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-500">
+                              {user.workCategory === 'assistant'
+                                ? user.team_id !== null
+                                  ? authTeams.find(team => team.id === user.team_id)?.name || 'Unknown'
+                                  : 'Unassigned'
+                                : '—'}
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-500">
                               {regionLabels[user.home_region as keyof typeof regionLabels]}
@@ -843,166 +798,66 @@ export const Settings: React.FC = () => {
                 </div>
               )}
             </div>
-          </div>
-        )}
 
-        {isAdmin && activeTab === 'teams' && (
-          <div className="mt-6 space-y-6">
-            <div className="bg-white shadow rounded-lg p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Add Accountant</h3>
-              <form onSubmit={handleAddTeam} className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-4 items-end">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Accountant Name</label>
-                  <input
-                    type="text"
-                    value={newTeamName}
-                    onChange={e => setNewTeamName(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-md"
-                    placeholder="Enter accountant name"
-                    required
-                  />
-                </div>
-                <label className="flex items-center gap-2 text-sm text-gray-700 py-2">
-                  <input
-                    type="checkbox"
-                    checked={newTeamIsActive}
-                    onChange={e => setNewTeamIsActive(e.target.checked)}
-                    className="h-4 w-4"
-                  />
-                  Active
-                </label>
-                <button
-                  type="submit"
-                  disabled={isAddingTeam}
-                  className="bg-blue-600 text-white rounded-md px-4 py-2 hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {isAddingTeam ? 'Adding...' : 'Add Accountant'}
-                </button>
-              </form>
-            </div>
-
-            <div className="bg-white shadow rounded-lg p-6">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-                <h3 className="text-lg font-medium text-gray-900">Accountants</h3>
-                <div className="flex items-center gap-3">
-                  <label className="text-sm font-medium text-gray-700">Show</label>
-                  <select
-                    value={teamFilter}
-                    onChange={e => setTeamFilter(e.target.value as TeamStatus)}
-                    className="px-3 py-2 border rounded-md text-sm"
-                  >
-                    <option value="all">All accountants</option>
-                    <option value="active">Active only</option>
-                    <option value="inactive">Inactive only</option>
-                  </select>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <div className="bg-white shadow rounded-lg p-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">User Categorisation Summary</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="border border-gray-200 rounded-lg p-4">
+                    <div className="text-sm font-medium text-gray-500">Admins</div>
+                    <div className="mt-2 text-3xl font-bold text-gray-900">
+                      {allUsers.filter(user => !user.is_hidden && user.accessLevel === 'admin').length}
+                    </div>
+                  </div>
+                  <div className="border border-gray-200 rounded-lg p-4">
+                    <div className="text-sm font-medium text-gray-500">Users</div>
+                    <div className="mt-2 text-3xl font-bold text-gray-900">
+                      {allUsers.filter(user => !user.is_hidden && user.accessLevel === 'user').length}
+                    </div>
+                  </div>
+                  <div className="border border-gray-200 rounded-lg p-4">
+                    <div className="text-sm font-medium text-gray-500">Accountants</div>
+                    <div className="mt-2 text-3xl font-bold text-gray-900">
+                      {accountantUsers.length}
+                    </div>
+                  </div>
+                  <div className="border border-gray-200 rounded-lg p-4">
+                    <div className="text-sm font-medium text-gray-500">Assistants</div>
+                    <div className="mt-2 text-3xl font-bold text-gray-900">
+                      {assistantUsers.length}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-4">
-                {visibleTeams.map(team => {
-                  const memberCount = allUsers.filter(user => !user.is_hidden && user.role === 'staff' && user.team_id === team.id).length;
-                  const isEditing = editingTeamId === team.id;
-
-                  return (
-                    <div key={team.id} className="border border-gray-200 rounded-lg p-4">
-                      {isEditing ? (
-                        <div className="flex flex-col md:flex-row md:items-center gap-4">
-                          <input
-                            type="text"
-                            value={teamEditForm.name}
-                            onChange={e => setTeamEditForm(prev => ({ ...prev, name: e.target.value }))}
-                            className="flex-1 px-3 py-2 border rounded-md"
-                          />
-                          <label className="flex items-center gap-2 text-sm text-gray-700">
-                            <input
-                              type="checkbox"
-                              checked={teamEditForm.is_active}
-                              onChange={e => setTeamEditForm(prev => ({ ...prev, is_active: e.target.checked }))}
-                              className="h-4 w-4"
-                            />
-                            Active
-                          </label>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleSaveTeam(team.id)}
-                              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
-                            >
-                              Save
-                            </button>
-                            <button
-                              onClick={cancelEditTeam}
-                              className="px-4 py-2 bg-gray-300 text-gray-900 rounded-md hover:bg-gray-400 text-sm font-medium"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                          <div>
-                            <div className="flex items-center gap-3">
-                              <h4 className="text-base font-semibold text-gray-900">{team.name}</h4>
-                              <span
-                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                  team.is_active
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-gray-100 text-gray-700'
-                                }`}
-                              >
-                                {team.is_active ? 'Active' : 'Inactive'}
-                              </span>
-                            </div>
-                            <p className="mt-1 text-sm text-gray-500">{memberCount} accountant{memberCount === 1 ? '' : 's'}</p>
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => startEditTeam(team)}
-                              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-sm font-medium"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleToggleTeamActive(team)}
-                              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-sm font-medium"
-                            >
-                              Mark {team.is_active ? 'Inactive' : 'Active'}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-
-                {visibleTeams.length === 0 && (
+              <div className="bg-white shadow rounded-lg p-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Assistant Assignments</h3>
+                {assistantSummary.length === 0 ? (
                   <div className="py-8 text-center text-sm text-gray-500 border border-dashed border-gray-300 rounded-lg">
-                    No accountants found for this filter.
+                    No assistants found.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assistant</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned Accountant</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Access</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {assistantSummary.map(assistant => (
+                          <tr key={assistant.staff_id}>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{assistant.name}</td>
+                            <td className="px-4 py-3 text-sm text-gray-500">{assistant.assignedAccountant}</td>
+                            <td className="px-4 py-3 text-sm text-gray-500">{accessLevelLabels[assistant.accessLevel]}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
-              </div>
-            </div>
-
-            <div className="bg-white shadow rounded-lg p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Accountant Summary</h3>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Accountant</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Accountants</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {usersByTeam.map(team => (
-                      <tr key={team.id}>
-                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{team.name}</td>
-                        <td className="px-6 py-4 text-sm text-gray-500">{team.is_active ? 'Active' : 'Inactive'}</td>
-                        <td className="px-6 py-4 text-sm text-gray-500">{team.memberCount}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
               </div>
             </div>
           </div>
@@ -1020,13 +875,16 @@ export const Settings: React.FC = () => {
                 {isSavingPermissions ? 'Saving...' : 'Save Permissions'}
               </button>
             </div>
+            <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+              Access permissions are controlled by the User/Admin categorisation. Accountant/Assistant is an operational categorisation used for settings and assignment.
+            </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Page / Tab</th>
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">User Access</th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Accountant Access</th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Admin Access</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -1034,8 +892,8 @@ export const Settings: React.FC = () => {
                     <tr key={page.path}>
                       <td className="px-6 py-4 text-sm font-medium text-gray-900">{page.label}</td>
                       {[
-                        { key: 'admin', label: 'User' },
-                        { key: 'staff', label: 'Accountant' },
+                        { key: 'staff', label: 'User' },
+                        { key: 'admin', label: 'Admin' },
                       ].map(role => {
                         const perm = permissions.find(p => p.role === role.key && p.page_path === page.path);
                         const isVisible = perm ? perm.is_visible !== false : true;
@@ -1109,38 +967,77 @@ export const Settings: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Type</label>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Access</label>
                   <select
-                    value={editForm.role}
+                    value={editForm.accessLevel}
                     onChange={e =>
                       setEditForm(f => ({
                         ...f,
-                        role: e.target.value as 'admin' | 'staff',
+                        accessLevel: e.target.value as AccessLevel,
                       }))
                     }
                     className="w-full px-3 py-2 border rounded-md"
                   >
-                    <option value="staff">Accountant</option>
-                    <option value="admin">User</option>
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Region</label>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Work Category</label>
                   <select
-                    value={editForm.home_region}
+                    value={editForm.workCategory}
                     onChange={e =>
                       setEditForm(f => ({
                         ...f,
-                        home_region: e.target.value as 'england-and-wales' | 'scotland' | 'northern-ireland',
+                        workCategory: e.target.value as WorkCategory,
+                        accountantId: e.target.value === 'accountant' ? '' : f.accountantId,
                       }))
                     }
                     className="w-full px-3 py-2 border rounded-md"
                   >
-                    <option value="england-and-wales">England & Wales</option>
-                    <option value="scotland">Scotland</option>
-                    <option value="northern-ireland">Northern Ireland</option>
+                    <option value="accountant">Accountant</option>
+                    <option value="assistant">Assistant</option>
                   </select>
                 </div>
+              </div>
+              {editForm.workCategory === 'assistant' && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Assigned Accountant</label>
+                  <select
+                    value={editForm.accountantId}
+                    onChange={e =>
+                      setEditForm(f => ({
+                        ...f,
+                        accountantId: e.target.value,
+                      }))
+                    }
+                    className="w-full px-3 py-2 border rounded-md"
+                  >
+                    <option value="">Unassigned</option>
+                    {accountantOptions.map(accountant => (
+                      <option key={accountant.staff_id} value={String(accountant.team_id ?? '')}>
+                        {accountant.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Region</label>
+                <select
+                  value={editForm.home_region}
+                  onChange={e =>
+                    setEditForm(f => ({
+                      ...f,
+                      home_region: e.target.value as 'england-and-wales' | 'scotland' | 'northern-ireland',
+                    }))
+                  }
+                  className="w-full px-3 py-2 border rounded-md"
+                >
+                  <option value="england-and-wales">England & Wales</option>
+                  <option value="scotland">Scotland</option>
+                  <option value="northern-ireland">Northern Ireland</option>
+                </select>
               </div>
               <div className="border-t pt-4 mt-4">
                 <h4 className="text-sm font-bold text-gray-700 mb-3">Security Question (Admin Reset)</h4>
