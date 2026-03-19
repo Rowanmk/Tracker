@@ -72,8 +72,6 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
   const defaultProgressLimit = isCurrentMonth ? Math.min(currentDay, daysInSelectedMonth) : daysInSelectedMonth;
   const progressLimit = playbackDay ?? defaultProgressLimit;
   const clampedPlaybackDay = Math.max(1, Math.min(progressLimit, daysInSelectedMonth));
-  const wholeDaysToRender = Math.floor(clampedPlaybackDay);
-  const partialDayProgress = clampedPlaybackDay - wholeDaysToRender;
 
   let barValues: number[] = [];
   let expectedValues: number[] = [];
@@ -95,17 +93,13 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
 
   const displayedBarValues = barValues.map((value, index) => {
     const day = index + 1;
+    const previousValue = index > 0 ? barValues[index - 1] : 0;
 
-    if (day <= wholeDaysToRender) {
-      return value;
+    if (clampedPlaybackDay >= day) {
+      return previousValue + (value - previousValue) * Math.min(1, clampedPlaybackDay - (day - 1));
     }
 
-    if (day === wholeDaysToRender + 1 && partialDayProgress > 0) {
-      const previousValue = index > 0 ? barValues[index - 1] : 0;
-      return previousValue + (value - previousValue) * partialDayProgress;
-    }
-
-    return 0; // Do not show actuals for future days
+    return 0;
   });
 
   const yAxisSteps = Array.from({ length: 5 }, (_, index) => Math.round((safeMaxValue / 4) * index));
@@ -205,7 +199,6 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             stroke="#6B7280"
             strokeWidth="3"
             strokeDasharray="8,4"
-            style={{ transition: "all 180ms ease-out" }}
           />
 
           {displayedBarValues.map((value, idx) => {
@@ -213,13 +206,12 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             const ratio = safeMaxValue > 0 ? value / safeMaxValue : 0;
             const barHeight = Math.max(0, ratio * BAR_AREA_HEIGHT);
             const x = getX(day);
+            const isVisible = value > 0 || clampedPlaybackDay >= day;
 
-            const isVisible = day <= wholeDaysToRender || (day === wholeDaysToRender + 1 && partialDayProgress > 0);
-            
             const interpolatedRawValue = viewMode === "percent" ? (target > 0 ? (value / 100) * target : 0) : value;
             const rawVariance = interpolatedRawValue - expectedCumulative[idx];
             const roundedVariance = Math.round(rawVariance);
-            
+
             const varianceText = roundedVariance > 0 ? `+${roundedVariance}` : roundedVariance === 0 ? "0" : `${roundedVariance}`;
             const varianceColor = roundedVariance > 0 ? "fill-green-600 dark:fill-green-400" : roundedVariance < 0 ? "fill-red-600 dark:fill-red-400" : "fill-gray-500 dark:fill-gray-400";
 
@@ -232,10 +224,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
                   height={barHeight}
                   fill="#001B47"
                   rx={2}
-                  style={{
-                    transition: "y 180ms ease-out, height 180ms ease-out",
-                    transform: "translateZ(0)",
-                  }}
+                  style={{ transform: "translateZ(0)" }}
                 />
                 {isVisible && (
                   <text
@@ -243,9 +232,6 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
                     y={BASELINE_Y - barHeight - 6}
                     textAnchor="middle"
                     className={`text-[9px] font-bold ${varianceColor}`}
-                    style={{
-                      transition: "y 180ms ease-out",
-                    }}
                   >
                     {varianceText}
                   </text>

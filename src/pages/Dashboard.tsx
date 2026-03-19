@@ -12,7 +12,10 @@ import { useDashboardView } from "../context/DashboardViewContext";
 import { useStaffPerformance } from "../hooks/useStaffPerformance";
 import { usePerformanceSummary } from "../hooks/usePerformanceSummary";
 
-const PLAYBACK_STEP_DURATION_MS = 220;
+const DAY_TRANSITION_DURATION_MS = 760;
+const DAY_STEP_PAUSE_MS = 190;
+
+type PlaybackStatus = "idle" | "playing" | "paused";
 
 export const Dashboard: React.FC = () => {
   const { viewMode } = useDashboardView();
@@ -68,111 +71,150 @@ export const Dashboard: React.FC = () => {
 
   const [selectedPlaybackDay, setSelectedPlaybackDay] = useState<number>(initialPlaybackDay);
   const [playbackProgress, setPlaybackProgress] = useState<number>(initialPlaybackDay);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus>("idle");
 
-  const animationFrameRef = useRef<number | null>(null);
-  const animationStartTimeRef = useRef<number | null>(null);
-  const playbackStartDayRef = useRef<number>(initialPlaybackDay);
-  const playbackTargetDayRef = useRef<number>(initialPlaybackDay);
+  const rafRef = useRef<number | null>(null);
+  const timeoutRef = useRef<number | null>(null);
+
+  const playbackStateRef = useRef({
+    fromDay: initialPlaybackDay,
+    toDay: initialPlaybackDay,
+    targetDay: initialPlaybackDay,
+    startedAt: 0,
+    progressAtPause: initialPlaybackDay,
+  });
+
+  const cancelPlaybackLoop = () => {
+    if (rafRef.current !== null) {
+      window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+
+    if (timeoutRef.current !== null) {
+      window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  };
+
+  const clampDay = (day: number) => Math.max(1, Math.min(maxActualDay, day));
+
+  const runPlaybackStep = (fromDay: number, targetDay: number) => {
+    cancelPlaybackLoop();
+
+    if (fromDay >= targetDay) {
+      const finalDay = clampDay(targetDay);
+      playbackStateRef.current = {
+        fromDay: finalDay,
+        toDay: finalDay,
+        targetDay: finalDay,
+        startedAt: 0,
+        progressAtPause: finalDay,
+      };
+      setPlaybackProgress(finalDay);
+      setSelectedPlaybackDay(finalDay);
+      setPlaybackStatus("idle");
+      return;
+    }
+
+    const safeFrom = clampDay(fromDay);
+    const safeTo = clampDay(fromDay + 1);
+
+    playbackStateRef.current = {
+      fromDay: safeFrom,
+      toDay: safeTo,
+      targetDay: clampDay(targetDay),
+      startedAt: 0,
+      progressAtPause: safeFrom,
+    };
+
+    const animate = (timestamp: number) => {
+      if (playbackStateRef.current.startedAt === 0) {
+        playbackStateRef.current.startedAt = timestamp;
+      }
+
+      const elapsed = timestamp - playbackStateRef.current.startedAt;
+      const progress = Math.min(elapsed / DAY_TRANSITION_DURATION_MS, 1);
+      const eased = 0.5 - Math.cos(progress * Math.PI) / 2;
+      const interpolatedDay =
+        playbackStateRef.current.fromDay +
+        (playbackStateRef.current.toDay - playbackStateRef.current.fromDay) * eased;
+
+      playbackStateRef.current.progressAtPause = interpolatedDay;
+      setPlaybackProgress(interpolatedDay);
+      setSelectedPlaybackDay(Math.round(interpolatedDay));
+
+      if (progress < 1) {
+        rafRef.current = window.requestAnimationFrame(animate);
+        return;
+      }
+
+      const completedDay = playbackStateRef.current.toDay;
+      playbackStateRef.current.progressAtPause = completedDay;
+      setPlaybackProgress(completedDay);
+      setSelectedPlaybackDay(completedDay);
+
+      if (completedDay >= playbackStateRef.current.targetDay) {
+        setPlaybackStatus("idle");
+        rafRef.current = null;
+        return;
+      }
+
+      timeoutRef.current = window.setTimeout(() => {
+        if (playbackStatusRef.current !== "playing") {
+          return;
+        }
+        runPlaybackStep(completedDay, playbackStateRef.current.targetDay);
+      }, DAY_STEP_PAUSE_MS);
+    };
+
+    rafRef.current = window.requestAnimationFrame(animate);
+  };
+
+  const playbackStatusRef = useRef<PlaybackStatus>(playbackStatus);
 
   useEffect(() => {
+    playbackStatusRef.current = playbackStatus;
+  }, [playbackStatus]);
+
+  useEffect(() => {
+    cancelPlaybackLoop();
     setSelectedPlaybackDay(initialPlaybackDay);
     setPlaybackProgress(initialPlaybackDay);
-    setIsPlaying(false);
-    playbackStartDayRef.current = initialPlaybackDay;
-    playbackTargetDayRef.current = initialPlaybackDay;
-    animationStartTimeRef.current = null;
-
-    if (animationFrameRef.current !== null) {
-      window.cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-  }, [selectedMonth, selectedYear, selectedTeamId, initialPlaybackDay]);
-
-  useEffect(() => {
-    if (!isPlaying) {
-      if (animationFrameRef.current !== null) {
-        window.cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-      animationStartTimeRef.current = null;
-      return;
-    }
-
-    const startDay = Math.max(1, Math.min(daysInMonth, playbackStartDayRef.current));
-    const targetDay = Math.max(startDay, Math.min(daysInMonth, playbackTargetDayRef.current));
-
-    if (startDay >= targetDay) {
-      setPlaybackProgress(targetDay);
-      setSelectedPlaybackDay(targetDay);
-      setIsPlaying(false);
-      return;
-    }
-
-    animationStartTimeRef.current = null;
-
-    const step = (timestamp: number) => {
-      if (animationStartTimeRef.current === null) {
-        animationStartTimeRef.current = timestamp;
-      }
-
-      const elapsed = timestamp - animationStartTimeRef.current;
-      const completedSegments = Math.floor(elapsed / PLAYBACK_STEP_DURATION_MS);
-      const segmentProgress = (elapsed % PLAYBACK_STEP_DURATION_MS) / PLAYBACK_STEP_DURATION_MS;
-
-      const currentBaseDay = Math.min(startDay + completedSegments, targetDay);
-      const nextDay = Math.min(currentBaseDay + 1, targetDay);
-
-      const easedSegmentProgress = 1 - Math.pow(1 - segmentProgress, 3);
-      const interpolatedProgress =
-        currentBaseDay >= targetDay
-          ? targetDay
-          : currentBaseDay + (nextDay - currentBaseDay) * easedSegmentProgress;
-
-      setPlaybackProgress(interpolatedProgress);
-      setSelectedPlaybackDay(Math.max(1, Math.min(daysInMonth, Math.round(interpolatedProgress))));
-
-      if (currentBaseDay < targetDay) {
-        animationFrameRef.current = window.requestAnimationFrame(step);
-      } else {
-        setPlaybackProgress(targetDay);
-        setSelectedPlaybackDay(targetDay);
-        playbackStartDayRef.current = targetDay;
-        animationFrameRef.current = null;
-        animationStartTimeRef.current = null;
-        setIsPlaying(false);
-      }
+    setPlaybackStatus("idle");
+    playbackStateRef.current = {
+      fromDay: initialPlaybackDay,
+      toDay: initialPlaybackDay,
+      targetDay: initialPlaybackDay,
+      startedAt: 0,
+      progressAtPause: initialPlaybackDay,
     };
-
-    animationFrameRef.current = window.requestAnimationFrame(step);
 
     return () => {
-      if (animationFrameRef.current !== null) {
-        window.cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
+      cancelPlaybackLoop();
     };
-  }, [isPlaying, daysInMonth]);
+  }, [selectedMonth, selectedYear, selectedTeamId, initialPlaybackDay]);
 
   const filteredActivities = useMemo(() => {
     const safeProgress = Math.max(1, Math.min(daysInMonth, playbackProgress));
-    const wholeDay = Math.floor(safeProgress);
-    const partialDayProgress = safeProgress - wholeDay;
 
     return dailyActivities
       .map((activity) => {
-        if (activity.day <= wholeDay) {
+        const previousBoundary = activity.day - 1;
+        const currentBoundary = activity.day;
+        const visibleFraction = Math.max(0, Math.min(1, safeProgress - previousBoundary));
+
+        if (visibleFraction <= 0) {
+          return null;
+        }
+
+        if (visibleFraction >= 1) {
           return activity;
         }
 
-        if (activity.day === wholeDay + 1 && partialDayProgress > 0) {
-          return {
-            ...activity,
-            delivered_count: activity.delivered_count * partialDayProgress,
-          };
-        }
-
-        return null;
+        return {
+          ...activity,
+          delivered_count: activity.delivered_count * visibleFraction,
+        };
       })
       .filter((activity): activity is NonNullable<typeof activity> => activity !== null);
   }, [dailyActivities, playbackProgress, daysInMonth]);
@@ -225,28 +267,19 @@ export const Dashboard: React.FC = () => {
 
   const workingDaysElapsedToPlayback = useMemo(() => {
     const safeProgress = Math.max(1, Math.min(daysInMonth, playbackProgress));
-    const wholeDay = Math.floor(safeProgress);
-    const partialDayProgress = safeProgress - wholeDay;
-
     let count = 0;
 
-    for (let day = 1; day <= Math.min(wholeDay, daysInMonth); day++) {
+    for (let day = 1; day <= daysInMonth; day++) {
       const currentDate = new Date(yearForMonth, selectedMonth - 1, day);
       const dayOfWeek = currentDate.getDay();
+      const isWorkingDay = dayOfWeek !== 0 && dayOfWeek !== 6;
 
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        count += 1;
+      if (!isWorkingDay) {
+        continue;
       }
-    }
 
-    const nextDay = wholeDay + 1;
-    if (partialDayProgress > 0 && nextDay <= daysInMonth) {
-      const currentDate = new Date(yearForMonth, selectedMonth - 1, nextDay);
-      const dayOfWeek = currentDate.getDay();
-
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        count += partialDayProgress;
-      }
+      const visibleFraction = Math.max(0, Math.min(1, safeProgress - (day - 1)));
+      count += visibleFraction;
     }
 
     return Math.min(count, teamWorkingDays);
@@ -273,41 +306,61 @@ export const Dashboard: React.FC = () => {
   const isAhead = variance >= 0;
 
   const handleDaySelect = (day: number) => {
-    const safeDay = Math.max(1, Math.min(daysInMonth, day));
-
-    if (animationFrameRef.current !== null) {
-      window.cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-
-    animationStartTimeRef.current = null;
-    playbackStartDayRef.current = safeDay;
-    playbackTargetDayRef.current = safeDay;
+    const safeDay = clampDay(day);
+    cancelPlaybackLoop();
+    playbackStateRef.current = {
+      fromDay: safeDay,
+      toDay: safeDay,
+      targetDay: safeDay,
+      startedAt: 0,
+      progressAtPause: safeDay,
+    };
     setSelectedPlaybackDay(safeDay);
     setPlaybackProgress(safeDay);
-    setIsPlaying(false);
+    setPlaybackStatus("idle");
   };
 
-  const handleTogglePlay = () => {
-    if (isPlaying) {
-      const pausedDay = Math.max(1, Math.min(daysInMonth, Math.round(playbackProgress)));
-      playbackStartDayRef.current = pausedDay;
-      playbackTargetDayRef.current = pausedDay;
-      setSelectedPlaybackDay(pausedDay);
-      setPlaybackProgress(pausedDay);
-      setIsPlaying(false);
+  const handlePlayPause = () => {
+    if (playbackStatusRef.current === "playing") {
+      cancelPlaybackLoop();
+      const pausedProgress = clampDay(Math.round(playbackStateRef.current.progressAtPause));
+      playbackStateRef.current = {
+        fromDay: pausedProgress,
+        toDay: Math.min(pausedProgress + 1, maxActualDay),
+        targetDay: maxActualDay,
+        startedAt: 0,
+        progressAtPause: pausedProgress,
+      };
+      setSelectedPlaybackDay(pausedProgress);
+      setPlaybackProgress(pausedProgress);
+      setPlaybackStatus("paused");
       return;
     }
 
-    const currentRoundedDay = Math.max(1, Math.min(daysInMonth, Math.round(playbackProgress)));
-    const startFrom = currentRoundedDay >= maxActualDay ? 1 : currentRoundedDay;
-    const targetDay = maxActualDay;
+    const resumedDay =
+      playbackStatusRef.current === "paused"
+        ? clampDay(Math.round(playbackStateRef.current.progressAtPause))
+        : clampDay(Math.round(playbackProgress));
 
-    playbackStartDayRef.current = startFrom;
-    playbackTargetDayRef.current = targetDay;
+    const startFrom = resumedDay >= maxActualDay ? 1 : resumedDay;
     setSelectedPlaybackDay(startFrom);
     setPlaybackProgress(startFrom);
-    setIsPlaying(true);
+    setPlaybackStatus("playing");
+    runPlaybackStep(startFrom, maxActualDay);
+  };
+
+  const handleReset = () => {
+    cancelPlaybackLoop();
+    playbackStateRef.current = {
+      fromDay: 1,
+      toDay: 1,
+      targetDay: maxActualDay,
+      startedAt: 0,
+      progressAtPause: 1,
+    };
+    setSelectedPlaybackDay(1);
+    setPlaybackProgress(1);
+    setPlaybackStatus("idle");
   };
 
   const deliveredPercent =
@@ -345,10 +398,13 @@ export const Dashboard: React.FC = () => {
         <DashboardPlaybackControls
           daysInMonth={daysInMonth}
           selectedDay={selectedPlaybackDay}
-          isPlaying={isPlaying}
+          isPlaying={playbackStatus === "playing"}
+          isPaused={playbackStatus === "paused"}
           playbackProgress={playbackProgress}
+          maxPlayableDay={maxActualDay}
           onDaySelect={handleDaySelect}
-          onTogglePlay={handleTogglePlay}
+          onPlayPause={handlePlayPause}
+          onReset={handleReset}
           month={selectedMonth}
           year={yearForMonth}
         />
@@ -369,13 +425,11 @@ export const Dashboard: React.FC = () => {
         </div>
         <div className="relative w-full h-6 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner">
           <div
-            className={`h-6 rounded-full transition-[width] duration-150 ease-linear ${
-              isAhead ? "bg-green-600" : "bg-red-600"
-            }`}
+            className={`${isAhead ? "bg-green-600" : "bg-red-600"} h-6 rounded-full`}
             style={{ width: `${deliveredPercent}%` }}
           />
           <div
-            className="absolute top-0 h-6 w-0.5 bg-[#001B47] transition-[left] duration-150 ease-linear"
+            className="absolute top-0 h-6 w-0.5 bg-[#001B47]"
             style={{ left: `${expectedPercent}%` }}
           />
           <div
@@ -390,37 +444,43 @@ export const Dashboard: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <TeamProgressTile
-          services={displayServices}
-          staffPerformance={historicalStaffPerformance}
-          viewMode={viewMode}
-          workingDays={teamWorkingDays}
-          workingDaysUpToToday={workingDaysElapsedToPlayback}
-          month={selectedMonth}
-          financialYear={financialYear}
-        />
-        <EmployeeProgressChart
-          services={displayServices}
-          staffPerformance={historicalStaffPerformance}
-          viewMode={viewMode}
-          workingDays={teamWorkingDays}
-          workingDaysUpToToday={workingDaysElapsedToPlayback}
-          month={selectedMonth}
-          financialYear={financialYear}
-          selectedTeamId={selectedTeamId}
-          teams={teams}
-          playbackDay={playbackProgress}
-        />
-        <RunRateTile
-          workingDays={teamWorkingDays}
-          workingDaysUpToToday={workingDaysElapsedToPlayback}
-          dailyActivities={runRateActivities}
-          month={selectedMonth}
-          financialYear={financialYear}
-          target={performanceSummary.target}
-          viewMode={viewMode}
-          playbackDay={playbackProgress}
-        />
+        <div className="transition-all duration-700 ease-in-out">
+          <TeamProgressTile
+            services={displayServices}
+            staffPerformance={historicalStaffPerformance}
+            viewMode={viewMode}
+            workingDays={teamWorkingDays}
+            workingDaysUpToToday={workingDaysElapsedToPlayback}
+            month={selectedMonth}
+            financialYear={financialYear}
+          />
+        </div>
+        <div className="transition-all duration-700 ease-in-out">
+          <EmployeeProgressChart
+            services={displayServices}
+            staffPerformance={historicalStaffPerformance}
+            viewMode={viewMode}
+            workingDays={teamWorkingDays}
+            workingDaysUpToToday={workingDaysElapsedToPlayback}
+            month={selectedMonth}
+            financialYear={financialYear}
+            selectedTeamId={selectedTeamId}
+            teams={teams}
+            playbackDay={playbackProgress}
+          />
+        </div>
+        <div className="transition-all duration-700 ease-in-out">
+          <RunRateTile
+            workingDays={teamWorkingDays}
+            workingDaysUpToToday={workingDaysElapsedToPlayback}
+            dailyActivities={runRateActivities}
+            month={selectedMonth}
+            financialYear={financialYear}
+            target={performanceSummary.target}
+            viewMode={viewMode}
+            playbackDay={playbackProgress}
+          />
+        </div>
       </div>
     </div>
   );

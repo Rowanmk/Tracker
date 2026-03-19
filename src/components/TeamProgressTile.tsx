@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { loadTargets } from '../utils/loadTargets';
 import { useAuth } from '../context/AuthContext';
 import type { FinancialYear } from '../utils/financialYear';
@@ -33,7 +33,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
   month,
   financialYear,
 }) => {
-  const { teams, selectedTeamId } = useAuth();
+  const { selectedTeamId } = useAuth();
   const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(false);
 
@@ -70,103 +70,56 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
       }
     };
 
-    fetchServiceTargets();
-  }, [month, financialYear, selectedTeamId, teams, staffPerformance]);
+    void fetchServiceTargets();
+  }, [month, financialYear, selectedTeamId, staffPerformance]);
+
+  const todayExpectedPercentage = useMemo(
+    () => (workingDays > 0 ? (workingDaysUpToToday / workingDays) * 100 : 0),
+    [workingDays, workingDaysUpToToday]
+  );
 
   const getBarColor = (delivered: number, target: number) => {
     const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
     const difference = delivered - expectedSoFar;
-
     const twentyFivePercent = target * 0.25;
 
     if (difference >= 0) {
       return '#008A00';
-    } else if (difference >= -twentyFivePercent) {
+    }
+    if (difference >= -twentyFivePercent) {
       return '#FF8A2A';
-    } else {
-      return '#FF3B30';
     }
+    return '#FF3B30';
   };
 
-  const getAheadBehindBadge = (delivered: number, target: number) => {
-    const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
-    const difference = delivered - expectedSoFar;
+  const rows = useMemo(() => {
+    return services.map((service) => {
+      const delivered = staffPerformance.reduce((sum, staff) => sum + (staff.services[service.service_name] || 0), 0);
+      const target = serviceTargets[service.service_id] || 0;
+      const percentage = target > 0 ? (delivered / target) * 100 : 0;
+      const barColor = getBarColor(delivered, target);
+      const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
+      const difference = delivered - expectedSoFar;
+      const twentyFivePercent = target * 0.25;
 
-    const twentyFivePercent = target * 0.25;
+      let badgeColor = '#FF3B30';
+      if (difference >= 0) {
+        badgeColor = '#008A00';
+      } else if (difference >= -twentyFivePercent) {
+        badgeColor = '#FF8A2A';
+      }
 
-    let color = '#FF3B30';
-    if (difference >= 0) {
-      color = '#008A00';
-    } else if (difference >= -twentyFivePercent) {
-      color = '#FF8A2A';
-    }
-
-    if (Math.abs(difference) < 0.5) {
-      return (
-        <span className="inline-flex items-center px-2 py-1 rounded text-sm font-bold text-gray-600 transition-all duration-300 ease-in-out" style={{ color: '#6B7280' }}>
-          0
-        </span>
-      );
-    }
-
-    if (difference > 0) {
-      return (
-        <span className="inline-flex items-center px-2 py-1 rounded text-sm font-bold transition-all duration-300 ease-in-out" style={{ color }}>
-          +{Math.round(difference)}
-        </span>
-      );
-    }
-
-    return (
-      <span className="inline-flex items-center px-2 py-1 rounded text-sm font-bold transition-all duration-300 ease-in-out" style={{ color }}>
-        {Math.round(difference)}
-      </span>
-    );
-  };
-
-  const renderServiceRow = (serviceId: number, serviceName: string) => {
-    const delivered = staffPerformance.reduce((sum, staff) => sum + (staff.services[serviceName] || 0), 0);
-    const target = serviceTargets[serviceId] || 0;
-    const percentage = target > 0 ? (delivered / target) * 100 : 0;
-    const barColor = getBarColor(delivered, target);
-
-    const todayExpectedPercentage = workingDays > 0 ? (workingDaysUpToToday / workingDays) * 100 : 0;
-
-    return (
-      <div key={serviceId} className="space-y-2 animate-fade-in">
-        <div className="flex justify-between items-center">
-          <span className="font-bold text-gray-900 dark:text-white transition-all duration-300 ease-in-out">{serviceName}</span>
-          <div className="flex items-center space-x-2">
-            <span className="font-bold text-gray-900 dark:text-white transition-all duration-300 ease-in-out">{Math.round(delivered)} / {Math.round(target)}</span>
-            <span className="text-sm text-gray-600 dark:text-gray-400 transition-all duration-300 ease-in-out">({Math.round(percentage)}%)</span>
-          </div>
-        </div>
-
-        <div className="relative flex items-center">
-          <div className="flex-1 relative">
-            <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-8 overflow-hidden shadow-inner">
-              <div
-                className="h-8 rounded-full transition-all duration-500 ease-in-out shadow-sm"
-                style={{
-                  width: `${Math.min(percentage, 100)}%`,
-                  backgroundColor: barColor
-                }}
-                title={`${serviceName}: ${Math.round(delivered)}/${Math.round(target)} (${Math.round(percentage)}%)`}
-              />
-              <div
-                className="absolute top-0 h-8 w-0.5 bg-[#001B47] transition-all duration-300 ease-in-out"
-                style={{ left: `${Math.min(todayExpectedPercentage, 100)}%` }}
-                title={`Expected by today: ${Math.round(todayExpectedPercentage)}%`}
-              />
-            </div>
-          </div>
-          <div className="ml-3 flex items-center" style={{ minWidth: '40px' }}>
-            {getAheadBehindBadge(delivered, target)}
-          </div>
-        </div>
-      </div>
-    );
-  };
+      return {
+        ...service,
+        delivered,
+        target,
+        percentage,
+        barColor,
+        difference,
+        badgeColor,
+      };
+    });
+  }, [services, staffPerformance, serviceTargets, workingDays, workingDaysUpToToday]);
 
   if (loading) {
     return (
@@ -187,7 +140,55 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
 
       <div className="flex-1 flex flex-col justify-end p-3 pb-2">
         <div className="space-y-4 flex-1 flex flex-col justify-center">
-          {services.map(service => renderServiceRow(service.service_id, service.service_name))}
+          {rows.map((row) => {
+            const roundedDifference = Math.round(row.difference);
+
+            return (
+              <div key={row.service_id} className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-gray-900 dark:text-white">{row.service_name}</span>
+                  <div className="flex items-center space-x-2">
+                    <span className="font-bold text-gray-900 dark:text-white">
+                      {Math.round(row.delivered)} / {Math.round(row.target)}
+                    </span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">
+                      ({Math.round(row.percentage)}%)
+                    </span>
+                  </div>
+                </div>
+
+                <div className="relative flex items-center">
+                  <div className="flex-1 relative">
+                    <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-8 overflow-hidden shadow-inner">
+                      <div
+                        className="h-8 rounded-full shadow-sm"
+                        style={{
+                          width: `${Math.min(row.percentage, 100)}%`,
+                          backgroundColor: row.barColor,
+                        }}
+                        title={`${row.service_name}: ${Math.round(row.delivered)}/${Math.round(row.target)} (${Math.round(row.percentage)}%)`}
+                      />
+                      {row.target > 0 && (
+                        <div
+                          className="absolute top-0 h-8 w-0.5 bg-[#001B47]"
+                          style={{ left: `${Math.min(todayExpectedPercentage, 100)}%` }}
+                          title={`Expected by today: ${Math.round(todayExpectedPercentage)}%`}
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <div className="ml-3 flex items-center" style={{ minWidth: '40px' }}>
+                    <span
+                      className="inline-flex items-center px-2 py-1 rounded text-sm font-bold"
+                      style={{ color: Math.abs(row.difference) < 0.5 ? '#6B7280' : row.badgeColor }}
+                    >
+                      {roundedDifference > 0 ? `+${roundedDifference}` : roundedDifference}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
