@@ -78,21 +78,21 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     [workingDays, workingDaysUpToToday]
   );
 
-  const getBarColor = (delivered: number, target: number) => {
-    const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
-    const difference = delivered - expectedSoFar;
-    const twentyFivePercent = target * 0.25;
-
-    if (difference >= 0) {
-      return '#008A00';
-    }
-    if (difference >= -twentyFivePercent) {
-      return '#FF8A2A';
-    }
-    return '#FF3B30';
-  };
-
   const rows = useMemo(() => {
+    const getBarColor = (delivered: number, target: number) => {
+      const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
+      const difference = delivered - expectedSoFar;
+      const twentyFivePercent = target * 0.25;
+
+      if (difference >= 0) {
+        return '#008A00';
+      }
+      if (difference >= -twentyFivePercent) {
+        return '#FF8A2A';
+      }
+      return '#FF3B30';
+    };
+
     return services.map((service) => {
       const delivered = staffPerformance.reduce((sum, staff) => sum + (staff.services[service.service_name] || 0), 0);
       const target = serviceTargets[service.service_id] || 0;
@@ -161,7 +161,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
                   <div className="flex-1 relative">
                     <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-8 overflow-hidden shadow-inner">
                       <div
-                        className="h-8 rounded-full shadow-sm"
+                        className="h-8 rounded-full shadow-sm transition-[width] duration-[800ms] ease-in-out"
                         style={{
                           width: `${Math.min(row.percentage, 100)}%`,
                           backgroundColor: row.barColor,
@@ -170,7 +170,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
                       />
                       {row.target > 0 && (
                         <div
-                          className="absolute top-0 h-8 w-0.5 bg-[#001B47]"
+                          className="absolute top-0 h-8 w-0.5 bg-[#001B47] transition-[left] duration-[800ms] ease-in-out"
                           style={{ left: `${Math.min(todayExpectedPercentage, 100)}%` }}
                           title={`Expected by today: ${Math.round(todayExpectedPercentage)}%`}
                         />
