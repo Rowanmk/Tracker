@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { loadTargets } from '../utils/loadTargets';
 import type { FinancialYear } from '../utils/financialYear';
 
@@ -22,6 +22,7 @@ const BAR_AREA_HEIGHT = BASELINE_Y - TOP_MARGIN;
 const CHART_WIDTH = 800;
 const FIXED_LEFT_MARGIN = 60;
 const RIGHT_PADDING = 40;
+const BAR_ANIMATION_DURATION_MS = 180;
 
 export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   services,
@@ -39,6 +40,12 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   const [staffTargets, setStaffTargets] = useState<Record<number, number>>({});
   const [teamTargets, setTeamTargets] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(false);
+  const [animatedValues, setAnimatedValues] = useState<Record<string | number, number>>({});
+
+  const animationFrameRef = useRef<number | null>(null);
+  const animationStartRef = useRef<number | null>(null);
+  const animationFromRef = useRef<Record<string | number, number>>({});
+  const animationToRef = useRef<Record<string | number, number>>({});
 
   const isAllTeams = selectedTeamId === "all";
   const isTeamView = selectedTeamId === "team-view";
@@ -164,6 +171,83 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
     workingDaysUpToToday,
   ]);
 
+  const targetDisplayValues = useMemo(() => {
+    const nextValues: Record<string | number, number> = {};
+
+    chartData.forEach((data) => {
+      const display = viewMode === "percent"
+        ? data.runRatePercent
+        : Math.min(data.delivered, data.expectedByToday);
+
+      nextValues[data.id] = Math.max(0, display);
+    });
+
+    return nextValues;
+  }, [chartData, viewMode]);
+
+  useEffect(() => {
+    if (animationFrameRef.current !== null) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    const currentMap: Record<string | number, number> = {};
+    chartData.forEach((data) => {
+      currentMap[data.id] = animatedValues[data.id] ?? targetDisplayValues[data.id] ?? 0;
+    });
+
+    const hasChanged = chartData.some((data) => {
+      const current = currentMap[data.id] ?? 0;
+      const target = targetDisplayValues[data.id] ?? 0;
+      return Math.abs(current - target) > 0.01;
+    });
+
+    if (!hasChanged) {
+      setAnimatedValues(currentMap);
+      return;
+    }
+
+    animationStartRef.current = null;
+    animationFromRef.current = currentMap;
+    animationToRef.current = targetDisplayValues;
+
+    const animate = (timestamp: number) => {
+      if (animationStartRef.current === null) {
+        animationStartRef.current = timestamp;
+      }
+
+      const elapsed = timestamp - animationStartRef.current;
+      const progress = Math.min(elapsed / BAR_ANIMATION_DURATION_MS, 1);
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+
+      const nextFrameValues: Record<string | number, number> = {};
+      chartData.forEach((data) => {
+        const from = animationFromRef.current[data.id] ?? 0;
+        const to = animationToRef.current[data.id] ?? 0;
+        nextFrameValues[data.id] = from + (to - from) * easedProgress;
+      });
+
+      setAnimatedValues(nextFrameValues);
+
+      if (progress < 1) {
+        animationFrameRef.current = window.requestAnimationFrame(animate);
+      } else {
+        animationFrameRef.current = null;
+        animationStartRef.current = null;
+        setAnimatedValues(animationToRef.current);
+      }
+    };
+
+    animationFrameRef.current = window.requestAnimationFrame(animate);
+
+    return () => {
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+  }, [chartData, targetDisplayValues]);
+
   const getBarColor = (percentage: number) => {
     if (percentage >= 90) return "#008A00";
     if (percentage >= 75) return "#FF8A2A";
@@ -232,13 +316,10 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
           />
 
           {chartData.map((data, i) => {
-            const { label, delivered, expectedByToday, runRatePercent } = data;
+            const { label, runRatePercent } = data;
 
-            const display = viewMode === "percent"
-              ? runRatePercent
-              : Math.min(delivered, expectedByToday);
-
-            const clampedDisplay = Math.max(0, Math.min(display, yMax));
+            const animatedDisplay = animatedValues[data.id] ?? targetDisplayValues[data.id] ?? 0;
+            const clampedDisplay = Math.max(0, Math.min(animatedDisplay, yMax));
             const barHeight = (clampedDisplay / yMax) * BAR_AREA_HEIGHT;
             const x = FIXED_LEFT_MARGIN + (i * barSlotWidth) + (barSlotWidth / 2);
             const barColor = getBarColor(runRatePercent);
@@ -254,7 +335,6 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                   fill={barColor}
                   rx="4"
                   style={{
-                    transition: "none",
                     transform: "translateZ(0)",
                   }}
                 />
@@ -264,9 +344,8 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                   y={BASELINE_Y - barHeight - 8}
                   textAnchor="middle"
                   className="text-[12px] font-bold fill-gray-700 dark:fill-gray-300"
-                  style={{ transition: "none" }}
                 >
-                  {viewMode === "percent" ? `${Math.round(runRatePercent)}%` : Math.round(display)}
+                  {viewMode === "percent" ? `${Math.round(animatedDisplay)}%` : Math.round(animatedDisplay)}
                 </text>
 
                 <text
