@@ -17,7 +17,7 @@ const PLAYBACK_STEP_DURATION_MS = 220;
 export const Dashboard: React.FC = () => {
   const { viewMode } = useDashboardView();
   const { selectedMonth, selectedYear, financialYear } = useDate();
-  const { selectedTeamId, teams } = useAuth();
+  const { selectedTeamId, teams, accountantStaff, currentStaff } = useAuth();
 
   const { services } = useServices();
   const { staffPerformance, dailyActivities, teamTarget, loading } = useStaffPerformance("desc");
@@ -30,10 +30,20 @@ export const Dashboard: React.FC = () => {
     return dailyActivities.filter(a => a.service_id !== bagelService.service_id);
   }, [dailyActivities, services]);
 
-  const isAllTeams = selectedTeamId === "all";
-  const selectedTeam = !isAllTeams ? teams.find((t) => t.id.toString() === selectedTeamId) : null;
+  const isTeamView = selectedTeamId === "team-view";
+  const selectedAccountant = useMemo(() => {
+    if (!selectedTeamId || isTeamView) {
+      return null;
+    }
 
-  const { teamWorkingDays, workingDaysUpToToday } = useWorkingDays({
+    return accountantStaff.find((staff) => String(staff.staff_id) === selectedTeamId) || null;
+  }, [accountantStaff, isTeamView, selectedTeamId]);
+
+  const dashboardTitle = isTeamView
+    ? "Team Dashboard"
+    : `${selectedAccountant?.name || currentStaff?.name || "Team"} Dashboard`;
+
+  const { teamWorkingDays } = useWorkingDays({
     financialYear,
     month: selectedMonth,
   });
@@ -314,9 +324,7 @@ export const Dashboard: React.FC = () => {
     return (
       <div className="space-y-6">
         <div className="page-header">
-          <h2 className="page-title">
-            {isAllTeams ? "All Accountants Dashboard" : `${selectedTeam?.name} Dashboard`}
-          </h2>
+          <h2 className="page-title">{dashboardTitle}</h2>
         </div>
         <div className="py-10 text-center text-gray-500">Loading dashboard…</div>
       </div>
@@ -326,9 +334,7 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="page-header">
-        <h2 className="page-title">
-          {isAllTeams ? "All Accountants Dashboard" : `${selectedTeam?.name} Dashboard`}
-        </h2>
+        <h2 className="page-title">{dashboardTitle}</h2>
       </div>
 
       <div className="mb-6">
