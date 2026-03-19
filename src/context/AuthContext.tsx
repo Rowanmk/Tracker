@@ -34,6 +34,7 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 const PERMANENT_ADMIN_NAME = 'rowan';
 
 const normalizeFirstName = (name?: string | null) => (name || '').split(' ')[0]?.trim().toLowerCase() || '';
+const isAccountant = (staffMember: Staff) => staffMember.role === 'staff';
 
 const enforcePermanentAdmin = (staffMember: Staff): Staff => {
   const firstName = normalizeFirstName(staffMember.name);
@@ -50,7 +51,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [allStaff, setAllStaff] = useState<Staff[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [currentStaff, setCurrentStaff] = useState<Staff | null>(null);
-  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>('all');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +79,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (found) {
           setCurrentStaff(found);
           setIsAuthenticated(true);
-          setSelectedTeamId(found.team_id ? found.team_id.toString() : 'all');
+          setSelectedTeamId('all');
         }
       }
     } catch (err: unknown) {
@@ -107,14 +108,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setCurrentStaff(matched);
     setIsAuthenticated(true);
     localStorage.setItem('crew_tracker_staff_id', matched.staff_id.toString());
-    setSelectedTeamId(matched.team_id ? matched.team_id.toString() : 'all');
+    setSelectedTeamId('all');
     return {};
   };
 
   const signOut = async () => {
     setCurrentStaff(null);
     setIsAuthenticated(false);
-    setSelectedTeamId(null);
+    setSelectedTeamId('all');
     localStorage.removeItem('crew_tracker_staff_id');
   };
 
@@ -183,6 +184,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return perm ? perm.is_visible !== false : true;
   }, [currentStaff, permissions]);
 
+  const accountantTeams = teams.filter(team =>
+    allStaff.some(staffMember => !staffMember.is_hidden && isAccountant(staffMember) && staffMember.team_id === team.id)
+  );
+
   const value: AuthContextType = {
     user: null,
     loading,
@@ -192,7 +197,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     resetPasswordWithSecurityAnswer,
     staff,
     allStaff,
-    teams,
+    teams: accountantTeams,
     currentStaff,
     isAdmin: currentStaff?.role === 'admin',
     isAuthenticated,

@@ -37,6 +37,8 @@ interface UseStaffPerformanceResult {
   refetch: () => void;
 }
 
+const isAccountant = (role: string) => role === 'staff';
+
 export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResult => {
   const { selectedMonth, selectedYear, financialYear } = useDate();
   const { allStaff, loading: authLoading, selectedTeamId, teams } = useAuth();
@@ -62,9 +64,11 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
       const startDate = new Date(financialYear.start, 3, 1);
       const endDate = new Date(financialYear.end, 2, 31);
 
+      const visibleAccountants = allStaff.filter(s => !s.is_hidden && isAccountant(s.role));
+
       const filteredStaff = selectedTeamId === "all" || !selectedTeamId
-        ? allStaff.filter(s => !s.is_hidden)
-        : allStaff.filter(s => !s.is_hidden && String(s.team_id) === selectedTeamId);
+        ? visibleAccountants
+        : visibleAccountants.filter(s => String(s.team_id) === selectedTeamId);
 
       if (filteredStaff.length === 0) {
         setPerformanceData([]);
@@ -176,7 +180,7 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
           const totalHistorical = Object.values(monthlyTotals).reduce((s, v) => s + v, 0);
 
           const staffPrevActivities = finalPrevMonth.filter(a => a.staff_id === staff.staff_id);
-          const prevMonthTotal = staffPrevActivities.reduce((s, a) => {
+          staffPrevActivities.reduce((s, a) => {
             const service = services.find(srv => srv.service_id === a.service_id);
             if (service?.service_name !== 'Bagel Days') {
               return s + (a.delivered_count || 0);

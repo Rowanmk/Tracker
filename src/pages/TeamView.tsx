@@ -20,6 +20,8 @@ interface ServiceStats {
   isPercentage?: boolean;
 }
 
+const isAccountant = (role: string) => role === 'staff';
+
 export const TeamView: React.FC = () => {
   const { allStaff, teams, selectedTeamId, loading: authLoading } = useAuth();
   const { services, loading: servicesLoading } = useServices();
@@ -43,10 +45,10 @@ export const TeamView: React.FC = () => {
       try {
         const today = new Date();
         const lastCompletedMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-        
+
         const all24Months: Array<{ year: number; month: number }> = [];
         const startMonth = new Date(lastCompletedMonth.getFullYear(), lastCompletedMonth.getMonth() - 23, 1);
-        
+
         const curr = new Date(startMonth);
         for (let i = 0; i < 24; i++) {
           all24Months.push({ year: curr.getFullYear(), month: curr.getMonth() + 1 });
@@ -60,9 +62,11 @@ export const TeamView: React.FC = () => {
         const lastDayOfLastMonth = new Date(lastMonth.year, lastMonth.month, 0).getDate();
         const endDateStr = `${lastMonth.year}-${String(lastMonth.month).padStart(2, '0')}-${String(lastDayOfLastMonth).padStart(2, '0')}`;
 
+        const visibleAccountants = allStaff.filter(s => !s.is_hidden && isAccountant(s.role));
+
         const filteredStaff = selectedTeamId === "all" || !selectedTeamId
-          ? allStaff.filter(s => !s.is_hidden)
-          : allStaff.filter(s => !s.is_hidden && String(s.team_id) === selectedTeamId);
+          ? visibleAccountants
+          : visibleAccountants.filter(s => String(s.team_id) === selectedTeamId);
 
         const staffIds = filteredStaff.map(s => s.staff_id);
 
@@ -81,8 +85,8 @@ export const TeamView: React.FC = () => {
 
         if (fetchError) throw fetchError;
 
-        const teamIds = selectedTeamId === 'all' || !selectedTeamId 
-          ? teams.map(t => t.id) 
+        const teamIds = selectedTeamId === 'all' || !selectedTeamId
+          ? teams.map(t => t.id)
           : [Number(selectedTeamId)];
 
         const { data: targets, error: targetsError } = await supabase
@@ -102,7 +106,7 @@ export const TeamView: React.FC = () => {
 
         let finalActivities = activities || [];
         const bagelService = services.find(s => s.service_name === 'Bagel Days');
-        
+
         if (bagelService && bankHolidays) {
           const [sYear, sMonth, sDay] = startDateStr.split('-').map(Number);
           const localStartDate = new Date(sYear, sMonth - 1, sDay);
@@ -130,10 +134,10 @@ export const TeamView: React.FC = () => {
 
           const [yearStr, monthStr] = a.date.split('-');
           const key = `${parseInt(yearStr, 10)}-${parseInt(monthStr, 10)}`;
-          
+
           if (!serviceMonthTotals[a.service_id]) serviceMonthTotals[a.service_id] = {};
           serviceMonthTotals[a.service_id][key] = (serviceMonthTotals[a.service_id][key] || 0) + (a.delivered_count || 0);
-          
+
           if (service.service_name !== 'Bagel Days') {
             monthActuals[key] = (monthActuals[key] || 0) + (a.delivered_count || 0);
           }
@@ -152,10 +156,10 @@ export const TeamView: React.FC = () => {
           });
 
           const last12Data: MonthlyData[] = [];
-          
+
           for (let i = 12; i < 24; i++) {
             const actual = monthlyActuals[i];
-            
+
             let rollingSum = 0;
             for (let j = i - 11; j <= i; j++) {
               rollingSum += monthlyActuals[j];
@@ -190,8 +194,8 @@ export const TeamView: React.FC = () => {
           for (let j = i - 11; j <= i; j++) {
             const jMonth = all24Months[j];
             const jKey = `${jMonth.year}-${jMonth.month}`;
-            rollingActualSum += (monthActuals[jKey] || 0);
-            rollingTargetSum += (monthTargets[jKey] || 0);
+            rollingActualSum += monthActuals[jKey] || 0;
+            rollingTargetSum += monthTargets[jKey] || 0;
           }
           const rollingAverage = rollingTargetSum > 0 ? (rollingActualSum / rollingTargetSum) * 100 : 0;
 
@@ -213,8 +217,7 @@ export const TeamView: React.FC = () => {
         });
 
         setStatsData(processedStats);
-      } catch (err) {
-        console.error(err);
+      } catch {
         setError('Failed to load Stats and Figures');
       } finally {
         setLoading(false);
@@ -259,7 +262,7 @@ export const TeamView: React.FC = () => {
             {statsData.map(stat => {
               const latestMonth = stat.data[11];
               const isActive = activeServiceId === stat.service.service_id;
-              
+
               return (
                 <button
                   key={stat.service.service_id}
@@ -311,7 +314,7 @@ export const TeamView: React.FC = () => {
                   </div>
                 </div>
               </div>
-              
+
               <div className="w-full h-[400px]">
                 <ServiceComboChart data={activeStat.data} isPercentage={activeStat.isPercentage} />
               </div>
@@ -348,7 +351,7 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPerc
       <g transform={`translate(${PADDING_LEFT}, 15)`}>
         <rect x="0" y="0" width="12" height="12" fill="#001B47" rx="2" className="dark:fill-blue-500" />
         <text x="18" y="10" className="text-xs fill-gray-600 dark:fill-gray-300 font-medium">Actual Delivered</text>
-        
+
         <line x1="130" y1="6" x2="150" y2="6" stroke="#FF8A2A" strokeWidth="3" />
         <circle cx="140" cy="6" r="4" fill="#FF8A2A" />
         <text x="158" y="10" className="text-xs fill-gray-600 dark:fill-gray-300 font-medium">12-Month Rolling Average</text>
@@ -362,14 +365,14 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPerc
             <text x={PADDING_LEFT - 10} y={y + 4} textAnchor="end" className="text-[10px] fill-gray-500 dark:fill-gray-400">
               {val}{isPercentage ? '%' : ''}
             </text>
-            <line 
-              x1={PADDING_LEFT} 
-              y1={y} 
-              x2={VIEWBOX_WIDTH - PADDING_RIGHT} 
-              y2={y} 
-              stroke="#E5E7EB" 
-              className="dark:stroke-gray-700" 
-              strokeDasharray={ratio === 0 ? "" : "4 4"} 
+            <line
+              x1={PADDING_LEFT}
+              y1={y}
+              x2={VIEWBOX_WIDTH - PADDING_RIGHT}
+              y2={y}
+              stroke="#E5E7EB"
+              className="dark:stroke-gray-700"
+              strokeDasharray={ratio === 0 ? "" : "4 4"}
             />
           </g>
         );
@@ -392,10 +395,10 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPerc
             >
               <title>Actual: {d.actual}{isPercentage ? '%' : ''}</title>
             </rect>
-            <text 
-              x={x} 
-              y={VIEWBOX_HEIGHT - 15} 
-              textAnchor="middle" 
+            <text
+              x={x}
+              y={VIEWBOX_HEIGHT - 15}
+              textAnchor="middle"
               className="text-[10px] font-medium fill-gray-600 dark:fill-gray-400"
             >
               {new Date(d.year, d.month - 1).toLocaleString('en-GB', { month: 'short', year: '2-digit' })}

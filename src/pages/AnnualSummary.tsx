@@ -9,7 +9,7 @@ import { generateBagelDays } from '../utils/bagelDays';
 interface AnnualStaffData {
   staff_id: number;
   name: string;
-  team_name: string;
+  accountant_name: string;
   months: {
     [key: number]: {
       total: number;
@@ -18,6 +18,8 @@ interface AnnualStaffData {
   };
   totalDeliveries: number;
 }
+
+const isAccountant = (role: string) => role === 'staff';
 
 export const AnnualSummary: React.FC = () => {
   const { selectedFinancialYear } = useDate();
@@ -31,9 +33,11 @@ export const AnnualSummary: React.FC = () => {
     const { startDate, endDate } = getFinancialYearDateRange(selectedFinancialYear);
     const monthData = getFinancialYearMonths();
 
+    const visibleAccountants = allStaff.filter(s => !s.is_hidden && isAccountant(s.role));
+
     const filteredStaff = selectedTeamId === "all" || !selectedTeamId
-      ? allStaff.filter(s => !s.is_hidden)
-      : allStaff.filter(s => !s.is_hidden && String(s.team_id) === selectedTeamId);
+      ? visibleAccountants
+      : visibleAccountants.filter(s => String(s.team_id) === selectedTeamId);
 
     if (filteredStaff.length === 0) {
       setAnnualData([]);
@@ -62,7 +66,9 @@ export const AnnualSummary: React.FC = () => {
         const months: AnnualStaffData['months'] = {};
         monthData.forEach(m => {
           months[m.number] = { total: 0, services: {} };
-          services.forEach(s => months[m.number].services[s.service_name] = 0);
+          services.forEach(s => {
+            months[m.number].services[s.service_name] = 0;
+          });
         });
 
         finalActivities.forEach(a => {
@@ -77,12 +83,12 @@ export const AnnualSummary: React.FC = () => {
           }
         });
 
-        const team = teams.find(t => t.id === staff.team_id);
+        const accountant = teams.find(t => t.id === staff.team_id);
 
         return {
           staff_id: staff.staff_id,
           name: staff.name,
-          team_name: team?.name || 'Unassigned',
+          accountant_name: accountant?.name || 'Unassigned',
           months,
           totalDeliveries: Object.values(months).reduce((s, m) => s + m.total, 0)
         };
@@ -104,16 +110,20 @@ export const AnnualSummary: React.FC = () => {
   return (
     <div>
       <div className="page-header">
-        <h2 className="page-title">Annual User Summary</h2>
+        <h2 className="page-title">Annual Accountant Summary</h2>
       </div>
 
       <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-100 dark:bg-gray-700">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-bold uppercase">User</th>
               <th className="px-4 py-3 text-left text-xs font-bold uppercase">Accountant</th>
-              {monthData.map(m => <th key={m.number} className="px-4 py-3 text-center text-xs font-bold uppercase">{m.name}</th>)}
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase">Group</th>
+              {monthData.map(m => (
+                <th key={m.number} className="px-4 py-3 text-center text-xs font-bold uppercase">
+                  {m.name}
+                </th>
+              ))}
               <th className="px-4 py-3 text-center text-xs font-bold uppercase">FY Total</th>
             </tr>
           </thead>
@@ -121,8 +131,12 @@ export const AnnualSummary: React.FC = () => {
             {annualData.map((staff, idx) => (
               <tr key={staff.staff_id} className={idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}>
                 <td className="px-4 py-3 font-medium">{staff.name}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{staff.team_name}</td>
-                {monthData.map(m => <td key={m.number} className="px-4 py-3 text-center">{staff.months[m.number]?.total || 0}</td>)}
+                <td className="px-4 py-3 text-sm text-gray-500">{staff.accountant_name}</td>
+                {monthData.map(m => (
+                  <td key={m.number} className="px-4 py-3 text-center">
+                    {staff.months[m.number]?.total || 0}
+                  </td>
+                ))}
                 <td className="px-4 py-3 font-bold text-center">{staff.totalDeliveries}</td>
               </tr>
             ))}

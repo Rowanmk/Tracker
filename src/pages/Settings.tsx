@@ -220,6 +220,11 @@ export const Settings: React.FC = () => {
     setFeedback(null);
 
     try {
+      const assignedTeamId =
+        newUserRole === 'staff' && newUserTeamId !== emptyTeamOption
+          ? Number(newUserTeamId)
+          : null;
+
       const { data, error: insertError } = await supabase
         .from('staff')
         .insert({
@@ -227,7 +232,7 @@ export const Settings: React.FC = () => {
           password: newUserPassword.trim() || null,
           role: newUserRole,
           home_region: newUserRegion,
-          team_id: newUserTeamId === emptyTeamOption ? null : Number(newUserTeamId),
+          team_id: assignedTeamId,
           is_hidden: false,
         })
         .select('*, team:team_id (*)')
@@ -291,7 +296,10 @@ export const Settings: React.FC = () => {
 
     try {
       const previousTeamId = editingUser.team_id;
-      const nextTeamId = editForm.team_id === emptyTeamOption ? null : Number(editForm.team_id);
+      const nextTeamId =
+        editForm.role === 'staff' && editForm.team_id !== emptyTeamOption
+          ? Number(editForm.team_id)
+          : null;
 
       const { data, error: updateError } = await supabase
         .from('staff')
@@ -668,10 +676,10 @@ export const Settings: React.FC = () => {
 
   const usersByTeam = visibleTeams.map(team => ({
     ...team,
-    memberCount: allUsers.filter(user => !user.is_hidden && user.team_id === team.id).length,
+    memberCount: allUsers.filter(user => !user.is_hidden && user.role === 'staff' && user.team_id === team.id).length,
   }));
 
-  const unassignedUsers = allUsers.filter(user => !user.is_hidden && !user.team_id);
+  const unassignedUsers = allUsers.filter(user => !user.is_hidden && !user.team_id && user.role === 'staff');
 
   return (
     <div className="px-4 sm:px-6 lg:px-8">
@@ -800,8 +808,8 @@ export const Settings: React.FC = () => {
                   onChange={e => setNewUserRole(e.target.value as 'admin' | 'staff')}
                   className="px-3 py-2 border rounded-md"
                 >
-                  <option value="staff">Staff</option>
-                  <option value="admin">Admin</option>
+                  <option value="staff">Accountant</option>
+                  <option value="admin">User</option>
                 </select>
                 <select
                   value={newUserRegion}
@@ -816,8 +824,11 @@ export const Settings: React.FC = () => {
                   value={newUserTeamId}
                   onChange={e => setNewUserTeamId(e.target.value)}
                   className="px-3 py-2 border rounded-md"
+                  disabled={newUserRole !== 'staff'}
                 >
-                  <option value={emptyTeamOption}>No accountant</option>
+                  <option value={emptyTeamOption}>
+                    {newUserRole === 'staff' ? 'No accountant group' : 'Not applicable'}
+                  </option>
                   {activeTeams.map(team => (
                     <option key={team.id} value={team.id}>
                       {team.name}
@@ -845,8 +856,8 @@ export const Settings: React.FC = () => {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Accountant</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Accountant Group</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Region</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                       </tr>
@@ -857,8 +868,12 @@ export const Settings: React.FC = () => {
                         .map(user => (
                           <tr key={user.staff_id}>
                             <td className="px-6 py-4 text-sm font-medium text-gray-900">{user.name}</td>
-                            <td className="px-6 py-4 text-sm text-gray-500 capitalize">{user.role}</td>
-                            <td className="px-6 py-4 text-sm text-gray-500">{getTeamName(user.team_id)}</td>
+                            <td className="px-6 py-4 text-sm text-gray-500">
+                              {user.role === 'staff' ? 'Accountant' : 'User'}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-500">
+                              {user.role === 'staff' ? getTeamName(user.team_id) : 'Not applicable'}
+                            </td>
                             <td className="px-6 py-4 text-sm text-gray-500">
                               {regionLabels[user.home_region as keyof typeof regionLabels]}
                             </td>
@@ -934,7 +949,7 @@ export const Settings: React.FC = () => {
 
               <div className="space-y-4">
                 {visibleTeams.map(team => {
-                  const memberCount = allUsers.filter(user => !user.is_hidden && user.team_id === team.id).length;
+                  const memberCount = allUsers.filter(user => !user.is_hidden && user.role === 'staff' && user.team_id === team.id).length;
                   const isEditing = editingTeamId === team.id;
 
                   return (
@@ -986,7 +1001,7 @@ export const Settings: React.FC = () => {
                                 {team.is_active ? 'Active' : 'Inactive'}
                               </span>
                             </div>
-                            <p className="mt-1 text-sm text-gray-500">{memberCount} member{memberCount === 1 ? '' : 's'}</p>
+                            <p className="mt-1 text-sm text-gray-500">{memberCount} accountant{memberCount === 1 ? '' : 's'}</p>
                           </div>
                           <div className="flex gap-2">
                             <button
@@ -1024,7 +1039,7 @@ export const Settings: React.FC = () => {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Accountant</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Members</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Accountants</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -1064,23 +1079,26 @@ export const Settings: React.FC = () => {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Page / Tab</th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Admin Access</th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Staff Access</th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">User Access</th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Accountant Access</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {pages.map(page => (
                     <tr key={page.path}>
                       <td className="px-6 py-4 text-sm font-medium text-gray-900">{page.label}</td>
-                      {['admin', 'staff'].map(role => {
-                        const perm = permissions.find(p => p.role === role && p.page_path === page.path);
+                      {[
+                        { key: 'admin', label: 'User' },
+                        { key: 'staff', label: 'Accountant' },
+                      ].map(role => {
+                        const perm = permissions.find(p => p.role === role.key && p.page_path === page.path);
                         const isVisible = perm ? perm.is_visible !== false : true;
                         return (
-                          <td key={role} className="px-6 py-4 text-center">
+                          <td key={role.key} className="px-6 py-4 text-center">
                             <input
                               type="checkbox"
                               checked={isVisible}
-                              onChange={() => togglePermission(role, page.path)}
+                              onChange={() => togglePermission(role.key, page.path)}
                               className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                             />
                           </td>
@@ -1145,14 +1163,20 @@ export const Settings: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Role</label>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Type</label>
                   <select
                     value={editForm.role}
-                    onChange={e => setEditForm(f => ({ ...f, role: e.target.value as 'admin' | 'staff' }))}
+                    onChange={e =>
+                      setEditForm(f => ({
+                        ...f,
+                        role: e.target.value as 'admin' | 'staff',
+                        team_id: e.target.value === 'staff' ? f.team_id : emptyTeamOption,
+                      }))
+                    }
                     className="w-full px-3 py-2 border rounded-md"
                   >
-                    <option value="staff">Staff</option>
-                    <option value="admin">Admin</option>
+                    <option value="staff">Accountant</option>
+                    <option value="admin">User</option>
                   </select>
                 </div>
                 <div>
@@ -1174,19 +1198,22 @@ export const Settings: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Accountant</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Accountant Group</label>
                 <select
                   value={editForm.team_id}
                   onChange={e => setEditForm(f => ({ ...f, team_id: e.target.value }))}
                   className="w-full px-3 py-2 border rounded-md"
+                  disabled={editForm.role !== 'staff'}
                 >
-                  <option value={emptyTeamOption}>No accountant</option>
+                  <option value={emptyTeamOption}>
+                    {editForm.role === 'staff' ? 'No accountant group' : 'Not applicable'}
+                  </option>
                   {activeTeams.map(team => (
                     <option key={team.id} value={team.id}>
                       {team.name}
                     </option>
                   ))}
-                  {!editingUser.team?.is_active && editingUser.team_id && (
+                  {!editingUser.team?.is_active && editingUser.team_id && editForm.role === 'staff' && (
                     <option value={editingUser.team_id}>{editingUser.team?.name}</option>
                   )}
                 </select>

@@ -16,6 +16,8 @@ interface DailyEntry {
   services: Record<string, number>;
 }
 
+const isAccountant = (role: string) => role === 'staff';
+
 export const StaffTracker: React.FC = () => {
   const { selectedMonth, selectedFinancialYear } = useDate();
   const { currentStaff, selectedTeamId, teams, allStaff } = useAuth();
@@ -36,12 +38,14 @@ export const StaffTracker: React.FC = () => {
   const daysInMonth = new Date(year, selectedMonth, 0).getDate();
 
   const selectedTeamMembers = useMemo(() => {
+    const visibleAccountants = allStaff.filter((staff) => !staff.is_hidden && isAccountant(staff.role));
+
     if (selectedTeamId === "all" || !selectedTeamId) {
-      return allStaff.filter((staff) => !staff.is_hidden);
+      return visibleAccountants;
     }
 
-    return allStaff.filter(
-      (staff) => !staff.is_hidden && String(staff.team_id) === selectedTeamId
+    return visibleAccountants.filter(
+      (staff) => String(staff.team_id) === selectedTeamId
     );
   }, [allStaff, selectedTeamId]);
 
@@ -51,11 +55,11 @@ export const StaffTracker: React.FC = () => {
   );
 
   const tableLabel = useMemo(() => {
-    if (selectedTeamId === "all") {
+    if (selectedTeamId === "all" || !selectedTeamId) {
       return "All Accountants";
     }
 
-    return teams.find((team) => team.id.toString() === selectedTeamId)?.name || "My";
+    return teams.find((team) => team.id.toString() === selectedTeamId)?.name || "Accountant";
   }, [selectedTeamId, teams]);
 
   const { staffWorkingDays, workingDaysUpToToday } = useWorkingDays({
@@ -108,7 +112,7 @@ export const StaffTracker: React.FC = () => {
         });
       }
     } else {
-      const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, undefined, Number(selectedTeamId) || currentStaff?.team_id || undefined);
+      const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, undefined, Number(selectedTeamId));
       aggregatedTargets = perService;
     }
 
@@ -119,7 +123,7 @@ export const StaffTracker: React.FC = () => {
       .eq("year", year)
       .in("staff_id", editableStaffIds);
 
-    let finalActivities = activities || [];
+    const finalActivities = activities || [];
 
     displayServices.forEach((service) => {
       nextTargets[service.service_name] = aggregatedTargets[service.service_id] || 0;
