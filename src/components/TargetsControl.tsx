@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
@@ -35,6 +35,8 @@ export const TargetsControl: React.FC = () => {
   const { teams, loading: authLoading, error: authError } = useAuth();
   const { services, loading: servicesLoading, error: servicesError } = useServices();
 
+  const targetableServices = useMemo(() => services.filter(s => s.service_name !== 'Bagel Days'), [services]);
+
   const [selectedFinancialYear, setSelectedFinancialYear] = useState<FinancialYear>({
     label: '2025/26',
     start: 2025,
@@ -55,7 +57,7 @@ export const TargetsControl: React.FC = () => {
   const scrollPositionRef = useRef<number>(0);
 
   const fetchTargets = async (fy: FinancialYear) => {
-    if (!teams.length || !services.length) {
+    if (!teams.length || !targetableServices.length) {
       setLoading(false);
       return;
     }
@@ -77,7 +79,7 @@ export const TargetsControl: React.FC = () => {
           const targets: TargetData['targets'] = {};
           monthData.forEach((m) => {
             targets[m.number] = {};
-            services.forEach((s) => (targets[m.number][s.service_name] = 0));
+            targetableServices.forEach((s) => (targets[m.number][s.service_name] = 0));
           });
 
           dbTargets?.forEach((t) => {
@@ -85,7 +87,7 @@ export const TargetsControl: React.FC = () => {
               return;
             }
 
-            const service = services.find((s) => s.service_id === t.service_id);
+            const service = targetableServices.find((s) => s.service_id === t.service_id);
             if (service) {
               targets[t.month][service.service_name] = t.target_value ?? 0;
             }
@@ -108,7 +110,7 @@ export const TargetsControl: React.FC = () => {
 
   useEffect(() => {
     fetchTargets(selectedFinancialYear);
-  }, [selectedFinancialYear, teams.length, services.length]);
+  }, [selectedFinancialYear, teams.length, targetableServices.length]);
 
   const saveScrollPosition = () => {
     if (scrollContainerRef.current) {
@@ -204,7 +206,7 @@ export const TargetsControl: React.FC = () => {
 
     const monthData = getFinancialYearMonths();
     const currentMonthIndex = monthData.findIndex(m => m.number === month);
-    const currentServiceIndex = services.findIndex(s => s.service_name === serviceName);
+    const currentServiceIndex = targetableServices.findIndex(s => s.service_name === serviceName);
     const currentTeamIndex = targetData.findIndex(t => t.team_id === teamId);
 
     let nextTeamIndex = currentTeamIndex;
@@ -220,7 +222,7 @@ export const TargetsControl: React.FC = () => {
           if (nextTeamIndex < 0) {
             nextTeamIndex = targetData.length - 1;
           }
-          nextServiceIndex = services.length - 1;
+          nextServiceIndex = targetableServices.length - 1;
         }
         nextMonthIndex = monthData.length - 1;
       }
@@ -228,7 +230,7 @@ export const TargetsControl: React.FC = () => {
       nextMonthIndex++;
       if (nextMonthIndex >= monthData.length) {
         nextServiceIndex++;
-        if (nextServiceIndex >= services.length) {
+        if (nextServiceIndex >= targetableServices.length) {
           nextTeamIndex++;
           if (nextTeamIndex >= targetData.length) {
             nextTeamIndex = 0;
@@ -240,7 +242,7 @@ export const TargetsControl: React.FC = () => {
     }
 
     const nextTeam = targetData[nextTeamIndex];
-    const nextService = services[nextServiceIndex];
+    const nextService = targetableServices[nextServiceIndex];
     const nextMonth = monthData[nextMonthIndex];
 
     if (nextTeam && nextService && nextMonth) {
@@ -282,7 +284,7 @@ export const TargetsControl: React.FC = () => {
             const year = month >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
 
             Object.entries(monthTargets).forEach(([serviceName, value]) => {
-              const service = services.find((s) => s.service_name === serviceName);
+              const service = targetableServices.find((s) => s.service_name === serviceName);
               if (service) {
                 inserts.push({
                   team_id: team.team_id,
@@ -324,7 +326,7 @@ export const TargetsControl: React.FC = () => {
         const year = month >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
 
         Object.entries(monthTargets).forEach(([serviceName, value]) => {
-          const service = services.find((s) => s.service_name === serviceName);
+          const service = targetableServices.find((s) => s.service_name === serviceName);
           if (service) {
             rows.push({
               team_id: team.team_id,
@@ -409,7 +411,7 @@ export const TargetsControl: React.FC = () => {
     const team = targetData.find(t => t.team_id === teamId);
     if (!team) return 0;
 
-    return services.reduce((sum, service) => {
+    return targetableServices.reduce((sum, service) => {
       return sum + (team.targets[month]?.[service.service_name] ?? 0);
     }, 0);
   };
@@ -557,7 +559,7 @@ export const TargetsControl: React.FC = () => {
               </div>
 
               <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                {services.map((service, serviceIdx) => {
+                {targetableServices.map((service, serviceIdx) => {
                   const annualTotal = calculateAnnualTotal(team.team_id, service.service_name);
 
                   return (
@@ -706,7 +708,7 @@ export const TargetsControl: React.FC = () => {
           </div>
 
           <div className="divide-y divide-gray-200 dark:divide-gray-700">
-            {services.map((service, serviceIdx) => {
+            {targetableServices.map((service, serviceIdx) => {
               const annualTotal = calculateServiceAnnualTotal(service.service_name);
 
               return (
@@ -755,7 +757,7 @@ export const TargetsControl: React.FC = () => {
 
               <div className="flex flex-1 w-full">
                 {monthData.map((m) => {
-                  const monthGrandTotal = services.reduce((sum, service) => {
+                  const monthGrandTotal = targetableServices.reduce((sum, service) => {
                     return sum + calculateServiceMonthlyTotal(m.number, service.service_name);
                   }, 0);
                   return (
@@ -770,7 +772,7 @@ export const TargetsControl: React.FC = () => {
 
               <div className="w-24 flex-shrink-0 px-3 py-2 border-l border-purple-300 dark:border-purple-700 flex items-center justify-center">
                 <div className="px-2 py-2 bg-purple-600 dark:bg-purple-700 border border-purple-700 dark:border-purple-800 rounded-md text-center text-sm font-bold text-white w-full">
-                  {services.reduce((sum, service) => sum + calculateServiceAnnualTotal(service.service_name), 0)}
+                  {targetableServices.reduce((sum, service) => sum + calculateServiceAnnualTotal(service.service_name), 0)}
                 </div>
               </div>
             </div>
