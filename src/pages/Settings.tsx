@@ -24,8 +24,6 @@ type StaffWithTeam = Staff & {
 
 type TeamStatus = 'active' | 'inactive' | 'all';
 
-const emptyTeamOption = 'unassigned';
-
 export const Settings: React.FC = () => {
   const { currentStaff, isAdmin, refreshStaff } = useAuth();
   const [allUsers, setAllUsers] = useState<StaffWithTeam[]>([]);
@@ -39,7 +37,6 @@ export const Settings: React.FC = () => {
   const [newUserRegion, setNewUserRegion] = useState<
     'england-and-wales' | 'scotland' | 'northern-ireland'
   >('england-and-wales');
-  const [newUserTeamId, setNewUserTeamId] = useState<string>(emptyTeamOption);
   const [isAddingUser, setIsAddingUser] = useState(false);
 
   const [editingUser, setEditingUser] = useState<StaffWithTeam | null>(null);
@@ -53,7 +50,6 @@ export const Settings: React.FC = () => {
       | 'northern-ireland',
     security_question: '',
     security_answer: '',
-    team_id: emptyTeamOption,
   });
 
   const [activeTab, setActiveTab] = useState<'users' | 'teams' | 'calendar' | 'permissions' | 'account'>('users');
@@ -103,7 +99,6 @@ export const Settings: React.FC = () => {
     'northern-ireland': 'Northern Ireland',
   };
 
-  const activeTeams = teams.filter(team => team.is_active);
   const visibleTeams = teams.filter(team => {
     if (teamFilter === 'active') return team.is_active;
     if (teamFilter === 'inactive') return !team.is_active;
@@ -125,11 +120,6 @@ export const Settings: React.FC = () => {
     }
 
     return `${fallbackMessage}: ${message}`;
-  };
-
-  const getTeamName = (teamId: number | null) => {
-    if (!teamId) return 'Unassigned';
-    return teams.find(team => team.id === teamId)?.name || 'Unknown';
   };
 
   const fetchSettingsData = async () => {
@@ -157,7 +147,7 @@ export const Settings: React.FC = () => {
       }
 
       if (teamsResult.error) {
-        setFeedback(getErrorMessage('Failed to load teams data', teamsResult.error));
+        setFeedback(getErrorMessage('Failed to load accountants data', teamsResult.error));
       } else {
         setTeams(teamsResult.data || []);
       }
@@ -220,11 +210,6 @@ export const Settings: React.FC = () => {
     setFeedback(null);
 
     try {
-      const assignedTeamId =
-        newUserRole === 'staff' && newUserTeamId !== emptyTeamOption
-          ? Number(newUserTeamId)
-          : null;
-
       const { data, error: insertError } = await supabase
         .from('staff')
         .insert({
@@ -232,7 +217,7 @@ export const Settings: React.FC = () => {
           password: newUserPassword.trim() || null,
           role: newUserRole,
           home_region: newUserRegion,
-          team_id: assignedTeamId,
+          team_id: null,
           is_hidden: false,
         })
         .select('*, team:team_id (*)')
@@ -248,7 +233,6 @@ export const Settings: React.FC = () => {
         setNewUserPassword('');
         setNewUserRole('staff');
         setNewUserRegion('england-and-wales');
-        setNewUserTeamId(emptyTeamOption);
         await refreshStaff();
         await createAuditLog({
           pagePath: '/settings',
@@ -285,7 +269,6 @@ export const Settings: React.FC = () => {
         | 'northern-ireland') || 'england-and-wales',
       security_question: user.security_question || '',
       security_answer: user.security_answer || '',
-      team_id: user.team_id ? String(user.team_id) : emptyTeamOption,
     });
   };
 
@@ -295,12 +278,6 @@ export const Settings: React.FC = () => {
     setFeedback(null);
 
     try {
-      const previousTeamId = editingUser.team_id;
-      const nextTeamId =
-        editForm.role === 'staff' && editForm.team_id !== emptyTeamOption
-          ? Number(editForm.team_id)
-          : null;
-
       const { data, error: updateError } = await supabase
         .from('staff')
         .update({
@@ -310,7 +287,7 @@ export const Settings: React.FC = () => {
           home_region: editForm.home_region,
           security_question: editForm.security_question.trim() || null,
           security_answer: editForm.security_answer.trim() || null,
-          team_id: nextTeamId,
+          team_id: null,
         })
         .eq('staff_id', editingUser.staff_id)
         .select('*, team:team_id (*)')
@@ -332,15 +309,10 @@ export const Settings: React.FC = () => {
           actionType: 'update',
           entityType: 'user',
           entityId: String(editingUser.staff_id),
-          description:
-            previousTeamId !== nextTeamId
-              ? `Updated user ${data.name} and changed accountant to ${getTeamName(nextTeamId)}`
-              : `Updated user ${data.name}`,
+          description: `Updated user ${data.name}`,
           actorStaffId: currentStaff.staff_id,
-          teamId: nextTeamId,
+          teamId: null,
           metadata: {
-            previous_team_id: previousTeamId,
-            next_team_id: nextTeamId,
             role: data.role,
             home_region: data.home_region,
           },
@@ -679,8 +651,6 @@ export const Settings: React.FC = () => {
     memberCount: allUsers.filter(user => !user.is_hidden && user.role === 'staff' && user.team_id === team.id).length,
   }));
 
-  const unassignedUsers = allUsers.filter(user => !user.is_hidden && !user.team_id && user.role === 'staff');
-
   return (
     <div className="px-4 sm:px-6 lg:px-8">
       <div className="page-header">
@@ -787,7 +757,7 @@ export const Settings: React.FC = () => {
           <div className="mt-6 space-y-6">
             <div className="bg-white shadow rounded-lg p-6">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Add New User</h3>
-              <form onSubmit={handleAddUser} className="grid grid-cols-1 md:grid-cols-6 gap-4">
+              <form onSubmit={handleAddUser} className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <input
                   type="text"
                   value={newUserName}
@@ -820,21 +790,6 @@ export const Settings: React.FC = () => {
                   <option value="scotland">Scotland</option>
                   <option value="northern-ireland">Northern Ireland</option>
                 </select>
-                <select
-                  value={newUserTeamId}
-                  onChange={e => setNewUserTeamId(e.target.value)}
-                  className="px-3 py-2 border rounded-md"
-                  disabled={newUserRole !== 'staff'}
-                >
-                  <option value={emptyTeamOption}>
-                    {newUserRole === 'staff' ? 'No accountant group' : 'Not applicable'}
-                  </option>
-                  {activeTeams.map(team => (
-                    <option key={team.id} value={team.id}>
-                      {team.name}
-                    </option>
-                  ))}
-                </select>
                 <button
                   type="submit"
                   disabled={isAddingUser}
@@ -857,7 +812,6 @@ export const Settings: React.FC = () => {
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Accountant Group</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Region</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                       </tr>
@@ -870,9 +824,6 @@ export const Settings: React.FC = () => {
                             <td className="px-6 py-4 text-sm font-medium text-gray-900">{user.name}</td>
                             <td className="px-6 py-4 text-sm text-gray-500">
                               {user.role === 'staff' ? 'Accountant' : 'User'}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-500">
-                              {user.role === 'staff' ? getTeamName(user.team_id) : 'Not applicable'}
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-500">
                               {regionLabels[user.home_region as keyof typeof regionLabels]}
@@ -1050,11 +1001,6 @@ export const Settings: React.FC = () => {
                         <td className="px-6 py-4 text-sm text-gray-500">{team.memberCount}</td>
                       </tr>
                     ))}
-                    <tr>
-                      <td className="px-6 py-4 text-sm font-medium text-gray-900">Unassigned</td>
-                      <td className="px-6 py-4 text-sm text-gray-500">—</td>
-                      <td className="px-6 py-4 text-sm text-gray-500">{unassignedUsers.length}</td>
-                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -1170,7 +1116,6 @@ export const Settings: React.FC = () => {
                       setEditForm(f => ({
                         ...f,
                         role: e.target.value as 'admin' | 'staff',
-                        team_id: e.target.value === 'staff' ? f.team_id : emptyTeamOption,
                       }))
                     }
                     className="w-full px-3 py-2 border rounded-md"
@@ -1196,27 +1141,6 @@ export const Settings: React.FC = () => {
                     <option value="northern-ireland">Northern Ireland</option>
                   </select>
                 </div>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Accountant Group</label>
-                <select
-                  value={editForm.team_id}
-                  onChange={e => setEditForm(f => ({ ...f, team_id: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-md"
-                  disabled={editForm.role !== 'staff'}
-                >
-                  <option value={emptyTeamOption}>
-                    {editForm.role === 'staff' ? 'No accountant group' : 'Not applicable'}
-                  </option>
-                  {activeTeams.map(team => (
-                    <option key={team.id} value={team.id}>
-                      {team.name}
-                    </option>
-                  ))}
-                  {!editingUser.team?.is_active && editingUser.team_id && editForm.role === 'staff' && (
-                    <option value={editingUser.team_id}>{editingUser.team?.name}</option>
-                  )}
-                </select>
               </div>
               <div className="border-t pt-4 mt-4">
                 <h4 className="text-sm font-bold text-gray-700 mb-3">Security Question (Admin Reset)</h4>

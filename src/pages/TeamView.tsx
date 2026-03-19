@@ -66,7 +66,7 @@ export const TeamView: React.FC = () => {
 
         const filteredStaff = selectedTeamId === "all" || !selectedTeamId
           ? visibleAccountants
-          : visibleAccountants.filter(s => String(s.team_id) === selectedTeamId);
+          : visibleAccountants.filter(s => String(s.staff_id) === selectedTeamId);
 
         const staffIds = filteredStaff.map(s => s.staff_id);
 
@@ -85,14 +85,14 @@ export const TeamView: React.FC = () => {
 
         if (fetchError) throw fetchError;
 
-        const teamIds = selectedTeamId === 'all' || !selectedTeamId
+        const accountantIds = selectedTeamId === 'all' || !selectedTeamId
           ? teams.map(t => t.id)
           : [Number(selectedTeamId)];
 
         const { data: targets, error: targetsError } = await supabase
           .from('monthlytargets')
           .select('team_id, month, year, target_value')
-          .in('team_id', teamIds)
+          .in('team_id', accountantIds)
           .gte('year', firstMonth.year)
           .lte('year', lastMonth.year);
 

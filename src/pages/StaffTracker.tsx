@@ -45,7 +45,7 @@ export const StaffTracker: React.FC = () => {
     }
 
     return visibleAccountants.filter(
-      (staff) => String(staff.team_id) === selectedTeamId
+      (staff) => String(staff.staff_id) === selectedTeamId
     );
   }, [allStaff, selectedTeamId]);
 
@@ -59,8 +59,8 @@ export const StaffTracker: React.FC = () => {
       return "All Accountants";
     }
 
-    return teams.find((team) => team.id.toString() === selectedTeamId)?.name || "Accountant";
-  }, [selectedTeamId, teams]);
+    return allStaff.find((staff) => String(staff.staff_id) === selectedTeamId)?.name || "Accountant";
+  }, [selectedTeamId, allStaff]);
 
   const { staffWorkingDays, workingDaysUpToToday } = useWorkingDays({
     financialYear: selectedFinancialYear,
@@ -105,8 +105,8 @@ export const StaffTracker: React.FC = () => {
 
     let aggregatedTargets: Record<number, number> = {};
     if (selectedTeamId === 'all' || !selectedTeamId) {
-      for (const team of teams) {
-        const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, undefined, team.id);
+      for (const accountant of teams) {
+        const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, undefined, accountant.id);
         Object.entries(perService).forEach(([sid, val]) => {
           aggregatedTargets[Number(sid)] = (aggregatedTargets[Number(sid)] || 0) + val;
         });

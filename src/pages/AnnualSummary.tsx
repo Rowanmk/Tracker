@@ -9,7 +9,6 @@ import { generateBagelDays } from '../utils/bagelDays';
 interface AnnualStaffData {
   staff_id: number;
   name: string;
-  accountant_name: string;
   months: {
     [key: number]: {
       total: number;
@@ -23,7 +22,7 @@ const isAccountant = (role: string) => role === 'staff';
 
 export const AnnualSummary: React.FC = () => {
   const { selectedFinancialYear } = useDate();
-  const { allStaff, teams, selectedTeamId } = useAuth();
+  const { allStaff, selectedTeamId } = useAuth();
   const { services } = useServices();
   const [annualData, setAnnualData] = useState<AnnualStaffData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +36,7 @@ export const AnnualSummary: React.FC = () => {
 
     const filteredStaff = selectedTeamId === "all" || !selectedTeamId
       ? visibleAccountants
-      : visibleAccountants.filter(s => String(s.team_id) === selectedTeamId);
+      : visibleAccountants.filter(s => String(s.staff_id) === selectedTeamId);
 
     if (filteredStaff.length === 0) {
       setAnnualData([]);
@@ -83,12 +82,9 @@ export const AnnualSummary: React.FC = () => {
           }
         });
 
-        const accountant = teams.find(t => t.id === staff.team_id);
-
         return {
           staff_id: staff.staff_id,
           name: staff.name,
-          accountant_name: accountant?.name || 'Unassigned',
           months,
           totalDeliveries: Object.values(months).reduce((s, m) => s + m.total, 0)
         };
@@ -118,7 +114,6 @@ export const AnnualSummary: React.FC = () => {
           <thead className="bg-gray-100 dark:bg-gray-700">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-bold uppercase">Accountant</th>
-              <th className="px-4 py-3 text-left text-xs font-bold uppercase">Group</th>
               {monthData.map(m => (
                 <th key={m.number} className="px-4 py-3 text-center text-xs font-bold uppercase">
                   {m.name}
@@ -131,7 +126,6 @@ export const AnnualSummary: React.FC = () => {
             {annualData.map((staff, idx) => (
               <tr key={staff.staff_id} className={idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}>
                 <td className="px-4 py-3 font-medium">{staff.name}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{staff.accountant_name}</td>
                 {monthData.map(m => (
                   <td key={m.number} className="px-4 py-3 text-center">
                     {staff.months[m.number]?.total || 0}
