@@ -16,18 +16,23 @@ export function isTargetInFinancialYear(month: number, year: number, financialYe
 export async function loadTargets(
   month: number,
   financialYear: FinancialYear,
-  staffId?: number
+  staffId?: number,
+  teamId?: number
 ) {
   const expectedYear = getExpectedYearForMonth(month, financialYear);
 
   let query = supabase
     .from('monthlytargets')
-    .select('staff_id, service_id, month, year, target_value')
+    .select('staff_id, team_id, service_id, month, year, target_value')
     .eq('month', month)
     .eq('year', expectedYear);
 
-  if (staffId) {
+  if (staffId && teamId) {
+    query = query.or(`staff_id.eq.${staffId},team_id.eq.${teamId}`);
+  } else if (staffId) {
     query = query.eq('staff_id', staffId);
+  } else if (teamId) {
+    query = query.eq('team_id', teamId);
   }
 
   const { data, error } = await query;

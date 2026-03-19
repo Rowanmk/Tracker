@@ -12,6 +12,7 @@ interface StaffPerformance {
 
 interface Props {
   staffPerformance: StaffPerformance[];
+  teamTarget?: number;
 }
 
 const MONTHS = [
@@ -19,7 +20,7 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
+export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance, teamTarget }) => {
   const {
     selectedMonth,
     selectedYear,
@@ -67,14 +68,10 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance }) => {
   const workingDays = teamWorkingDays;
 
   const { actualTotal, targetTotal } = useMemo(() => {
-    return staffPerformance.reduce(
-      (acc, s) => ({
-        actualTotal: acc.actualTotal + (s.total || 0),
-        targetTotal: acc.targetTotal + (s.target || 0),
-      }),
-      { actualTotal: 0, targetTotal: 0 }
-    );
-  }, [staffPerformance]);
+    const actual = staffPerformance.reduce((sum, s) => sum + (s.total || 0), 0);
+    const target = teamTarget !== undefined ? teamTarget : staffPerformance.reduce((sum, s) => sum + (s.target || 0), 0);
+    return { actualTotal: actual, targetTotal: target };
+  }, [staffPerformance, teamTarget]);
 
   const expectedByNow =
     workingDays > 0

@@ -20,7 +20,7 @@ export const StaffTracker: React.FC = () => {
   const { selectedMonth, selectedFinancialYear } = useDate();
   const { currentStaff, selectedTeamId, teams, allStaff } = useAuth();
   const { services } = useServices();
-  const { staffPerformance } = useStaffPerformance("desc");
+  const { staffPerformance, teamTarget } = useStaffPerformance("desc");
 
   const displayServices = useMemo(() => services.filter(s => s.service_name !== 'Bagel Days'), [services]);
 
@@ -99,26 +99,30 @@ export const StaffTracker: React.FC = () => {
       return;
     }
 
-    const [{ data: activities }, targetResults] = await Promise.all([
-      supabase
-        .from("dailyactivity")
-        .select("service_id, delivered_count, day, staff_id, date")
-        .eq("month", selectedMonth)
-        .eq("year", year)
-        .in("staff_id", editableStaffIds),
-      Promise.all(
-        editableStaffIds.map((staffId) =>
-          loadTargets(selectedMonth, selectedFinancialYear, staffId)
-        )
-      ),
-    ]);
+    let aggregatedTargets: Record<number, number> = {};
+    if (selectedTeamId === 'all' || !selectedTeamId) {
+      for (const team of teams) {
+        const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, undefined, team.id);
+        Object.entries(perService).forEach(([sid, val]) => {
+          aggregatedTargets[Number(sid)] = (aggregatedTargets[Number(sid)] || 0) + val;
+        });
+      }
+    } else {
+      const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, undefined, Number(selectedTeamId) || currentStaff?.team_id || undefined);
+      aggregatedTargets = perService;
+    }
+
+    const { data: activities } = await supabase
+      .from("dailyactivity")
+      .select("service_id, delivered_count, day, staff_id, date")
+      .eq("month", selectedMonth)
+      .eq("year", year)
+      .in("staff_id", editableStaffIds);
 
     let finalActivities = activities || [];
 
-    targetResults.forEach(({ perService }) => {
-      displayServices.forEach((service) => {
-        nextTargets[service.service_name] += perService?.[service.service_id] || 0;
-      });
+    displayServices.forEach((service) => {
+      nextTargets[service.service_name] = aggregatedTargets[service.service_id] || 0;
     });
 
     finalActivities.forEach((activity) => {
@@ -311,7 +315,7 @@ export const StaffTracker: React.FC = () => {
       </div>
 
       <div className="mb-6">
-        <StaffPerformanceBar staffPerformance={staffPerformance} />
+        <StaffPerformanceBar staffPerformance={staffPerformance} teamTarget={teamTarget} />
       </div>
 
       <MyTrackerProgressTiles

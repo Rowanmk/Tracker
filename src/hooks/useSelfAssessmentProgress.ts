@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
-import type { FinancialYear } from '../utils/financialYear';
+import type { FinancialYear } from './financialYear';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
+type Team = Database['public']['Tables']['teams']['Row'];
 type Service = Database['public']['Tables']['services']['Row'];
 type DailyActivity = Database['public']['Tables']['dailyactivity']['Row'];
 type MonthlyTarget = Database['public']['Tables']['monthlytargets']['Row'];
 
-interface StaffProgressData {
-  staff_id: number;
+export interface TeamProgressData {
+  team_id: number;
   name: string;
   fullYearTarget: number;
   submitted: number;
@@ -19,16 +20,17 @@ interface StaffProgressData {
 export const useSelfAssessmentProgress = (
   financialYear: FinancialYear,
   allStaff: Staff[],
+  teams: Team[],
   services: Service[]
 ) => {
-  const [staffProgress, setStaffProgress] = useState<StaffProgressData[]>([]);
+  const [teamProgress, setTeamProgress] = useState<TeamProgressData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!financialYear || allStaff.length === 0 || services.length === 0) {
-        setStaffProgress([]);
+      if (!financialYear || allStaff.length === 0 || teams.length === 0 || services.length === 0) {
+        setTeamProgress([]);
         setLoading(false);
         return;
       }
@@ -43,7 +45,7 @@ export const useSelfAssessmentProgress = (
 
         if (!saService) {
           setError('Self Assessment service not found');
-          setStaffProgress([]);
+          setTeamProgress([]);
           setLoading(false);
           return;
         }
@@ -88,7 +90,7 @@ export const useSelfAssessmentProgress = (
 
         if (activitiesError) {
           setError('Failed to load activity data');
-          setStaffProgress([]);
+          setTeamProgress([]);
           setLoading(false);
           return;
         }
@@ -97,39 +99,40 @@ export const useSelfAssessmentProgress = (
 
         const { data: targets, error: targetsError } = await supabase
           .from('monthlytargets')
-          .select('staff_id, month, year, target_value')
+          .select('team_id, month, year, target_value')
           .eq('service_id', saService.service_id)
           .in('year', [deliveryStartYear, deliveryEndYear]);
 
         if (targetsError) {
           setError('Failed to load target data');
-          setStaffProgress([]);
+          setTeamProgress([]);
           setLoading(false);
           return;
         }
 
         const safeTargets: MonthlyTarget[] = (targets ?? []) as MonthlyTarget[];
 
-        const staffWithData = new Set<number>();
+        const teamWithData = new Set<number>();
 
         safeActivities.forEach((a: DailyActivity) => {
-          if (a.staff_id != null) staffWithData.add(a.staff_id);
+          const staff = allStaff.find(s => s.staff_id === a.staff_id);
+          if (staff && staff.team_id) teamWithData.add(staff.team_id);
         });
 
         safeTargets.forEach((t: MonthlyTarget) => {
-          if (t.staff_id != null) staffWithData.add(t.staff_id);
+          if (t.team_id != null) teamWithData.add(t.team_id);
         });
 
-        const results: StaffProgressData[] = [];
+        const results: TeamProgressData[] = [];
 
-        staffWithData.forEach((staffId: number) => {
-          const staff = allStaff.find(
-            (s: Staff) => s.staff_id === staffId
-          );
-          if (!staff) return;
+        teamWithData.forEach((teamId: number) => {
+          const team = teams.find(t => t.id === teamId);
+          if (!team) return;
+
+          const teamStaffIds = allStaff.filter(s => s.team_id === teamId).map(s => s.staff_id);
 
           const submitted = safeActivities
-            .filter((a: DailyActivity) => a.staff_id === staffId)
+            .filter((a: DailyActivity) => a.staff_id && teamStaffIds.includes(a.staff_id))
             .reduce(
               (sum: number, a: DailyActivity) =>
                 sum + (a.delivered_count ?? 0),
@@ -142,7 +145,7 @@ export const useSelfAssessmentProgress = (
               : safeActivities
                   .filter(
                     (a: DailyActivity) =>
-                      a.staff_id === staffId &&
+                      a.staff_id && teamStaffIds.includes(a.staff_id) &&
                       a.date <= lastCompletedIso
                   )
                   .reduce(
@@ -159,7 +162,7 @@ export const useSelfAssessmentProgress = (
 
           const futureTargets = safeTargets
             .filter((t: MonthlyTarget) => {
-              if (t.staff_id !== staffId) return false;
+              if (t.team_id !== teamId) return false;
               const tDate = new Date(t.year, t.month - 1, 1);
               return (
                 tDate >= targetStartDate &&
@@ -177,8 +180,8 @@ export const useSelfAssessmentProgress = (
           const leftToDo = Math.max(0, fullYearTarget - submitted);
 
           results.push({
-            staff_id: staffId,
-            name: staff.name,
+            team_id: teamId,
+            name: team.name,
             fullYearTarget,
             submitted,
             leftToDo,
@@ -186,17 +189,17 @@ export const useSelfAssessmentProgress = (
         });
 
         results.sort((a, b) => a.name.localeCompare(b.name));
-        setStaffProgress(results);
+        setTeamProgress(results);
       } catch {
         setError('Failed to load Self Assessment progress');
-        setStaffProgress([]);
+        setTeamProgress([]);
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [financialYear, allStaff, services]);
+  }, [financialYear, allStaff, teams, services]);
 
-  return { staffProgress, loading, error };
+  return { teamProgress, loading, error };
 };

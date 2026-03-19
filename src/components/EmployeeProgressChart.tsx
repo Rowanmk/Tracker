@@ -36,68 +36,60 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   playbackDay,
 }) => {
   const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
+  const [teamTargets, setTeamTargets] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(false);
 
   const isAllTeams = selectedTeamId === "all";
   const roundedPlaybackDay = playbackDay ? Math.max(1, Math.round(playbackDay)) : undefined;
 
-  // Use a string of IDs to prevent the useEffect from re-running every frame during playback
-  const staffIdsString = useMemo(() => 
-    staffPerformance.map(s => s.staff_id).sort().join(','), 
-  [staffPerformance]);
-
   useEffect(() => {
-    const fetchServiceTargets = async () => {
+    const fetchTargets = async () => {
       setLoading(true);
       try {
-        const targetMap: Record<number, number> = {};
-        // We only need the IDs to fetch targets, which don't change during playback
-        const staffIds = staffIdsString ? staffIdsString.split(',').map(Number) : [];
-        
-        for (const staffId of staffIds) {
-          const { perService } = await loadTargets(month, financialYear, staffId);
-          Object.entries(perService).forEach(([serviceId, value]) => {
-            const sid = parseInt(serviceId);
-            targetMap[sid] = (targetMap[sid] || 0) + value;
-          });
+        if (isAllTeams) {
+          const tTargets: Record<number, number> = {};
+          for (const team of teams) {
+            const { totalTarget } = await loadTargets(month, financialYear, undefined, team.id);
+            tTargets[team.id] = totalTarget;
+          }
+          setTeamTargets(tTargets);
+        } else {
+          const { perService } = await loadTargets(month, financialYear, undefined, Number(selectedTeamId));
+          setServiceTargets(perService);
         }
-        setServiceTargets(targetMap);
       } catch {
         setServiceTargets({});
+        setTeamTargets({});
       } finally {
         setLoading(false);
       }
     };
 
-    if (!isAllTeams && staffIdsString) {
-      fetchServiceTargets();
-    } else {
-      setLoading(false);
-    }
-  }, [month, financialYear, staffIdsString, isAllTeams]);
+    fetchTargets();
+  }, [month, financialYear, isAllTeams, selectedTeamId, teams]);
 
   const chartData = useMemo(() => {
     if (isAllTeams) {
-      return [...staffPerformance]
-        .map((staff) => {
-          const expectedByToday =
-            workingDays > 0 ? (staff.target / workingDays) * workingDaysUpToToday : 0;
-          const runRatePercent =
-            expectedByToday > 0 ? (staff.total / expectedByToday) * 100 : 0;
-          const teamName =
-            teams.find((team) => team.id === staff.team_id)?.name || "Unassigned";
+      return teams.map((team) => {
+        const teamStaff = staffPerformance.filter((s) => s.team_id === team.id);
+        const delivered = teamStaff.reduce((sum, s) => sum + s.total, 0);
+        const target = teamTargets[team.id] || 0;
+        const expectedByToday =
+          workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
+        const runRatePercent =
+          expectedByToday > 0 ? (delivered / expectedByToday) * 100 : 0;
 
-          return {
-            id: staff.staff_id,
-            label: staff.name,
-            delivered: staff.total,
-            target: staff.target,
-            expectedByToday,
-            runRatePercent,
-            teamName,
-          };
-        })
-        .sort((a, b) => b.delivered - a.delivered);
+        return {
+          id: team.id,
+          label: team.name,
+          delivered,
+          target,
+          expectedByToday,
+          runRatePercent,
+        };
+      })
+      .filter(t => t.delivered > 0 || t.target > 0)
+      .sort((a, b) => b.delivered - a.delivered);
     }
 
     return services.map((service) => {
@@ -115,7 +107,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
         runRatePercent,
       };
     });
-  }, [isAllTeams, teams, staffPerformance, services, serviceTargets, workingDays, workingDaysUpToToday]);
+  }, [isAllTeams, teams, staffPerformance, services, serviceTargets, teamTargets, workingDays, workingDaysUpToToday]);
 
   const getBarColor = (percentage: number) => {
     if (percentage >= 90) return "#008A00";
@@ -140,7 +132,6 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   const barCount = chartData.length;
   const availableWidth = CHART_WIDTH - FIXED_LEFT_MARGIN - RIGHT_PADDING;
   const barSlotWidth = availableWidth / Math.max(barCount, 1);
-  // Increased bar width multiplier to 0.95 and max width to 200 to use up more x-axis space
   const barWidth = Math.min(barSlotWidth * 0.95, 200);
 
   const shouldRotateLabels = isAllTeams && (barCount > 8 || chartData.some((d) => d.label.length > 12));
@@ -149,7 +140,6 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
 
   const stablePercentMax = 140;
   
-  // Lock the Y-axis to the target or final delivered value so it doesn't shift during playback
   const stableNumbersMax = Math.max(
     ...chartData.map((d) => Math.max(d.target, d.delivered)),
     1

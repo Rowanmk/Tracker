@@ -11,10 +11,10 @@ import type { FinancialYear } from '../utils/financialYear';
 
 export const SelfAssessmentProgress: React.FC = () => {
   const { selectedFinancialYear } = useDate();
-  const { allStaff, loading: authLoading } = useAuth();
+  const { allStaff, teams, loading: authLoading } = useAuth();
   const { services, loading: servicesLoading } = useServices();
 
-  const [activeStaffId, setActiveStaffId] = useState<number | null>(null);
+  const [activeTeamId, setActiveTeamId] = useState<number | null>(null);
 
   const lastCompletedFinancialYear = useMemo(() => {
     const allYears = getFinancialYears();
@@ -26,9 +26,10 @@ export const SelfAssessmentProgress: React.FC = () => {
   const [localFinancialYear, setLocalFinancialYear] =
     useState<FinancialYear>(lastCompletedFinancialYear);
 
-  const { staffProgress, loading, error } = useSelfAssessmentProgress(
+  const { teamProgress, loading, error } = useSelfAssessmentProgress(
     localFinancialYear,
     allStaff,
+    teams,
     services
   );
 
@@ -72,7 +73,7 @@ export const SelfAssessmentProgress: React.FC = () => {
 
         const { data: targets } = await supabase
           .from('monthlytargets')
-          .select('staff_id, month, year, target_value')
+          .select('team_id, month, year, target_value')
           .eq('service_id', saService.service_id)
           .in('year', [deliveryStartYear, deliveryEndYear]);
 
@@ -81,29 +82,30 @@ export const SelfAssessmentProgress: React.FC = () => {
           Record<number, { submitted: number; target: number }>
         > = {};
 
-        staffProgress.forEach((staff) => {
-          breakdown[staff.staff_id] = {};
+        teamProgress.forEach((team) => {
+          breakdown[team.team_id] = {};
           getFinancialYearMonths().forEach((m) => {
-            breakdown[staff.staff_id][m.number] = { submitted: 0, target: 0 };
+            breakdown[team.team_id][m.number] = { submitted: 0, target: 0 };
           });
         });
 
         (activities || []).forEach((a) => {
-          if (a.staff_id != null && breakdown[a.staff_id]) {
+          const staff = allStaff.find(s => s.staff_id === a.staff_id);
+          if (staff && staff.team_id && breakdown[staff.team_id]) {
             const m = new Date(a.date).getMonth() + 1;
-            if (!breakdown[a.staff_id][m]) {
-              breakdown[a.staff_id][m] = { submitted: 0, target: 0 };
+            if (!breakdown[staff.team_id][m]) {
+              breakdown[staff.team_id][m] = { submitted: 0, target: 0 };
             }
-            breakdown[a.staff_id][m].submitted += a.delivered_count || 0;
+            breakdown[staff.team_id][m].submitted += a.delivered_count || 0;
           }
         });
 
         (targets || []).forEach((t) => {
-          if (t.staff_id != null && breakdown[t.staff_id]) {
-            if (!breakdown[t.staff_id][t.month]) {
-              breakdown[t.staff_id][t.month] = { submitted: 0, target: 0 };
+          if (t.team_id != null && breakdown[t.team_id]) {
+            if (!breakdown[t.team_id][t.month]) {
+              breakdown[t.team_id][t.month] = { submitted: 0, target: 0 };
             }
-            breakdown[t.staff_id][t.month].target += t.target_value || 0;
+            breakdown[t.team_id][t.month].target += t.target_value || 0;
           }
         });
 
@@ -116,25 +118,25 @@ export const SelfAssessmentProgress: React.FC = () => {
     };
 
     fetchMonthlyData();
-  }, [localFinancialYear, services, staffProgress]);
+  }, [localFinancialYear, services, teamProgress, allStaff]);
 
-  const visibleStaff = staffProgress.filter(
-    (s) => s.fullYearTarget > 0 || s.submitted > 0
+  const visibleTeams = teamProgress.filter(
+    (t) => t.fullYearTarget > 0 || t.submitted > 0
   );
 
-  const sortedVisibleStaff = useMemo(() => {
-    return [...visibleStaff].sort((a, b) => {
+  const sortedVisibleTeams = useMemo(() => {
+    return [...visibleTeams].sort((a, b) => {
       const percentA = a.fullYearTarget > 0 ? (a.submitted / a.fullYearTarget) * 100 : 0;
       const percentB = b.fullYearTarget > 0 ? (b.submitted / b.fullYearTarget) * 100 : 0;
       return percentB - percentA;
     });
-  }, [visibleStaff]);
+  }, [visibleTeams]);
 
-  const totals = sortedVisibleStaff.reduce(
-    (acc, s) => {
-      acc.fullYearTarget += s.fullYearTarget;
-      acc.submitted += s.submitted;
-      acc.leftToDo += s.leftToDo;
+  const totals = sortedVisibleTeams.reduce(
+    (acc, t) => {
+      acc.fullYearTarget += t.fullYearTarget;
+      acc.submitted += t.submitted;
+      acc.leftToDo += t.leftToDo;
       return acc;
     },
     { fullYearTarget: 0, submitted: 0, leftToDo: 0 }
@@ -184,7 +186,7 @@ export const SelfAssessmentProgress: React.FC = () => {
               <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-bold uppercase">
-                    Staff
+                    Team
                   </th>
                   <th className="px-4 py-3 text-center text-xs font-bold uppercase">
                     Target
@@ -199,29 +201,29 @@ export const SelfAssessmentProgress: React.FC = () => {
               </thead>
 
               <tbody>
-                {sortedVisibleStaff.map((staff) => {
+                {sortedVisibleTeams.map((team) => {
                   const pct =
-                    staff.fullYearTarget > 0
-                      ? (staff.submitted / staff.fullYearTarget) * 100
+                    team.fullYearTarget > 0
+                      ? (team.submitted / team.fullYearTarget) * 100
                       : 0;
 
-                  const isActive = activeStaffId === staff.staff_id;
+                  const isActive = activeTeamId === team.team_id;
 
                   return (
                     <tr
-                      key={staff.staff_id}
+                      key={team.team_id}
                       className={`transition-colors ${
                         isActive
                           ? 'bg-blue-50 ring-1 ring-blue-300'
                           : 'hover:bg-gray-50'
                       }`}
                     >
-                      <td className="px-4 py-3 font-medium">{staff.name}</td>
+                      <td className="px-4 py-3 font-medium">{team.name}</td>
                       <td className="px-4 py-3 text-center font-semibold">
-                        {staff.fullYearTarget}
+                        {team.fullYearTarget}
                       </td>
                       <td className="px-4 py-3 text-center font-semibold">
-                        {staff.submitted}
+                        {team.submitted}
                       </td>
                       <td className="px-4 py-3 text-center font-semibold">
                         {pct.toFixed(1)}%
@@ -255,11 +257,11 @@ export const SelfAssessmentProgress: React.FC = () => {
               </div>
             ) : (
               <SelfAssessmentProgressChart
-                staffProgress={sortedVisibleStaff}
+                teamProgress={sortedVisibleTeams}
                 financialYear={localFinancialYear}
                 monthlyData={monthlyData}
-                activeStaffId={activeStaffId}
-                onActiveStaffChange={setActiveStaffId}
+                activeTeamId={activeTeamId}
+                onActiveTeamChange={setActiveTeamId}
               />
             )}
           </div>

@@ -2,8 +2,8 @@ import * as React from 'react';
 import type { FinancialYear } from '../utils/financialYear';
 import { getFinancialYearMonths } from '../utils/financialYear';
 
-interface StaffProgressData {
-  staff_id: number;
+interface TeamProgressData {
+  team_id: number;
   name: string;
   fullYearTarget: number;
   submitted: number;
@@ -16,11 +16,11 @@ interface MonthlyPoint {
 }
 
 interface SelfAssessmentProgressChartProps {
-  staffProgress: StaffProgressData[];
+  teamProgress: TeamProgressData[];
   financialYear: FinancialYear;
   monthlyData: Record<number, Record<number, { submitted: number; target: number }>>;
-  activeStaffId: number | null;
-  onActiveStaffChange: (id: number | null) => void;
+  activeTeamId: number | null;
+  onActiveTeamChange: (id: number | null) => void;
 }
 
 const VIEWBOX_WIDTH = 1000;
@@ -34,17 +34,17 @@ const CHART_WIDTH = VIEWBOX_WIDTH - PADDING_LEFT - PADDING_RIGHT;
 const CHART_HEIGHT = VIEWBOX_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
 
 export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartProps> = ({
-  staffProgress,
+  teamProgress,
   financialYear,
   monthlyData,
-  activeStaffId,
-  onActiveStaffChange,
+  activeTeamId,
+  onActiveTeamChange,
 }) => {
   const months = getFinancialYearMonths().filter(
     m => m.number >= 4 || m.number <= 1
   );
 
-  const visibleStaff = staffProgress.filter(s => s.fullYearTarget > 0);
+  const visibleTeams = teamProgress.filter(t => t.fullYearTarget > 0);
 
   const colours = [
     '#001B47',
@@ -56,29 +56,29 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   ];
 
   const chartData = React.useMemo(() => {
-    return visibleStaff.map((staff, idx) => {
+    return visibleTeams.map((team, idx) => {
       let cumulative = 0;
 
       const points: MonthlyPoint[] = months.map(m => {
-        cumulative += monthlyData[staff.staff_id]?.[m.number]?.submitted ?? 0;
+        cumulative += monthlyData[team.team_id]?.[m.number]?.submitted ?? 0;
 
         return {
           month: m.number,
           percent: Math.min(
-            (cumulative / staff.fullYearTarget) * 100,
+            (cumulative / team.fullYearTarget) * 100,
             100
           ),
         };
       });
 
       return {
-        staff_id: staff.staff_id,
-        name: staff.name,
+        team_id: team.team_id,
+        name: team.name,
         color: colours[idx % colours.length],
         points,
       };
     });
-  }, [visibleStaff, months, monthlyData]);
+  }, [visibleTeams, months, monthlyData]);
 
   const getX = (i: number) =>
     PADDING_LEFT + (CHART_WIDTH / (months.length - 1)) * i;
@@ -92,7 +92,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
         viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
         className="w-full flex-1"
       >
-        {/* Shaded periods */}
         <rect
           x={getX(0)}
           y={PADDING_TOP}
@@ -110,7 +109,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           opacity="0.4"
         />
 
-        {/* Axes */}
         <line
           x1={PADDING_LEFT}
           y1={PADDING_TOP}
@@ -126,7 +124,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           stroke="#6B7280"
         />
 
-        {/* Y grid + labels */}
         {[0, 25, 50, 75, 100].map(p => (
           <g key={p}>
             <text
@@ -150,7 +147,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           </g>
         ))}
 
-        {/* X-axis labels */}
         {months.map((m, i) => (
           <text
             key={m.number}
@@ -167,34 +163,32 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           </text>
         ))}
 
-        {/* Lines */}
-        {chartData.map(staff => (
+        {chartData.map(team => (
           <path
-            key={staff.staff_id}
-            d={staff.points
+            key={team.team_id}
+            d={team.points
               .map((p, i) => `${i ? 'L' : 'M'} ${getX(i)} ${getY(p.percent)}`)
               .join(' ')}
             fill="none"
             stroke={
-              activeStaffId && activeStaffId !== staff.staff_id
+              activeTeamId && activeTeamId !== team.team_id
                 ? '#9CA3AF'
-                : staff.color
+                : team.color
             }
-            strokeWidth={activeStaffId === staff.staff_id ? 4.5 : 3}
-            opacity={activeStaffId && activeStaffId !== staff.staff_id ? 0.6 : 1}
+            strokeWidth={activeTeamId === team.team_id ? 4.5 : 3}
+            opacity={activeTeamId && activeTeamId !== team.team_id ? 0.6 : 1}
             strokeLinecap="round"
             strokeLinejoin="round"
           />
         ))}
 
-        {/* Monthly % labels - only when a staff member is selected */}
-        {activeStaffId &&
+        {activeTeamId &&
           chartData
-            .filter(staff => staff.staff_id === activeStaffId)
-            .map(staff =>
-              staff.points.map((p, i) => (
+            .filter(team => team.team_id === activeTeamId)
+            .map(team =>
+              team.points.map((p, i) => (
                 <text
-                  key={`label-${staff.staff_id}-${i}`}
+                  key={`label-${team.team_id}-${i}`}
                   x={getX(i)}
                   y={getY(p.percent) - 10}
                   textAnchor="middle"
@@ -205,49 +199,47 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
               ))
             )}
 
-        {/* End-of-line staff name labels - only when no selection is made */}
-        {!activeStaffId &&
-          chartData.map(staff => {
-            const lastPoint = staff.points[staff.points.length - 1];
-            const lastX = getX(staff.points.length - 1);
+        {!activeTeamId &&
+          chartData.map(team => {
+            const lastPoint = team.points[team.points.length - 1];
+            const lastX = getX(team.points.length - 1);
             const lastY = getY(lastPoint.percent);
 
             return (
-              <g key={`end-label-${staff.staff_id}`}>
+              <g key={`end-label-${team.team_id}`}>
                 <text
                   x={lastX + 8}
                   y={lastY + 4}
                   className="text-xs font-semibold fill-gray-800"
                 >
-                  {staff.name}
+                  {team.name}
                 </text>
               </g>
             );
           })}
       </svg>
 
-      {/* Legend */}
       <div className="mt-3 flex justify-center gap-3 flex-wrap">
-        {chartData.map(staff => (
+        {chartData.map(team => (
           <button
-            key={staff.staff_id}
+            key={team.team_id}
             onClick={() =>
-              onActiveStaffChange(
-                activeStaffId === staff.staff_id ? null : staff.staff_id
+              onActiveTeamChange(
+                activeTeamId === team.team_id ? null : team.team_id
               )
             }
             className={`px-4 py-2 rounded-lg border text-sm transition-all ${
-              activeStaffId === staff.staff_id
+              activeTeamId === team.team_id
                 ? 'text-white'
                 : 'bg-white border-gray-300'
             }`}
             style={
-              activeStaffId === staff.staff_id
-                ? { backgroundColor: staff.color }
+              activeTeamId === team.team_id
+                ? { backgroundColor: team.color }
                 : {}
             }
           >
-            {staff.name}
+            {team.name}
           </button>
         ))}
       </div>

@@ -155,6 +155,7 @@ export type Database = {
           month: number
           service_id: number | null
           staff_id: number | null
+          team_id: number | null
           target_id: number
           target_value: number
           year: number
@@ -163,6 +164,7 @@ export type Database = {
           month: number
           service_id?: number | null
           staff_id?: number | null
+          team_id?: number | null
           target_id?: number
           target_value: number
           year: number
@@ -171,6 +173,7 @@ export type Database = {
           month?: number
           service_id?: number | null
           staff_id?: number | null
+          team_id?: number | null
           target_id?: number
           target_value?: number
           year?: number
@@ -190,6 +193,13 @@ export type Database = {
             referencedRelation: "staff"
             referencedColumns: ["staff_id"]
           },
+          {
+            foreignKeyName: "monthlytargets_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          }
         ]
       }
       public_holidays: {

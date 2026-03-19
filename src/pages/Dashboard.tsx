@@ -20,7 +20,7 @@ export const Dashboard: React.FC = () => {
   const { selectedTeamId, teams } = useAuth();
 
   const { services } = useServices();
-  const { staffPerformance, dailyActivities, loading } = useStaffPerformance("desc");
+  const { staffPerformance, dailyActivities, teamTarget, loading } = useStaffPerformance("desc");
 
   const displayServices = useMemo(() => services.filter(s => s.service_name !== 'Bagel Days'), [services]);
 
@@ -208,7 +208,7 @@ export const Dashboard: React.FC = () => {
         ...staff,
         total,
         services: serviceBreakdown,
-        achieved_percent: staff.target > 0 ? (total / staff.target) * 100 : 0,
+        achieved_percent: 0,
       };
     });
   }, [filteredActivities, services, staffPerformance]);
@@ -256,6 +256,7 @@ export const Dashboard: React.FC = () => {
     selectedYear,
     dashboardMode: "team",
     currentStaff: null,
+    teamTarget: teamTarget,
   });
 
   const variance = performanceSummary.delivered - performanceSummary.expected;
@@ -331,7 +332,7 @@ export const Dashboard: React.FC = () => {
       </div>
 
       <div className="mb-6">
-        <StaffPerformanceBar staffPerformance={historicalStaffPerformance} />
+        <StaffPerformanceBar staffPerformance={historicalStaffPerformance} teamTarget={performanceSummary.target} />
       </div>
 
       <div className="mb-6">

@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { loadTargets } from '../utils/loadTargets';
+import { useAuth } from '../context/AuthContext';
 import type { FinancialYear } from '../utils/financialYear';
 
 interface TeamProgressTileProps {
@@ -32,23 +33,26 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
   month,
   financialYear,
 }) => {
+  const { teams, selectedTeamId } = useAuth();
   const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(false);
-
-  // Use a string of IDs to prevent the useEffect from re-running every frame during playback
-  const staffIdsString = useMemo(() => 
-    staffPerformance.map(s => s.staff_id).sort().join(','), 
-  [staffPerformance]);
 
   useEffect(() => {
     const fetchServiceTargets = async () => {
       setLoading(true);
       try {
         const targetMap: Record<number, number> = {};
-        const staffIds = staffIdsString ? staffIdsString.split(',').map(Number) : [];
         
-        for (const staffId of staffIds) {
-          const { perService } = await loadTargets(month, financialYear, staffId);
+        if (selectedTeamId === 'all' || !selectedTeamId) {
+          for (const team of teams) {
+            const { perService } = await loadTargets(month, financialYear, undefined, team.id);
+            Object.entries(perService).forEach(([serviceId, value]) => {
+              const sid = parseInt(serviceId);
+              targetMap[sid] = (targetMap[sid] || 0) + value;
+            });
+          }
+        } else {
+          const { perService } = await loadTargets(month, financialYear, undefined, Number(selectedTeamId));
           Object.entries(perService).forEach(([serviceId, value]) => {
             const sid = parseInt(serviceId);
             targetMap[sid] = (targetMap[sid] || 0) + value;
@@ -62,10 +66,8 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
       }
     };
 
-    if (staffIdsString) {
-      fetchServiceTargets();
-    }
-  }, [month, financialYear, staffIdsString]);
+    fetchServiceTargets();
+  }, [month, financialYear, selectedTeamId, teams]);
 
   const getBarColor = (delivered: number, target: number) => {
     const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;

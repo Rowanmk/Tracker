@@ -21,7 +21,7 @@ interface ServiceStats {
 }
 
 export const TeamView: React.FC = () => {
-  const { allStaff, selectedTeamId, loading: authLoading } = useAuth();
+  const { allStaff, teams, selectedTeamId, loading: authLoading } = useAuth();
   const { services, loading: servicesLoading } = useServices();
 
   const [statsData, setStatsData] = useState<ServiceStats[]>([]);
@@ -41,13 +41,10 @@ export const TeamView: React.FC = () => {
       setError(null);
 
       try {
-        // Determine the 24-month window to calculate a 12-month rolling average for the last 12 completed months
         const today = new Date();
-        // Last completed month is the month before the current month
         const lastCompletedMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
         
         const all24Months: Array<{ year: number; month: number }> = [];
-        // Start 23 months before the last completed month to get 24 months total
         const startMonth = new Date(lastCompletedMonth.getFullYear(), lastCompletedMonth.getMonth() - 23, 1);
         
         const curr = new Date(startMonth);
@@ -59,12 +56,10 @@ export const TeamView: React.FC = () => {
         const firstMonth = all24Months[0];
         const lastMonth = all24Months[23];
 
-        // Format dates for Supabase query (YYYY-MM-DD) safely in local time
         const startDateStr = `${firstMonth.year}-${String(firstMonth.month).padStart(2, '0')}-01`;
         const lastDayOfLastMonth = new Date(lastMonth.year, lastMonth.month, 0).getDate();
         const endDateStr = `${lastMonth.year}-${String(lastMonth.month).padStart(2, '0')}-${String(lastDayOfLastMonth).padStart(2, '0')}`;
 
-        // Filter staff based on selected team
         const filteredStaff = selectedTeamId === "all" || !selectedTeamId
           ? allStaff.filter(s => !s.is_hidden)
           : allStaff.filter(s => !s.is_hidden && String(s.team_id) === selectedTeamId);
@@ -77,7 +72,6 @@ export const TeamView: React.FC = () => {
           return;
         }
 
-        // Fetch daily activities for the 24-month window
         const { data: activities, error: fetchError } = await supabase
           .from('dailyactivity')
           .select('staff_id, service_id, date, delivered_count')
@@ -87,11 +81,14 @@ export const TeamView: React.FC = () => {
 
         if (fetchError) throw fetchError;
 
-        // Fetch targets for the 24-month window to calculate % achieved
+        const teamIds = selectedTeamId === 'all' || !selectedTeamId 
+          ? teams.map(t => t.id) 
+          : [Number(selectedTeamId)];
+
         const { data: targets, error: targetsError } = await supabase
           .from('monthlytargets')
-          .select('staff_id, month, year, target_value')
-          .in('staff_id', staffIds)
+          .select('team_id, month, year, target_value')
+          .in('team_id', teamIds)
           .gte('year', firstMonth.year)
           .lte('year', lastMonth.year);
 
@@ -119,7 +116,6 @@ export const TeamView: React.FC = () => {
 
         const displayServices = services;
 
-        // Group activities by service and YYYY-MM
         const serviceMonthTotals: Record<number, Record<string, number>> = {};
         displayServices.forEach(s => {
           serviceMonthTotals[s.service_id] = {};
@@ -132,7 +128,6 @@ export const TeamView: React.FC = () => {
           const service = services.find(s => s.service_id === a.service_id);
           if (!service) return;
 
-          // Parse YYYY-MM-DD safely without timezone shifts to ensure accurate monthly grouping
           const [yearStr, monthStr] = a.date.split('-');
           const key = `${parseInt(yearStr, 10)}-${parseInt(monthStr, 10)}`;
           
@@ -150,7 +145,6 @@ export const TeamView: React.FC = () => {
           monthTargets[key] = (monthTargets[key] || 0) + (t.target_value || 0);
         });
 
-        // Calculate actuals and rolling averages for the last 12 months
         const processedStats: ServiceStats[] = displayServices.map(service => {
           const monthlyActuals = all24Months.map(m => {
             const key = `${m.year}-${m.month}`;
@@ -159,11 +153,9 @@ export const TeamView: React.FC = () => {
 
           const last12Data: MonthlyData[] = [];
           
-          // The last 12 months are indices 12 to 23 in the 24-month array
           for (let i = 12; i < 24; i++) {
             const actual = monthlyActuals[i];
             
-            // Rolling average is the sum of the current month and the 11 preceding months
             let rollingSum = 0;
             for (let j = i - 11; j <= i; j++) {
               rollingSum += monthlyActuals[j];
@@ -184,7 +176,6 @@ export const TeamView: React.FC = () => {
           };
         });
 
-        // Calculate % of Target Achieved
         const percentData: MonthlyData[] = [];
 
         for (let i = 12; i < 24; i++) {
@@ -231,9 +222,8 @@ export const TeamView: React.FC = () => {
     };
 
     fetchStatsData();
-  }, [allStaff, services, selectedTeamId, authLoading, servicesLoading]);
+  }, [allStaff, teams, services, selectedTeamId, authLoading, servicesLoading]);
 
-  // Auto-select the first tab when data loads
   useEffect(() => {
     if (statsData.length > 0) {
       if (!activeServiceId || !statsData.find(s => s.service.service_id === activeServiceId)) {
@@ -265,7 +255,6 @@ export const TeamView: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Tabbed Tiles */}
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
             {statsData.map(stat => {
               const latestMonth = stat.data[11];
@@ -297,7 +286,6 @@ export const TeamView: React.FC = () => {
             })}
           </div>
 
-          {/* Active Graph Area */}
           {activeStat && (
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6 transition-all duration-300 animate-fade-in">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
@@ -357,7 +345,6 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPerc
 
   return (
     <svg viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`} className="w-full h-full min-h-[280px]">
-      {/* Legend */}
       <g transform={`translate(${PADDING_LEFT}, 15)`}>
         <rect x="0" y="0" width="12" height="12" fill="#001B47" rx="2" className="dark:fill-blue-500" />
         <text x="18" y="10" className="text-xs fill-gray-600 dark:fill-gray-300 font-medium">Actual Delivered</text>
@@ -367,7 +354,6 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPerc
         <text x="158" y="10" className="text-xs fill-gray-600 dark:fill-gray-300 font-medium">12-Month Rolling Average</text>
       </g>
 
-      {/* Grid lines */}
       {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
         const y = PADDING_TOP + CHART_HEIGHT - (ratio * CHART_HEIGHT);
         const val = Math.round(ratio * maxY);
@@ -389,7 +375,6 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPerc
         );
       })}
 
-      {/* Bars */}
       {data.map((d, i) => {
         const x = getX(i);
         const y = getY(d.actual);
@@ -419,7 +404,6 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPerc
         );
       })}
 
-      {/* Line */}
       <polyline
         points={linePoints}
         fill="none"
@@ -430,7 +414,6 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPerc
         className="transition-all duration-500 ease-out"
       />
 
-      {/* Line Dots */}
       {data.map((d, i) => (
         <circle
           key={`dot-${i}`}

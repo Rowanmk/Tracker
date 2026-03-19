@@ -39,7 +39,7 @@ interface UseStaffPerformanceResult {
 
 export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResult => {
   const { selectedMonth, selectedYear, financialYear } = useDate();
-  const { allStaff, loading: authLoading, selectedTeamId } = useAuth();
+  const { allStaff, loading: authLoading, selectedTeamId, teams } = useAuth();
   const { services, loading: servicesLoading } = useServices();
 
   const [performanceData, setPerformanceData] = useState<StaffPerformance[]>([]);
@@ -73,6 +73,18 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
         setLoading(false);
         return;
       }
+
+      let totalTeamTarget = 0;
+      if (selectedTeamId === 'all' || !selectedTeamId) {
+        for (const team of teams) {
+          const { totalTarget } = await loadTargets(selectedMonth, financialYear, undefined, team.id);
+          totalTeamTarget += totalTarget;
+        }
+      } else {
+        const { totalTarget } = await loadTargets(selectedMonth, financialYear, undefined, Number(selectedTeamId));
+        totalTeamTarget = totalTarget;
+      }
+      setTeamTarget(totalTeamTarget);
 
       const staffIds = filteredStaff.map(s => s.staff_id);
 
@@ -115,10 +127,6 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
 
       const previousMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
       const previousYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
-      const previousMonthFinancialYear =
-        previousMonth >= 4
-          ? { start: previousYear, end: previousYear + 1, label: `${previousYear}/${String(previousYear + 1).slice(-2)}` }
-          : { start: previousYear - 1, end: previousYear, label: `${previousYear - 1}/${String(previousYear).slice(-2)}` };
 
       const { data: previousMonthActivities } = await supabase
         .from("dailyactivity")
@@ -155,8 +163,6 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
             }
           });
 
-          const { totalTarget } = await loadTargets(selectedMonth, financialYear, staff.staff_id);
-
           const staffHistorical = finalHistorical.filter(a => a.staff_id === staff.staff_id);
           const monthlyTotals: Record<string, number> = {};
           staffHistorical.forEach(a => {
@@ -177,37 +183,35 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
             }
             return s;
           }, 0);
-          const { totalTarget: prevMonthTarget } = await loadTargets(previousMonth, previousMonthFinancialYear, staff.staff_id);
 
           return {
             staff_id: staff.staff_id,
             name: staff.name,
             services: serviceData,
             total: totalDelivered,
-            target: totalTarget,
-            achieved_percent: totalTarget > 0 ? (totalDelivered / totalTarget) * 100 : 0,
+            target: 0,
+            achieved_percent: 0,
             historicalAverage: historicalMonthsCount > 0 ? totalHistorical / historicalMonthsCount : 0,
-            previousMonthRatio: prevMonthTarget > 0 ? prevMonthTotal / prevMonthTarget : 0,
+            previousMonthRatio: 0,
             team_id: staff.team_id
           };
         })
       );
 
       const sortedPerformance = [...staffResults].sort((a, b) => {
-        if (sortMode === "desc") return b.achieved_percent - a.achieved_percent;
-        if (sortMode === "asc") return a.achieved_percent - b.achieved_percent;
+        if (sortMode === "desc") return b.total - a.total;
+        if (sortMode === "asc") return a.total - b.total;
         if (sortMode === "name") return a.name.localeCompare(b.name);
         return 0;
       });
 
       setPerformanceData(sortedPerformance);
-      setTeamTarget(sortedPerformance.reduce((s, p) => s + p.target, 0));
     } catch {
       setError("Failed to connect to database");
     } finally {
       setLoading(false);
     }
-  }, [authLoading, servicesLoading, allStaff, selectedMonth, selectedYear, financialYear, sortMode, selectedTeamId, services]);
+  }, [authLoading, servicesLoading, allStaff, selectedMonth, selectedYear, financialYear, sortMode, selectedTeamId, services, teams]);
 
   useEffect(() => {
     fetchPerformanceData();

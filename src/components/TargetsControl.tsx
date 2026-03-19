@@ -8,7 +8,7 @@ import { unparse } from 'papaparse';
 import type { FinancialYear } from '../utils/financialYear';
 
 interface TargetData {
-  staff_id: number;
+  team_id: number;
   name: string;
   targets: {
     [month: number]: {
@@ -18,8 +18,8 @@ interface TargetData {
 }
 
 interface CSVRow {
-  staff_id: number;
-  staff_name: string;
+  team_id: number;
+  team_name: string;
   service_id: number;
   service_name: string;
   month: number;
@@ -32,7 +32,7 @@ interface LocalInputState {
 }
 
 export const TargetsControl: React.FC = () => {
-  const { allStaff, loading: authLoading, error: authError } = useAuth();
+  const { teams, loading: authLoading, error: authError } = useAuth();
   const { services, loading: servicesLoading, error: servicesError } = useServices();
 
   const [selectedFinancialYear, setSelectedFinancialYear] = useState<FinancialYear>({
@@ -55,7 +55,7 @@ export const TargetsControl: React.FC = () => {
   const scrollPositionRef = useRef<number>(0);
 
   const fetchTargets = async (fy: FinancialYear) => {
-    if (!allStaff.length || !services.length) {
+    if (!teams.length || !services.length) {
       setLoading(false);
       return;
     }
@@ -67,11 +67,11 @@ export const TargetsControl: React.FC = () => {
       const monthData = getFinancialYearMonths();
 
       const data = await Promise.all(
-        allStaff.map(async (staff) => {
+        teams.map(async (team) => {
           const { data: dbTargets } = await supabase
             .from('monthlytargets')
             .select('month, service_id, target_value, year')
-            .eq('staff_id', staff.staff_id)
+            .eq('team_id', team.id)
             .in('year', [fy.start, fy.end]);
 
           const targets: TargetData['targets'] = {};
@@ -91,7 +91,7 @@ export const TargetsControl: React.FC = () => {
             }
           });
 
-          return { staff_id: staff.staff_id, name: staff.name, targets };
+          return { team_id: team.id, name: team.name, targets };
         })
       );
 
@@ -108,7 +108,7 @@ export const TargetsControl: React.FC = () => {
 
   useEffect(() => {
     fetchTargets(selectedFinancialYear);
-  }, [selectedFinancialYear, allStaff.length, services.length]);
+  }, [selectedFinancialYear, teams.length, services.length]);
 
   const saveScrollPosition = () => {
     if (scrollContainerRef.current) {
@@ -122,18 +122,18 @@ export const TargetsControl: React.FC = () => {
     }
   }, [targetData, localInputState]);
 
-  const getInputKey = (staffId: number, month: number, serviceName: string): string => {
-    return `${staffId}-${month}-${serviceName}`;
+  const getInputKey = (teamId: number, month: number, serviceName: string): string => {
+    return `${teamId}-${month}-${serviceName}`;
   };
 
   const handleInputChange = (
-    staffId: number,
+    teamId: number,
     month: number,
     serviceName: string,
     value: string
   ) => {
     saveScrollPosition();
-    const key = getInputKey(staffId, month, serviceName);
+    const key = getInputKey(teamId, month, serviceName);
     setLocalInputState(prev => ({
       ...prev,
       [key]: value
@@ -142,12 +142,12 @@ export const TargetsControl: React.FC = () => {
   };
 
   const handleInputBlur = (
-    staffId: number,
+    teamId: number,
     month: number,
     serviceName: string,
     value: string
   ) => {
-    const key = getInputKey(staffId, month, serviceName);
+    const key = getInputKey(teamId, month, serviceName);
 
     let numValue = 0;
     if (value.trim() !== '') {
@@ -166,19 +166,19 @@ export const TargetsControl: React.FC = () => {
 
     saveScrollPosition();
     setTargetData((prev) =>
-      prev.map((staff) =>
-        staff.staff_id === staffId
+      prev.map((team) =>
+        team.team_id === teamId
           ? {
-              ...staff,
+              ...team,
               targets: {
-                ...staff.targets,
+                ...team.targets,
                 [month]: {
-                  ...staff.targets[month],
+                  ...team.targets[month],
                   [serviceName]: numValue,
                 },
               },
             }
-          : staff
+          : team
       )
     );
 
@@ -191,7 +191,7 @@ export const TargetsControl: React.FC = () => {
 
   const handleKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement>,
-    staffId: number,
+    teamId: number,
     month: number,
     serviceName: string,
     value: string
@@ -200,14 +200,14 @@ export const TargetsControl: React.FC = () => {
 
     e.preventDefault();
 
-    handleInputBlur(staffId, month, serviceName, value);
+    handleInputBlur(teamId, month, serviceName, value);
 
     const monthData = getFinancialYearMonths();
     const currentMonthIndex = monthData.findIndex(m => m.number === month);
     const currentServiceIndex = services.findIndex(s => s.service_name === serviceName);
-    const currentStaffIndex = targetData.findIndex(s => s.staff_id === staffId);
+    const currentTeamIndex = targetData.findIndex(t => t.team_id === teamId);
 
-    let nextStaffIndex = currentStaffIndex;
+    let nextTeamIndex = currentTeamIndex;
     let nextServiceIndex = currentServiceIndex;
     let nextMonthIndex = currentMonthIndex;
 
@@ -216,9 +216,9 @@ export const TargetsControl: React.FC = () => {
       if (nextMonthIndex < 0) {
         nextServiceIndex--;
         if (nextServiceIndex < 0) {
-          nextStaffIndex--;
-          if (nextStaffIndex < 0) {
-            nextStaffIndex = targetData.length - 1;
+          nextTeamIndex--;
+          if (nextTeamIndex < 0) {
+            nextTeamIndex = targetData.length - 1;
           }
           nextServiceIndex = services.length - 1;
         }
@@ -229,9 +229,9 @@ export const TargetsControl: React.FC = () => {
       if (nextMonthIndex >= monthData.length) {
         nextServiceIndex++;
         if (nextServiceIndex >= services.length) {
-          nextStaffIndex++;
-          if (nextStaffIndex >= targetData.length) {
-            nextStaffIndex = 0;
+          nextTeamIndex++;
+          if (nextTeamIndex >= targetData.length) {
+            nextTeamIndex = 0;
           }
           nextServiceIndex = 0;
         }
@@ -239,12 +239,12 @@ export const TargetsControl: React.FC = () => {
       }
     }
 
-    const nextStaff = targetData[nextStaffIndex];
+    const nextTeam = targetData[nextTeamIndex];
     const nextService = services[nextServiceIndex];
     const nextMonth = monthData[nextMonthIndex];
 
-    if (nextStaff && nextService && nextMonth) {
-      const nextKey = getInputKey(nextStaff.staff_id, nextMonth.number, nextService.service_name);
+    if (nextTeam && nextService && nextMonth) {
+      const nextKey = getInputKey(nextTeam.team_id, nextMonth.number, nextService.service_name);
 
       requestAnimationFrame(() => {
         const nextInput = inputRefs.current.get(nextKey);
@@ -262,22 +262,22 @@ export const TargetsControl: React.FC = () => {
 
     try {
       await Promise.all(
-        targetData.map(async (staff) => {
+        targetData.map(async (team) => {
           await supabase
             .from('monthlytargets')
             .delete()
-            .eq('staff_id', staff.staff_id)
+            .eq('team_id', team.team_id)
             .in('year', [selectedFinancialYear.start, selectedFinancialYear.end]);
 
           const inserts: Array<{
-            staff_id: number;
+            team_id: number;
             service_id: number;
             month: number;
             year: number;
             target_value: number;
           }> = [];
 
-          Object.entries(staff.targets).forEach(([monthStr, monthTargets]) => {
+          Object.entries(team.targets).forEach(([monthStr, monthTargets]) => {
             const month = Number(monthStr);
             const year = month >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
 
@@ -285,7 +285,7 @@ export const TargetsControl: React.FC = () => {
               const service = services.find((s) => s.service_name === serviceName);
               if (service) {
                 inserts.push({
-                  staff_id: staff.staff_id,
+                  team_id: team.team_id,
                   service_id: service.service_id,
                   month,
                   year,
@@ -318,8 +318,8 @@ export const TargetsControl: React.FC = () => {
   const handleExportCSV = () => {
     const rows: CSVRow[] = [];
 
-    targetData.forEach((staff) => {
-      Object.entries(staff.targets).forEach(([monthStr, monthTargets]) => {
+    targetData.forEach((team) => {
+      Object.entries(team.targets).forEach(([monthStr, monthTargets]) => {
         const month = Number(monthStr);
         const year = month >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
 
@@ -327,8 +327,8 @@ export const TargetsControl: React.FC = () => {
           const service = services.find((s) => s.service_name === serviceName);
           if (service) {
             rows.push({
-              staff_id: staff.staff_id,
-              staff_name: staff.name,
+              team_id: team.team_id,
+              team_name: team.name,
               service_id: service.service_id,
               service_name: serviceName,
               month,
@@ -405,27 +405,27 @@ export const TargetsControl: React.FC = () => {
     );
   }
 
-  const calculateMonthlyTotal = (staffId: number, month: number): number => {
-    const staff = targetData.find(s => s.staff_id === staffId);
-    if (!staff) return 0;
+  const calculateMonthlyTotal = (teamId: number, month: number): number => {
+    const team = targetData.find(t => t.team_id === teamId);
+    if (!team) return 0;
 
     return services.reduce((sum, service) => {
-      return sum + (staff.targets[month]?.[service.service_name] ?? 0);
+      return sum + (team.targets[month]?.[service.service_name] ?? 0);
     }, 0);
   };
 
-  const calculateAnnualTotal = (staffId: number, serviceName: string): number => {
-    const staff = targetData.find(s => s.staff_id === staffId);
-    if (!staff) return 0;
+  const calculateAnnualTotal = (teamId: number, serviceName: string): number => {
+    const team = targetData.find(t => t.team_id === teamId);
+    if (!team) return 0;
 
     return monthData.reduce((sum, m) => {
-      return sum + (staff.targets[m.number]?.[serviceName] ?? 0);
+      return sum + (team.targets[m.number]?.[serviceName] ?? 0);
     }, 0);
   };
 
   const calculateServiceMonthlyTotal = (month: number, serviceName: string): number => {
-    return targetData.reduce((sum, staff) => {
-      return sum + (staff.targets[month]?.[serviceName] ?? 0);
+    return targetData.reduce((sum, team) => {
+      return sum + (team.targets[month]?.[serviceName] ?? 0);
     }, 0);
   };
 
@@ -435,15 +435,15 @@ export const TargetsControl: React.FC = () => {
     }, 0);
   };
 
-  const getInputValue = (staffId: number, month: number, serviceName: string): string => {
-    const key = getInputKey(staffId, month, serviceName);
+  const getInputValue = (teamId: number, month: number, serviceName: string): string => {
+    const key = getInputKey(teamId, month, serviceName);
 
     if (Object.prototype.hasOwnProperty.call(localInputState, key)) {
       return localInputState[key];
     }
 
-    const staff = targetData.find(s => s.staff_id === staffId);
-    const value = staff?.targets[month]?.[serviceName] ?? 0;
+    const team = targetData.find(t => t.team_id === teamId);
+    const value = team?.targets[month]?.[serviceName] ?? 0;
     return value.toString();
   };
 
@@ -516,14 +516,14 @@ export const TargetsControl: React.FC = () => {
       </div>
 
       <div className="space-y-3">
-        {targetData.map((staff) => (
+        {targetData.map((team) => (
           <div
-            key={staff.staff_id}
+            key={team.team_id}
             className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden"
           >
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-6 py-4">
               <h4 className="text-lg font-bold text-white">
-                {staff.name}
+                {team.name}
               </h4>
             </div>
 
@@ -558,7 +558,7 @@ export const TargetsControl: React.FC = () => {
 
               <div className="divide-y divide-gray-200 dark:divide-gray-700">
                 {services.map((service, serviceIdx) => {
-                  const annualTotal = calculateAnnualTotal(staff.staff_id, service.service_name);
+                  const annualTotal = calculateAnnualTotal(team.team_id, service.service_name);
 
                   return (
                     <div
@@ -577,7 +577,7 @@ export const TargetsControl: React.FC = () => {
 
                       <div className="flex flex-1 w-full">
                         {monthData.map((m) => {
-                          const inputKey = getInputKey(staff.staff_id, m.number, service.service_name);
+                          const inputKey = getInputKey(team.team_id, m.number, service.service_name);
                           return (
                             <div key={m.number} className="flex-1 min-w-0 px-1 py-2 border-r border-gray-200 dark:border-gray-600">
                               <input
@@ -590,13 +590,13 @@ export const TargetsControl: React.FC = () => {
                                 }}
                                 type="number"
                                 min="0"
-                                value={getInputValue(staff.staff_id, m.number, service.service_name)}
+                                value={getInputValue(team.team_id, m.number, service.service_name)}
                                 onFocus={(e) => {
                                   e.currentTarget.select();
                                 }}
                                 onChange={(e) =>
                                   handleInputChange(
-                                    staff.staff_id,
+                                    team.team_id,
                                     m.number,
                                     service.service_name,
                                     e.target.value
@@ -604,7 +604,7 @@ export const TargetsControl: React.FC = () => {
                                 }
                                 onBlur={(e) =>
                                   handleInputBlur(
-                                    staff.staff_id,
+                                    team.team_id,
                                     m.number,
                                     service.service_name,
                                     e.target.value
@@ -613,7 +613,7 @@ export const TargetsControl: React.FC = () => {
                                 onKeyDown={(e) =>
                                   handleKeyDown(
                                     e,
-                                    staff.staff_id,
+                                    team.team_id,
                                     m.number,
                                     service.service_name,
                                     e.currentTarget.value
@@ -644,7 +644,7 @@ export const TargetsControl: React.FC = () => {
 
                   <div className="flex flex-1 w-full">
                     {monthData.map((m) => {
-                      const monthTotal = calculateMonthlyTotal(staff.staff_id, m.number);
+                      const monthTotal = calculateMonthlyTotal(team.team_id, m.number);
                       return (
                         <div key={`total-${m.number}`} className="flex-1 min-w-0 px-1 py-2 border-r border-gray-300 dark:border-gray-500">
                           <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
@@ -657,7 +657,7 @@ export const TargetsControl: React.FC = () => {
 
                   <div className="w-24 flex-shrink-0 px-3 py-2 border-l border-gray-300 dark:border-gray-500 flex items-center justify-center">
                     <div className="px-2 py-2 bg-blue-600 dark:bg-blue-700 border border-blue-700 dark:border-blue-800 rounded-md text-center text-sm font-bold text-white w-full">
-                      {monthData.reduce((sum, m) => sum + calculateMonthlyTotal(staff.staff_id, m.number), 0)}
+                      {monthData.reduce((sum, m) => sum + calculateMonthlyTotal(team.team_id, m.number), 0)}
                     </div>
                   </div>
                 </div>
@@ -673,7 +673,7 @@ export const TargetsControl: React.FC = () => {
             Service Totals by Month
           </h4>
           <p className="text-sm text-purple-100 mt-1">
-            Aggregated targets across all staff members (Read-Only)
+            Aggregated targets across all teams (Read-Only)
           </p>
         </div>
 
