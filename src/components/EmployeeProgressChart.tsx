@@ -36,10 +36,12 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   playbackDay,
 }) => {
   const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
+  const [staffTargets, setStaffTargets] = useState<Record<number, number>>({});
   const [teamTargets, setTeamTargets] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(false);
 
   const isAllTeams = selectedTeamId === "all";
+  const isTeamView = selectedTeamId === "team-view";
   const roundedPlaybackDay = playbackDay ? Math.max(1, Math.round(playbackDay)) : undefined;
 
   useEffect(() => {
@@ -53,12 +55,30 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
             tTargets[team.id] = totalTarget;
           }
           setTeamTargets(tTargets);
-        } else {
-          const { perService } = await loadTargets(month, financialYear, undefined, Number(selectedTeamId));
-          setServiceTargets(perService);
+          setStaffTargets({});
+          setServiceTargets({});
+          return;
         }
+
+        if (isTeamView) {
+          const nextStaffTargets: Record<number, number> = {};
+          for (const staff of staffPerformance) {
+            const { totalTarget } = await loadTargets(month, financialYear, staff.staff_id);
+            nextStaffTargets[staff.staff_id] = totalTarget;
+          }
+          setStaffTargets(nextStaffTargets);
+          setTeamTargets({});
+          setServiceTargets({});
+          return;
+        }
+
+        const { perService } = await loadTargets(month, financialYear, undefined, Number(selectedTeamId));
+        setServiceTargets(perService);
+        setStaffTargets({});
+        setTeamTargets({});
       } catch {
         setServiceTargets({});
+        setStaffTargets({});
         setTeamTargets({});
       } finally {
         setLoading(false);
@@ -66,30 +86,54 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
     };
 
     fetchTargets();
-  }, [month, financialYear, isAllTeams, selectedTeamId, teams]);
+  }, [month, financialYear, isAllTeams, isTeamView, selectedTeamId, teams, staffPerformance]);
 
   const chartData = useMemo(() => {
     if (isAllTeams) {
-      return teams.map((team) => {
-        const teamStaff = staffPerformance.filter((s) => s.team_id === team.id);
-        const delivered = teamStaff.reduce((sum, s) => sum + s.total, 0);
-        const target = teamTargets[team.id] || 0;
-        const expectedByToday =
-          workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
-        const runRatePercent =
-          expectedByToday > 0 ? (delivered / expectedByToday) * 100 : 0;
+      return teams
+        .map((team) => {
+          const teamStaff = staffPerformance.filter((s) => s.team_id === team.id);
+          const delivered = teamStaff.reduce((sum, s) => sum + s.total, 0);
+          const target = teamTargets[team.id] || 0;
+          const expectedByToday =
+            workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
+          const runRatePercent =
+            expectedByToday > 0 ? (delivered / expectedByToday) * 100 : 0;
 
-        return {
-          id: team.id,
-          label: team.name,
-          delivered,
-          target,
-          expectedByToday,
-          runRatePercent,
-        };
-      })
-      .filter(t => t.delivered > 0 || t.target > 0)
-      .sort((a, b) => b.delivered - a.delivered);
+          return {
+            id: team.id,
+            label: team.name,
+            delivered,
+            target,
+            expectedByToday,
+            runRatePercent,
+          };
+        })
+        .filter((t) => t.delivered > 0 || t.target > 0)
+        .sort((a, b) => b.delivered - a.delivered);
+    }
+
+    if (isTeamView) {
+      return staffPerformance
+        .map((staff) => {
+          const delivered = staff.total || 0;
+          const target = staffTargets[staff.staff_id] || staff.target || 0;
+          const expectedByToday =
+            workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
+          const runRatePercent =
+            expectedByToday > 0 ? (delivered / expectedByToday) * 100 : 0;
+
+          return {
+            id: staff.staff_id,
+            label: staff.name,
+            delivered,
+            target,
+            expectedByToday,
+            runRatePercent,
+          };
+        })
+        .filter((staff) => staff.delivered > 0 || staff.target > 0)
+        .sort((a, b) => b.delivered - a.delivered);
     }
 
     return services.map((service) => {
@@ -107,7 +151,18 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
         runRatePercent,
       };
     });
-  }, [isAllTeams, teams, staffPerformance, services, serviceTargets, teamTargets, workingDays, workingDaysUpToToday]);
+  }, [
+    isAllTeams,
+    isTeamView,
+    teams,
+    staffPerformance,
+    services,
+    serviceTargets,
+    staffTargets,
+    teamTargets,
+    workingDays,
+    workingDaysUpToToday,
+  ]);
 
   const getBarColor = (percentage: number) => {
     if (percentage >= 90) return "#008A00";
@@ -134,23 +189,30 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   const barSlotWidth = availableWidth / Math.max(barCount, 1);
   const barWidth = Math.min(barSlotWidth * 0.95, 200);
 
-  const shouldRotateLabels = isAllTeams && (barCount > 8 || chartData.some((d) => d.label.length > 12));
+  const shouldRotateLabels =
+    (isAllTeams || isTeamView) && (barCount > 8 || chartData.some((d) => d.label.length > 12));
   const axisLabelCharLimit = shouldRotateLabels ? 12 : 16;
   const axisLabelY = shouldRotateLabels ? BASELINE_Y + 20 : BASELINE_Y + 15;
 
   const stablePercentMax = 140;
-  
+
   const stableNumbersMax = Math.max(
-    ...chartData.map((d) => Math.max(d.target, d.delivered)),
+    ...chartData.map((d) => Math.max(d.target, d.delivered, d.expectedByToday)),
     1
   ) || 1;
 
   const yMax = viewMode === "percent" ? stablePercentMax : stableNumbersMax;
 
+  const chartTitle = isAllTeams
+    ? "Accountant Progress Chart"
+    : isTeamView
+    ? "Service Progress Chart"
+    : "Service Progress Chart";
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[418px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
       <div className="tile-header px-4 py-1.5">
-        {isAllTeams ? "Accountant Progress Chart" : "Service Progress Chart"}
+        {chartTitle}
         {roundedPlaybackDay ? <span className="ml-2 text-white/80">Day {roundedPlaybackDay}</span> : null}
       </div>
 
