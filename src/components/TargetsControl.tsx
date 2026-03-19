@@ -450,8 +450,8 @@ export const TargetsControl: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="page-header">
+    <div className="space-y-4">
+      <div className="page-header mb-4">
         <h2 className="page-title">Targets Control</h2>
         <p className="page-subtitle">
           Set monthly targets for {selectedFinancialYear.label}
@@ -459,26 +459,50 @@ export const TargetsControl: React.FC = () => {
       </div>
 
       {error && (
-        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-sm">
           <p className="text-red-800 dark:text-red-200">❌ {error}</p>
         </div>
       )}
 
       {saveMessage && (
-        <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md">
+        <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md text-sm">
           <p className="text-green-800 dark:text-green-200">{saveMessage}</p>
         </div>
       )}
 
       {hasUnsavedChanges && (
-        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
-          <p className="text-yellow-800 dark:text-yellow-200">⚠️ You have unsaved changes. Remember to save before leaving.</p>
+        <div className="fixed bottom-8 right-8 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 p-5 z-50 flex flex-col gap-4 animate-slide-up max-w-sm">
+          <div className="flex items-start gap-3">
+            <div className="bg-yellow-100 dark:bg-yellow-900/30 p-2 rounded-full">
+              <svg className="w-6 h-6 text-yellow-600 dark:text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div>
+              <h4 className="text-base font-bold text-gray-900 dark:text-white">Unsaved Entries</h4>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">You have entries that have not yet been saved. Please choose an action.</p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 mt-2">
+            <button
+              onClick={() => fetchTargets(selectedFinancialYear)}
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-md transition-colors"
+            >
+              Ignore
+            </button>
+            <button
+              onClick={() => handleSaveTargets()}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-md transition-colors shadow-sm"
+            >
+              save updates
+            </button>
+          </div>
         </div>
       )}
 
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
             Financial Year
           </label>
           <select
@@ -488,7 +512,7 @@ export const TargetsControl: React.FC = () => {
               const fy = financialYears.find(f => f.start === start && f.end === end);
               if (fy) handleFinancialYearChange(fy);
             }}
-            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
           >
             {financialYears.map((fy) => (
               <option key={`${fy.start}-${fy.end}`} value={`${fy.start}-${fy.end}`}>
@@ -498,10 +522,10 @@ export const TargetsControl: React.FC = () => {
           </select>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-2">
           <button
             onClick={handleExportCSV}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
+            className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium"
           >
             📥 Export CSV
           </button>
@@ -510,7 +534,7 @@ export const TargetsControl: React.FC = () => {
               void handleSaveTargets();
             }}
             disabled={!hasUnsavedChanges}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             💾 Save Targets
           </button>
@@ -521,10 +545,10 @@ export const TargetsControl: React.FC = () => {
         {targetData.map((team) => (
           <div
             key={team.team_id}
-            className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden"
+            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden"
           >
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-6 py-4">
-              <h4 className="text-lg font-bold text-white">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-4 py-2">
+              <h4 className="text-base font-bold text-white">
                 {team.name}
               </h4>
             </div>
@@ -535,24 +559,24 @@ export const TargetsControl: React.FC = () => {
               style={{ scrollBehavior: 'smooth' }}
             >
               <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-                <div className="w-40 flex-shrink-0 px-4 py-3 border-r border-gray-200 dark:border-gray-600">
-                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
+                <div className="w-36 flex-shrink-0 px-3 py-2 border-r border-gray-200 dark:border-gray-600">
+                  <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                     Service
                   </span>
                 </div>
 
                 <div className="flex flex-1 w-full">
                   {monthData.map((m) => (
-                    <div key={m.number} className="flex-1 min-w-0 px-1 py-3 text-center border-r border-gray-200 dark:border-gray-600">
-                      <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
+                    <div key={m.number} className="flex-1 min-w-0 px-1 py-2 text-center border-r border-gray-200 dark:border-gray-600">
+                      <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
                         {m.name}
                       </span>
                     </div>
                   ))}
                 </div>
 
-                <div className="w-24 flex-shrink-0 px-3 py-3 text-center border-l border-gray-200 dark:border-gray-600">
-                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
+                <div className="w-20 flex-shrink-0 px-2 py-2 text-center border-l border-gray-200 dark:border-gray-600">
+                  <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                     Total
                   </span>
                 </div>
@@ -571,8 +595,8 @@ export const TargetsControl: React.FC = () => {
                           : 'bg-gray-50 dark:bg-gray-700'
                       } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
                     >
-                      <div className="w-40 flex-shrink-0 px-4 py-2 border-r border-gray-200 dark:border-gray-600 flex items-center">
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
+                      <div className="w-36 flex-shrink-0 px-3 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center">
+                        <span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
                           {service.service_name}
                         </span>
                       </div>
@@ -581,7 +605,7 @@ export const TargetsControl: React.FC = () => {
                         {monthData.map((m) => {
                           const inputKey = getInputKey(team.team_id, m.number, service.service_name);
                           return (
-                            <div key={m.number} className="flex-1 min-w-0 px-1 py-2 border-r border-gray-200 dark:border-gray-600">
+                            <div key={m.number} className="flex-1 min-w-0 px-1 py-1 border-r border-gray-200 dark:border-gray-600">
                               <input
                                 ref={(el) => {
                                   if (el) {
@@ -621,15 +645,15 @@ export const TargetsControl: React.FC = () => {
                                     e.currentTarget.value
                                   )
                                 }
-                                className="w-full px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                                className="w-full px-1 py-1 h-7 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-center text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                               />
                             </div>
                           );
                         })}
                       </div>
 
-                      <div className="w-24 flex-shrink-0 px-3 py-2 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center">
-                        <div className="px-2 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white w-full">
+                      <div className="w-20 flex-shrink-0 px-2 py-1.5 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center">
+                        <div className="px-1 py-1 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-xs font-bold text-gray-900 dark:text-white w-full">
                           {annualTotal}
                         </div>
                       </div>
@@ -637,9 +661,9 @@ export const TargetsControl: React.FC = () => {
                   );
                 })}
 
-                <div className="flex w-full bg-gray-200 dark:bg-gray-600 border-t-2 border-gray-300 dark:border-gray-500">
-                  <div className="w-40 flex-shrink-0 px-4 py-3 border-r border-gray-300 dark:border-gray-500 flex items-center">
-                    <span className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
+                <div className="flex w-full bg-gray-200 dark:bg-gray-600 border-t border-gray-300 dark:border-gray-500">
+                  <div className="w-36 flex-shrink-0 px-3 py-2 border-r border-gray-300 dark:border-gray-500 flex items-center">
+                    <span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
                       Monthly Total
                     </span>
                   </div>
@@ -648,8 +672,8 @@ export const TargetsControl: React.FC = () => {
                     {monthData.map((m) => {
                       const monthTotal = calculateMonthlyTotal(team.team_id, m.number);
                       return (
-                        <div key={`total-${m.number}`} className="flex-1 min-w-0 px-1 py-2 border-r border-gray-300 dark:border-gray-500">
-                          <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
+                        <div key={`total-${m.number}`} className="flex-1 min-w-0 px-1 py-1.5 border-r border-gray-300 dark:border-gray-500">
+                          <div className="px-1 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-xs font-bold text-gray-900 dark:text-white">
                             {monthTotal}
                           </div>
                         </div>
@@ -657,8 +681,8 @@ export const TargetsControl: React.FC = () => {
                     })}
                   </div>
 
-                  <div className="w-24 flex-shrink-0 px-3 py-2 border-l border-gray-300 dark:border-gray-500 flex items-center justify-center">
-                    <div className="px-2 py-2 bg-blue-600 dark:bg-blue-700 border border-blue-700 dark:border-blue-800 rounded-md text-center text-sm font-bold text-white w-full">
+                  <div className="w-20 flex-shrink-0 px-2 py-1.5 border-l border-gray-300 dark:border-gray-500 flex items-center justify-center">
+                    <div className="px-1 py-1 bg-blue-600 dark:bg-blue-700 border border-blue-700 dark:border-blue-800 rounded-md text-center text-xs font-bold text-white w-full">
                       {monthData.reduce((sum, m) => sum + calculateMonthlyTotal(team.team_id, m.number), 0)}
                     </div>
                   </div>
@@ -669,12 +693,12 @@ export const TargetsControl: React.FC = () => {
         ))}
       </div>
 
-      <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden mt-8">
-        <div className="bg-gradient-to-r from-purple-600 to-purple-700 dark:from-purple-700 dark:to-purple-800 px-6 py-4">
-          <h4 className="text-lg font-bold text-white">
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden mt-4">
+        <div className="bg-gradient-to-r from-purple-600 to-purple-700 dark:from-purple-700 dark:to-purple-800 px-4 py-2">
+          <h4 className="text-base font-bold text-white">
             Service Totals by Month
           </h4>
-          <p className="text-sm text-purple-100 mt-1">
+          <p className="text-xs text-purple-100 mt-0.5">
             Aggregated targets across all accountants (Read-Only)
           </p>
         </div>
@@ -684,24 +708,24 @@ export const TargetsControl: React.FC = () => {
           style={{ scrollBehavior: 'smooth' }}
         >
           <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-            <div className="w-40 flex-shrink-0 px-4 py-3 border-r border-gray-200 dark:border-gray-600">
-              <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
+            <div className="w-36 flex-shrink-0 px-3 py-2 border-r border-gray-200 dark:border-gray-600">
+              <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                 Service
               </span>
             </div>
 
             <div className="flex flex-1 w-full">
               {monthData.map((m) => (
-                <div key={m.number} className="flex-1 min-w-0 px-1 py-3 text-center border-r border-gray-200 dark:border-gray-600">
-                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
+                <div key={m.number} className="flex-1 min-w-0 px-1 py-2 text-center border-r border-gray-200 dark:border-gray-600">
+                  <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
                     {m.name}
                   </span>
                 </div>
               ))}
             </div>
 
-            <div className="w-24 flex-shrink-0 px-3 py-3 text-center border-l border-gray-200 dark:border-gray-600">
-              <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
+            <div className="w-20 flex-shrink-0 px-2 py-2 text-center border-l border-gray-200 dark:border-gray-600">
+              <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                 Total
               </span>
             </div>
@@ -720,8 +744,8 @@ export const TargetsControl: React.FC = () => {
                       : 'bg-gray-50 dark:bg-gray-700'
                   } hover:bg-purple-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
                 >
-                  <div className="w-40 flex-shrink-0 px-4 py-2 border-r border-gray-200 dark:border-gray-600 flex items-center">
-                    <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
+                  <div className="w-36 flex-shrink-0 px-3 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center">
+                    <span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
                       {service.service_name}
                     </span>
                   </div>
@@ -730,8 +754,8 @@ export const TargetsControl: React.FC = () => {
                     {monthData.map((m) => {
                       const monthTotal = calculateServiceMonthlyTotal(m.number, service.service_name);
                       return (
-                        <div key={`${service.service_id}-${m.number}`} className="flex-1 min-w-0 px-1 py-2 border-r border-gray-200 dark:border-gray-600">
-                          <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-sm font-bold text-gray-900 dark:text-white">
+                        <div key={`${service.service_id}-${m.number}`} className="flex-1 min-w-0 px-1 py-1.5 border-r border-gray-200 dark:border-gray-600">
+                          <div className="px-1 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-center text-xs font-bold text-gray-900 dark:text-white">
                             {monthTotal}
                           </div>
                         </div>
@@ -739,8 +763,8 @@ export const TargetsControl: React.FC = () => {
                     })}
                   </div>
 
-                  <div className="w-24 flex-shrink-0 px-3 py-2 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center">
-                    <div className="px-2 py-2 bg-purple-100 dark:bg-purple-900/30 border border-purple-300 dark:border-purple-700 rounded-md text-center text-sm font-bold text-purple-900 dark:text-purple-200 w-full">
+                  <div className="w-20 flex-shrink-0 px-2 py-1.5 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center">
+                    <div className="px-1 py-1 bg-purple-100 dark:bg-purple-900/30 border border-purple-300 dark:border-purple-700 rounded-md text-center text-xs font-bold text-purple-900 dark:text-purple-200 w-full">
                       {annualTotal}
                     </div>
                   </div>
@@ -748,9 +772,9 @@ export const TargetsControl: React.FC = () => {
               );
             })}
 
-            <div className="flex w-full bg-purple-200 dark:bg-purple-900/50 border-t-2 border-purple-300 dark:border-purple-700">
-              <div className="w-40 flex-shrink-0 px-4 py-3 border-r border-purple-300 dark:border-purple-700 flex items-center">
-                <span className="text-sm font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
+            <div className="flex w-full bg-purple-200 dark:bg-purple-900/50 border-t border-purple-300 dark:border-purple-700">
+              <div className="w-36 flex-shrink-0 px-3 py-2 border-r border-purple-300 dark:border-purple-700 flex items-center">
+                <span className="text-xs font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
                   Grand Total
                 </span>
               </div>
@@ -761,8 +785,8 @@ export const TargetsControl: React.FC = () => {
                     return sum + calculateServiceMonthlyTotal(m.number, service.service_name);
                   }, 0);
                   return (
-                    <div key={`grand-${m.number}`} className="flex-1 min-w-0 px-1 py-2 border-r border-purple-300 dark:border-purple-700">
-                      <div className="px-2 py-2 bg-white dark:bg-gray-700 border border-purple-300 dark:border-purple-700 rounded-md text-center text-sm font-bold text-purple-900 dark:text-purple-200">
+                    <div key={`grand-${m.number}`} className="flex-1 min-w-0 px-1 py-1.5 border-r border-purple-300 dark:border-purple-700">
+                      <div className="px-1 py-1 bg-white dark:bg-gray-700 border border-purple-300 dark:border-purple-700 rounded-md text-center text-xs font-bold text-purple-900 dark:text-purple-200">
                         {monthGrandTotal}
                       </div>
                     </div>
@@ -770,8 +794,8 @@ export const TargetsControl: React.FC = () => {
                 })}
               </div>
 
-              <div className="w-24 flex-shrink-0 px-3 py-2 border-l border-purple-300 dark:border-purple-700 flex items-center justify-center">
-                <div className="px-2 py-2 bg-purple-600 dark:bg-purple-700 border border-purple-700 dark:border-purple-800 rounded-md text-center text-sm font-bold text-white w-full">
+              <div className="w-20 flex-shrink-0 px-2 py-1.5 border-l border-purple-300 dark:border-purple-700 flex items-center justify-center">
+                <div className="px-1 py-1 bg-purple-600 dark:bg-purple-700 border border-purple-700 dark:border-purple-800 rounded-md text-center text-xs font-bold text-white w-full">
                   {targetableServices.reduce((sum, service) => sum + calculateServiceAnnualTotal(service.service_name), 0)}
                 </div>
               </div>
@@ -792,9 +816,15 @@ export const TargetsControl: React.FC = () => {
             <div className="flex gap-3 justify-end">
               <button
                 onClick={cancelNavigation}
-                className="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-700 font-medium"
+                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 font-medium"
               >
                 Cancel
+              </button>
+              <button
+                onClick={confirmNavigation}
+                className="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-700 font-medium"
+              >
+                Ignore
               </button>
               <button
                 onClick={async () => {
@@ -805,13 +835,7 @@ export const TargetsControl: React.FC = () => {
                 }}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
               >
-                Save & Continue
-              </button>
-              <button
-                onClick={confirmNavigation}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium"
-              >
-                Discard
+                save updates
               </button>
             </div>
           </div>
