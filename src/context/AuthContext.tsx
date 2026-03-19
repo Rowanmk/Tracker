@@ -57,7 +57,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [allStaff, setAllStaff] = useState<Staff[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [currentStaff, setCurrentStaff] = useState<Staff | null>(null);
-  const [selectedTeamId, setSelectedTeamId] = useState<string | null>('all');
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -121,11 +121,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const signOut = async () => {
     setCurrentStaff(null);
     setIsAuthenticated(false);
-    setSelectedTeamId('all');
+    setSelectedTeamId(null);
     localStorage.removeItem('crew_tracker_staff_id');
   };
 
   const onTeamChange = (teamId: number | 'all' | 'team-view') => {
+    if (teamId === 'all') {
+      if (currentStaff) {
+        setSelectedTeamId(String(currentStaff.staff_id));
+      } else {
+        setSelectedTeamId(null);
+      }
+      return;
+    }
+
     setSelectedTeamId(teamId.toString());
   };
 

@@ -38,12 +38,12 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     return accountantStaff.filter(staffMember => staffMember.staff_id !== currentStaffId);
   }, [accountantStaff, currentStaff?.staff_id]);
 
-  const handleSelectOption = (value: number | "all" | "team-view") => {
+  const handleSelectOption = (value: number | "team-view") => {
     onTeamChange(value);
 
     if (value === "team-view") {
       navigate("/team");
-    } else if (location.pathname === "/team" && (typeof value === "number" || value === "all")) {
+    } else if (location.pathname === "/team" && typeof value === "number") {
       navigate("/");
     }
 
@@ -51,7 +51,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
   };
 
   const buttonLabel = (() => {
-    if (selectedTeamId === "all") return "All Accountants";
     if (selectedTeamId === "team-view") return "Team View";
     if (currentStaff && selectedTeamId === String(currentStaff.staff_id)) return currentStaff.name;
 
@@ -96,13 +95,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                       className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === "team-view" || location.pathname === "/team" ? "bg-blue-100" : ""}`}
                     >
                       Team View
-                    </button>
-
-                    <button
-                      onClick={() => handleSelectOption("all")}
-                      className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === "all" ? "bg-blue-100" : ""}`}
-                    >
-                      All Accountants
                     </button>
                   </div>
 
