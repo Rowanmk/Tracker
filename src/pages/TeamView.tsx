@@ -133,6 +133,7 @@ export const TeamView: React.FC = () => {
         });
 
         const monthActuals: Record<string, number> = {};
+        const bagelDaysByMonth = new Map<string, Set<string>>();
 
         finalActivities.forEach(a => {
           if (!a.service_id || !a.date) return;
@@ -142,13 +143,25 @@ export const TeamView: React.FC = () => {
           const [yearStr, monthStr] = a.date.split('-');
           const key = `${parseInt(yearStr, 10)}-${parseInt(monthStr, 10)}`;
 
-          if (!serviceMonthTotals[a.service_id]) serviceMonthTotals[a.service_id] = {};
-          serviceMonthTotals[a.service_id][key] = (serviceMonthTotals[a.service_id][key] || 0) + (a.delivered_count || 0);
-
-          if (service.service_name !== 'Bagel Days') {
+          if (service.service_name === 'Bagel Days') {
+            if (!bagelDaysByMonth.has(key)) {
+              bagelDaysByMonth.set(key, new Set<string>());
+            }
+            bagelDaysByMonth.get(key)?.add(a.date);
+          } else {
+            if (!serviceMonthTotals[a.service_id]) serviceMonthTotals[a.service_id] = {};
+            serviceMonthTotals[a.service_id][key] = (serviceMonthTotals[a.service_id][key] || 0) + (a.delivered_count || 0);
             monthActuals[key] = (monthActuals[key] || 0) + (a.delivered_count || 0);
           }
         });
+
+        if (bagelService) {
+          serviceMonthTotals[bagelService.service_id] = {};
+          all24Months.forEach(({ year, month }) => {
+            const key = `${year}-${month}`;
+            serviceMonthTotals[bagelService.service_id][key] = bagelDaysByMonth.get(key)?.size || 0;
+          });
+        }
 
         const monthTargets: Record<string, number> = {};
         targets?.forEach(t => {
