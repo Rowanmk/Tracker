@@ -13,6 +13,9 @@ type AuditLogWithRelations = AuditLogRow & {
   team?: Pick<Team, 'id' | 'name'> | null;
 };
 
+type SortField = 'created_at' | 'page_label' | 'action_type' | 'entity_type' | 'actor' | 'affected' | 'team' | 'description';
+type SortDirection = 'asc' | 'desc';
+
 const PAGE_OPTIONS = [
   { value: 'all', label: 'All pages' },
   { value: '/', label: 'Dashboard' },
@@ -42,8 +45,16 @@ export const AuditLog: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const [pageFilter, setPageFilter] = useState('all');
-  const [staffFilter, setStaffFilter] = useState('all');
+  const [actorFilter, setActorFilter] = useState('all');
+  const [affectedFilter, setAffectedFilter] = useState('');
   const [teamFilter, setTeamFilter] = useState('all');
+  const [actionFilter, setActionFilter] = useState('all');
+  const [entityFilter, setEntityFilter] = useState('all');
+  const [descriptionFilter, setDescriptionFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
+
+  const [sortField, setSortField] = useState<SortField>('created_at');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   const fetchAuditData = async () => {
     setLoading(true);
@@ -63,14 +74,19 @@ export const AuditLog: React.FC = () => {
         setError('Failed to load audit log');
         setLogs([]);
       } else {
-        const nextLogs = (logsResult.data as AuditLogWithRelations[]) || [];
+        const nextLogs = ((logsResult.data as AuditLogWithRelations[]) || []).sort((a, b) => {
+          const timeA = new Date(a.created_at || '').getTime();
+          const timeB = new Date(b.created_at || '').getTime();
+          return timeB - timeA;
+        });
+
         setLogs(nextLogs);
 
         const actors = await getActorNamesForLogs(nextLogs.map((log) => {
           if (isJsonObject(log.metadata) && typeof log.metadata.actor_staff_id === 'number') {
             return log.metadata.actor_staff_id;
           }
-          return null;
+          return log.staff_id;
         }));
         setActorNames(actors);
       }
@@ -94,19 +110,6 @@ export const AuditLog: React.FC = () => {
 
     fetchAuditData();
   }, [isAdmin]);
-
-  const filteredLogs = useMemo(() => {
-    return logs.filter(log => {
-      const metadata = isJsonObject(log.metadata) ? log.metadata : null;
-      const effectiveActorId =
-        typeof metadata?.actor_staff_id === 'number' ? metadata.actor_staff_id : log.staff_id;
-
-      const pageMatch = pageFilter === 'all' || log.page_path === pageFilter;
-      const staffMatch = staffFilter === 'all' || String(effectiveActorId) === staffFilter;
-      const teamMatch = teamFilter === 'all' || String(log.team_id) === teamFilter;
-      return pageMatch && staffMatch && teamMatch;
-    });
-  }, [logs, pageFilter, staffFilter, teamFilter]);
 
   const formatDateTime = (value?: string | null) => {
     if (!value) return { date: 'Unknown', time: 'Unknown' };
@@ -141,18 +144,24 @@ export const AuditLog: React.FC = () => {
     return log.staff?.name || 'Unknown';
   };
 
-  const renderAffectedUsers = (log: AuditLogWithRelations) => {
+  const getAffectedUserNames = (log: AuditLogWithRelations) => {
     const metadata = isJsonObject(log.metadata) ? log.metadata : null;
     const affectedUserNames = Array.isArray(metadata?.affected_user_names)
-      ? metadata?.affected_user_names.filter((value): value is string => typeof value === 'string')
+      ? metadata.affected_user_names.filter((value): value is string => typeof value === 'string')
       : [];
+
+    return affectedUserNames;
+  };
+
+  const renderAffectedUsers = (log: AuditLogWithRelations) => {
+    const affectedUserNames = getAffectedUserNames(log);
 
     if (affectedUserNames.length === 0) {
       return <span className="text-sm text-gray-400">—</span>;
     }
 
     return (
-      <div className="text-sm text-gray-900">
+      <div className="text-sm text-gray-900 dark:text-white">
         {affectedUserNames.length > 3
           ? `${affectedUserNames.slice(0, 3).join(', ')} +${affectedUserNames.length - 3} more`
           : affectedUserNames.join(', ')}
@@ -188,7 +197,7 @@ export const AuditLog: React.FC = () => {
 
     if (parts.length === 0) return null;
 
-    return <div className="text-xs text-gray-500 mt-1">{parts.join(' • ')}</div>;
+    return <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{parts.join(' • ')}</div>;
   };
 
   const renderExactChanges = (log: AuditLogWithRelations) => {
@@ -201,47 +210,47 @@ export const AuditLog: React.FC = () => {
 
     if (affectedUsers.length > 0) {
       return (
-        <div className="mt-2 space-y-2">
-          {affectedUsers.slice(0, 4).map((user, index) => {
+        <div className="space-y-2">
+          {affectedUsers.slice(0, 3).map((user, index) => {
             const userName = typeof user.name === 'string' ? user.name : `User ${index + 1}`;
             const changes = isJsonArray(user.changes)
               ? user.changes.filter((item): item is Record<string, Json | undefined> => !!item && typeof item === 'object' && !Array.isArray(item))
               : [];
 
             return (
-              <div key={`${userName}-${index}`} className="rounded-md bg-gray-50 border border-gray-200 px-3 py-2">
-                <div className="text-xs font-semibold text-gray-700">{userName}</div>
+              <div key={`${userName}-${index}`} className="rounded-md bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-600 px-3 py-2">
+                <div className="text-xs font-semibold text-gray-700 dark:text-gray-200">{userName}</div>
                 {changes.length > 0 ? (
                   <div className="mt-1 space-y-1">
-                    {changes.slice(0, 3).map((change, changeIndex) => {
+                    {changes.slice(0, 2).map((change, changeIndex) => {
                       const month = typeof change.month === 'number' ? change.month : null;
                       const serviceName = typeof change.service_name === 'string' ? change.service_name : 'Service';
                       const previousValue = typeof change.previous_value === 'number' ? change.previous_value : 0;
                       const newValue = typeof change.new_value === 'number' ? change.new_value : 0;
 
                       return (
-                        <div key={`${serviceName}-${changeIndex}`} className="text-xs text-gray-600">
+                        <div key={`${serviceName}-${changeIndex}`} className="text-xs text-gray-600 dark:text-gray-300">
                           {serviceName}{month ? ` (month ${month})` : ''}: {previousValue} → {newValue}
                         </div>
                       );
                     })}
-                    {changes.length > 3 && (
+                    {changes.length > 2 && (
                       <div className="text-xs text-gray-400">
-                        +{changes.length - 3} more change(s)
+                        +{changes.length - 2} more change(s)
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="mt-1 text-xs text-gray-600">
+                  <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
                     {typeof user.changed_cells === 'number' ? `${user.changed_cells} field(s) changed` : 'Updated'}
                   </div>
                 )}
               </div>
             );
           })}
-          {affectedUsers.length > 4 && (
+          {affectedUsers.length > 3 && (
             <div className="text-xs text-gray-400">
-              +{affectedUsers.length - 4} more user(s)
+              +{affectedUsers.length - 3} more user(s)
             </div>
           )}
         </div>
@@ -262,16 +271,16 @@ export const AuditLog: React.FC = () => {
       }
 
       return (
-        <div className="mt-2 rounded-md bg-gray-50 border border-gray-200 px-3 py-2">
-          {keys.slice(0, 5).map((key) => (
-            <div key={key} className="text-xs text-gray-600">
-              <span className="font-semibold text-gray-700">{key.replace(/_/g, ' ')}:</span>{' '}
+        <div className="rounded-md bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-600 px-3 py-2">
+          {keys.slice(0, 4).map((key) => (
+            <div key={key} className="text-xs text-gray-600 dark:text-gray-300">
+              <span className="font-semibold text-gray-700 dark:text-gray-200">{key.replace(/_/g, ' ')}:</span>{' '}
               {String(previous?.[key] ?? '—')} → {String(current?.[key] ?? '—')}
             </div>
           ))}
-          {keys.length > 5 && (
+          {keys.length > 4 && (
             <div className="text-xs text-gray-400 mt-1">
-              +{keys.length - 5} more field change(s)
+              +{keys.length - 4} more field change(s)
             </div>
           )}
         </div>
@@ -279,6 +288,126 @@ export const AuditLog: React.FC = () => {
     }
 
     return null;
+  };
+
+  const actionOptions = useMemo(() => {
+    return Array.from(new Set(logs.map(log => log.action_type).filter(Boolean))).sort();
+  }, [logs]);
+
+  const entityOptions = useMemo(() => {
+    return Array.from(new Set(logs.map(log => log.entity_type).filter(Boolean))).sort();
+  }, [logs]);
+
+  const actorOptions = useMemo(() => {
+    return allStaff
+      .filter(staff => !staff.is_hidden)
+      .map(staff => ({ value: String(staff.staff_id), label: staff.name }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [allStaff]);
+
+  const filteredLogs = useMemo(() => {
+    const normalizedAffectedFilter = affectedFilter.trim().toLowerCase();
+    const normalizedDescriptionFilter = descriptionFilter.trim().toLowerCase();
+
+    const nextLogs = logs.filter(log => {
+      const metadata = isJsonObject(log.metadata) ? log.metadata : null;
+      const effectiveActorId =
+        typeof metadata?.actor_staff_id === 'number' ? metadata.actor_staff_id : log.staff_id;
+
+      const actorName = getActorLabel(log).toLowerCase();
+      const teamName = getTeamName(log).toLowerCase();
+      const affectedUsers = getAffectedUserNames(log).join(', ').toLowerCase();
+      const logDate = log.created_at ? log.created_at.slice(0, 10) : '';
+
+      const pageMatch = pageFilter === 'all' || log.page_path === pageFilter;
+      const actorMatch = actorFilter === 'all' || String(effectiveActorId) === actorFilter || actorName.includes(actorFilter.toLowerCase());
+      const affectedMatch = !normalizedAffectedFilter || affectedUsers.includes(normalizedAffectedFilter);
+      const teamMatch = teamFilter === 'all' || String(log.team_id) === teamFilter || teamName.includes(teamFilter.toLowerCase());
+      const actionMatch = actionFilter === 'all' || log.action_type === actionFilter;
+      const entityMatch = entityFilter === 'all' || log.entity_type === entityFilter;
+      const descriptionMatch = !normalizedDescriptionFilter || log.description.toLowerCase().includes(normalizedDescriptionFilter);
+      const dateMatch = !dateFilter || logDate === dateFilter;
+
+      return pageMatch && actorMatch && affectedMatch && teamMatch && actionMatch && entityMatch && descriptionMatch && dateMatch;
+    });
+
+    const sortedLogs = [...nextLogs].sort((a, b) => {
+      const directionMultiplier = sortDirection === 'asc' ? 1 : -1;
+
+      const getSortValue = (log: AuditLogWithRelations) => {
+        switch (sortField) {
+          case 'created_at':
+            return new Date(log.created_at || '').getTime();
+          case 'page_label':
+            return log.page_label || '';
+          case 'action_type':
+            return log.action_type || '';
+          case 'entity_type':
+            return log.entity_type || '';
+          case 'actor':
+            return getActorLabel(log) || '';
+          case 'affected':
+            return getAffectedUserNames(log).join(', ') || '';
+          case 'team':
+            return getTeamName(log) || '';
+          case 'description':
+            return log.description || '';
+          default:
+            return '';
+        }
+      };
+
+      const valueA = getSortValue(a);
+      const valueB = getSortValue(b);
+
+      if (typeof valueA === 'number' && typeof valueB === 'number') {
+        return (valueA - valueB) * directionMultiplier;
+      }
+
+      return String(valueA).localeCompare(String(valueB), undefined, { sensitivity: 'base' }) * directionMultiplier;
+    });
+
+    return sortedLogs;
+  }, [
+    logs,
+    pageFilter,
+    actorFilter,
+    affectedFilter,
+    teamFilter,
+    actionFilter,
+    entityFilter,
+    descriptionFilter,
+    dateFilter,
+    sortField,
+    sortDirection,
+    actorNames,
+    teams,
+  ]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(current => (current === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+
+    setSortField(field);
+    setSortDirection(field === 'created_at' ? 'desc' : 'asc');
+  };
+
+  const renderSortLabel = (label: string, field: SortField) => {
+    const isActive = sortField === field;
+    const directionIndicator = !isActive ? '↕' : sortDirection === 'asc' ? '↑' : '↓';
+
+    return (
+      <button
+        type="button"
+        onClick={() => handleSort(field)}
+        className="flex items-center gap-1 text-left font-bold uppercase tracking-wide"
+      >
+        <span>{label}</span>
+        <span className="text-[10px] opacity-80">{directionIndicator}</span>
+      </button>
+    );
   };
 
   if (!isAdmin) {
@@ -294,65 +423,37 @@ export const AuditLog: React.FC = () => {
       <div className="page-header">
         <h2 className="page-title">Audit Log</h2>
         <p className="page-subtitle">
-          View recorded changes by page, user, affected user, date, time and action details.
+          View recorded changes in a table with filters for each field.
         </p>
       </div>
 
-      <div className="bg-white shadow rounded-lg p-6 border border-gray-200">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Page</label>
-            <select
-              value={pageFilter}
-              onChange={e => setPageFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
-            >
-              {PAGE_OPTIONS.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+      <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="text-sm text-gray-600 dark:text-gray-300">
+            Showing <span className="font-bold text-gray-900 dark:text-white">{filteredLogs.length}</span> of{' '}
+            <span className="font-bold text-gray-900 dark:text-white">{logs.length}</span> records
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">By User</label>
-            <select
-              value={staffFilter}
-              onChange={e => setStaffFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setPageFilter('all');
+                setActorFilter('all');
+                setAffectedFilter('');
+                setTeamFilter('all');
+                setActionFilter('all');
+                setEntityFilter('all');
+                setDescriptionFilter('');
+                setDateFilter('');
+                setSortField('created_at');
+                setSortDirection('desc');
+              }}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 font-medium"
             >
-              <option value="all">All users</option>
-              {allStaff
-                .filter(staff => !staff.is_hidden)
-                .map(staff => (
-                  <option key={staff.staff_id} value={String(staff.staff_id)}>
-                    {staff.name}
-                  </option>
-                ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Accountant</label>
-            <select
-              value={teamFilter}
-              onChange={e => setTeamFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
-            >
-              <option value="all">All accountants</option>
-              {teams.map(team => (
-                <option key={team.id} value={String(team.id)}>
-                  {team.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-end">
+              Clear Filters
+            </button>
             <button
               onClick={fetchAuditData}
-              className="w-full px-4 py-2 bg-[#001B47] text-white rounded-md hover:bg-[#00245F] font-medium"
+              className="px-4 py-2 bg-[#001B47] text-white rounded-md hover:bg-[#00245F] font-medium"
             >
               Refresh Log
             </button>
@@ -367,69 +468,199 @@ export const AuditLog: React.FC = () => {
           <p className="text-red-800">⚠️ {error}</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="bg-white dark:bg-gray-800 shadow rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
           {filteredLogs.length === 0 ? (
-            <div className="bg-white shadow rounded-lg border border-gray-200 px-6 py-10 text-center text-sm text-gray-500">
+            <div className="px-6 py-10 text-center text-sm text-gray-500">
               No audit records found for the selected filters.
             </div>
           ) : (
-            filteredLogs.map(log => {
-              const { date, time } = formatDateTime(log.created_at);
+            <div className="overflow-x-auto">
+              <table className="min-w-[1400px] w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-700/50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs text-gray-700 dark:text-gray-200">
+                      {renderSortLabel('Date / Time', 'created_at')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs text-gray-700 dark:text-gray-200">
+                      {renderSortLabel('Page', 'page_label')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs text-gray-700 dark:text-gray-200">
+                      {renderSortLabel('Action', 'action_type')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs text-gray-700 dark:text-gray-200">
+                      {renderSortLabel('Entity', 'entity_type')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs text-gray-700 dark:text-gray-200">
+                      {renderSortLabel('By User', 'actor')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs text-gray-700 dark:text-gray-200">
+                      {renderSortLabel('Affected User(s)', 'affected')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs text-gray-700 dark:text-gray-200">
+                      {renderSortLabel('Accountant', 'team')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs text-gray-700 dark:text-gray-200">
+                      {renderSortLabel('Description / Details', 'description')}
+                    </th>
+                  </tr>
+                  <tr className="border-t border-gray-200 dark:border-gray-600">
+                    <th className="px-4 py-3 align-top">
+                      <input
+                        type="date"
+                        value={dateFilter}
+                        onChange={(e) => setDateFilter(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                      />
+                    </th>
+                    <th className="px-4 py-3 align-top">
+                      <select
+                        value={pageFilter}
+                        onChange={(e) => setPageFilter(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                      >
+                        {PAGE_OPTIONS.map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </th>
+                    <th className="px-4 py-3 align-top">
+                      <select
+                        value={actionFilter}
+                        onChange={(e) => setActionFilter(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                      >
+                        <option value="all">All actions</option>
+                        {actionOptions.map(action => (
+                          <option key={action} value={action}>
+                            {action.replace(/_/g, ' ')}
+                          </option>
+                        ))}
+                      </select>
+                    </th>
+                    <th className="px-4 py-3 align-top">
+                      <select
+                        value={entityFilter}
+                        onChange={(e) => setEntityFilter(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                      >
+                        <option value="all">All entities</option>
+                        {entityOptions.map(entity => (
+                          <option key={entity} value={entity}>
+                            {entity.replace(/_/g, ' ')}
+                          </option>
+                        ))}
+                      </select>
+                    </th>
+                    <th className="px-4 py-3 align-top">
+                      <select
+                        value={actorFilter}
+                        onChange={(e) => setActorFilter(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                      >
+                        <option value="all">All users</option>
+                        {actorOptions.map(actor => (
+                          <option key={actor.value} value={actor.value}>
+                            {actor.label}
+                          </option>
+                        ))}
+                      </select>
+                    </th>
+                    <th className="px-4 py-3 align-top">
+                      <input
+                        type="text"
+                        value={affectedFilter}
+                        onChange={(e) => setAffectedFilter(e.target.value)}
+                        placeholder="Filter affected users"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                      />
+                    </th>
+                    <th className="px-4 py-3 align-top">
+                      <select
+                        value={teamFilter}
+                        onChange={(e) => setTeamFilter(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                      >
+                        <option value="all">All accountants</option>
+                        {teams.map(team => (
+                          <option key={team.id} value={String(team.id)}>
+                            {team.name}
+                          </option>
+                        ))}
+                      </select>
+                    </th>
+                    <th className="px-4 py-3 align-top">
+                      <input
+                        type="text"
+                        value={descriptionFilter}
+                        onChange={(e) => setDescriptionFilter(e.target.value)}
+                        placeholder="Filter description"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                      />
+                    </th>
+                  </tr>
+                </thead>
 
-              return (
-                <div key={log.id} className="bg-white shadow rounded-lg border border-gray-200 p-5">
-                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-gray-100 text-gray-700 text-xs font-semibold uppercase tracking-wide">
-                          {log.page_label}
-                        </span>
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold uppercase tracking-wide">
-                          {log.action_type.replace(/_/g, ' ')}
-                        </span>
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-gray-50 text-gray-500 text-xs font-semibold uppercase tracking-wide">
-                          {log.entity_type.replace(/_/g, ' ')}
-                        </span>
-                      </div>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {filteredLogs.map((log, index) => {
+                    const { date, time } = formatDateTime(log.created_at);
 
-                      <div className="text-sm font-semibold text-gray-900">
-                        {log.description}
-                      </div>
+                    return (
+                      <tr
+                        key={log.id}
+                        className={index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/50 dark:bg-gray-700/20'}
+                      >
+                        <td className="px-4 py-4 align-top">
+                          <div className="text-sm font-medium text-gray-900 dark:text-white">{date}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{time}</div>
+                        </td>
 
-                      {renderMetadataSummary(log)}
-                      {renderExactChanges(log)}
-                    </div>
+                        <td className="px-4 py-4 align-top">
+                          <div className="inline-flex items-center px-2.5 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-xs font-semibold">
+                            {log.page_label}
+                          </div>
+                        </td>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 lg:min-w-[420px]">
-                      <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-                        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Date</div>
-                        <div className="text-sm text-gray-900">{date}</div>
-                      </div>
-                      <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-                        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Time</div>
-                        <div className="text-sm text-gray-900">{time}</div>
-                      </div>
-                      <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-                        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">By User</div>
-                        <div className="text-sm text-gray-900">{getActorLabel(log)}</div>
-                      </div>
-                      <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-                        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Affected User(s)</div>
-                        {renderAffectedUsers(log)}
-                      </div>
-                      <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-                        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Accountant</div>
-                        <div className="text-sm text-gray-900">{getTeamName(log)}</div>
-                      </div>
-                      <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-                        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Record ID</div>
-                        <div className="text-sm text-gray-900">{log.id}</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
+                        <td className="px-4 py-4 align-top">
+                          <div className="inline-flex items-center px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-xs font-semibold uppercase tracking-wide">
+                            {log.action_type.replace(/_/g, ' ')}
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-4 align-top">
+                          <div className="inline-flex items-center px-2.5 py-1 rounded-md bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 text-xs font-semibold uppercase tracking-wide">
+                            {log.entity_type.replace(/_/g, ' ')}
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-4 align-top">
+                          <div className="text-sm text-gray-900 dark:text-white">{getActorLabel(log)}</div>
+                        </td>
+
+                        <td className="px-4 py-4 align-top">
+                          {renderAffectedUsers(log)}
+                        </td>
+
+                        <td className="px-4 py-4 align-top">
+                          <div className="text-sm text-gray-900 dark:text-white">{getTeamName(log)}</div>
+                        </td>
+
+                        <td className="px-4 py-4 align-top min-w-[420px]">
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                            {log.description}
+                          </div>
+                          {renderMetadataSummary(log)}
+                          <div className="mt-2">
+                            {renderExactChanges(log)}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
