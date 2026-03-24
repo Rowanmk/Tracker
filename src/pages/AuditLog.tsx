@@ -13,7 +13,7 @@ type AuditLogWithRelations = AuditLogRow & {
   team?: Pick<Team, 'id' | 'name'> | null;
 };
 
-type SortField = 'created_at' | 'page_label' | 'action_type' | 'entity_type' | 'actor' | 'affected' | 'team' | 'description';
+type SortField = 'created_at' | 'page_label' | 'action_type' | 'entity_type' | 'actor' | 'affected' | 'description';
 type SortDirection = 'asc' | 'desc';
 
 const PAGE_OPTIONS = [
@@ -47,7 +47,6 @@ export const AuditLog: React.FC = () => {
   const [pageFilter, setPageFilter] = useState('all');
   const [actorFilter, setActorFilter] = useState('all');
   const [affectedFilter, setAffectedFilter] = useState('');
-  const [teamFilter, setTeamFilter] = useState('all');
   const [actionFilter, setActionFilter] = useState('all');
   const [entityFilter, setEntityFilter] = useState('all');
   const [descriptionFilter, setDescriptionFilter] = useState('');
@@ -195,6 +194,11 @@ export const AuditLog: React.FC = () => {
       parts.push(metadata.exact_change);
     }
 
+    const teamName = getTeamName(log);
+    if (teamName && teamName !== 'Unassigned') {
+      parts.push(teamName);
+    }
+
     if (parts.length === 0) return null;
 
     return <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{parts.join(' • ')}</div>;
@@ -315,20 +319,18 @@ export const AuditLog: React.FC = () => {
         typeof metadata?.actor_staff_id === 'number' ? metadata.actor_staff_id : log.staff_id;
 
       const actorName = getActorLabel(log).toLowerCase();
-      const teamName = getTeamName(log).toLowerCase();
       const affectedUsers = getAffectedUserNames(log).join(', ').toLowerCase();
       const logDate = log.created_at ? log.created_at.slice(0, 10) : '';
 
       const pageMatch = pageFilter === 'all' || log.page_path === pageFilter;
       const actorMatch = actorFilter === 'all' || String(effectiveActorId) === actorFilter || actorName.includes(actorFilter.toLowerCase());
       const affectedMatch = !normalizedAffectedFilter || affectedUsers.includes(normalizedAffectedFilter);
-      const teamMatch = teamFilter === 'all' || String(log.team_id) === teamFilter || teamName.includes(teamFilter.toLowerCase());
       const actionMatch = actionFilter === 'all' || log.action_type === actionFilter;
       const entityMatch = entityFilter === 'all' || log.entity_type === entityFilter;
       const descriptionMatch = !normalizedDescriptionFilter || log.description.toLowerCase().includes(normalizedDescriptionFilter);
       const dateMatch = !dateFilter || logDate === dateFilter;
 
-      return pageMatch && actorMatch && affectedMatch && teamMatch && actionMatch && entityMatch && descriptionMatch && dateMatch;
+      return pageMatch && actorMatch && affectedMatch && actionMatch && entityMatch && descriptionMatch && dateMatch;
     });
 
     const sortedLogs = [...nextLogs].sort((a, b) => {
@@ -348,8 +350,6 @@ export const AuditLog: React.FC = () => {
             return getActorLabel(log) || '';
           case 'affected':
             return getAffectedUserNames(log).join(', ') || '';
-          case 'team':
-            return getTeamName(log) || '';
           case 'description':
             return log.description || '';
           default:
@@ -373,7 +373,6 @@ export const AuditLog: React.FC = () => {
     pageFilter,
     actorFilter,
     affectedFilter,
-    teamFilter,
     actionFilter,
     entityFilter,
     descriptionFilter,
@@ -381,7 +380,6 @@ export const AuditLog: React.FC = () => {
     sortField,
     sortDirection,
     actorNames,
-    teams,
   ]);
 
   const handleSort = (field: SortField) => {
@@ -402,7 +400,7 @@ export const AuditLog: React.FC = () => {
       <button
         type="button"
         onClick={() => handleSort(field)}
-        className="flex items-center gap-1 text-left font-bold uppercase tracking-wide"
+        className="flex items-center gap-1 text-left font-bold uppercase tracking-wide text-xs text-gray-700 dark:text-gray-200"
       >
         <span>{label}</span>
         <span className="text-[10px] opacity-80">{directionIndicator}</span>
@@ -439,7 +437,6 @@ export const AuditLog: React.FC = () => {
                 setPageFilter('all');
                 setActorFilter('all');
                 setAffectedFilter('');
-                setTeamFilter('all');
                 setActionFilter('all');
                 setEntityFilter('all');
                 setDescriptionFilter('');
@@ -475,129 +472,110 @@ export const AuditLog: React.FC = () => {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-[1400px] w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <table className="min-w-[1280px] w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead className="bg-gray-50 dark:bg-gray-700/50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs text-gray-700 dark:text-gray-200">
-                      {renderSortLabel('Date / Time', 'created_at')}
+                    <th className="px-4 py-3 align-top text-left">
+                      <div className="space-y-2">
+                        {renderSortLabel('Date / Time', 'created_at')}
+                        <input
+                          type="date"
+                          value={dateFilter}
+                          onChange={(e) => setDateFilter(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                        />
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs text-gray-700 dark:text-gray-200">
-                      {renderSortLabel('Page', 'page_label')}
+                    <th className="px-4 py-3 align-top text-left">
+                      <div className="space-y-2">
+                        {renderSortLabel('Page', 'page_label')}
+                        <select
+                          value={pageFilter}
+                          onChange={(e) => setPageFilter(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                        >
+                          {PAGE_OPTIONS.map(option => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs text-gray-700 dark:text-gray-200">
-                      {renderSortLabel('Action', 'action_type')}
+                    <th className="px-4 py-3 align-top text-left">
+                      <div className="space-y-2">
+                        {renderSortLabel('Action', 'action_type')}
+                        <select
+                          value={actionFilter}
+                          onChange={(e) => setActionFilter(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                        >
+                          <option value="all">All actions</option>
+                          {actionOptions.map(action => (
+                            <option key={action} value={action}>
+                              {action.replace(/_/g, ' ')}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs text-gray-700 dark:text-gray-200">
-                      {renderSortLabel('Entity', 'entity_type')}
+                    <th className="px-4 py-3 align-top text-left">
+                      <div className="space-y-2">
+                        {renderSortLabel('Entity', 'entity_type')}
+                        <select
+                          value={entityFilter}
+                          onChange={(e) => setEntityFilter(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                        >
+                          <option value="all">All entities</option>
+                          {entityOptions.map(entity => (
+                            <option key={entity} value={entity}>
+                              {entity.replace(/_/g, ' ')}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs text-gray-700 dark:text-gray-200">
-                      {renderSortLabel('By User', 'actor')}
+                    <th className="px-4 py-3 align-top text-left">
+                      <div className="space-y-2">
+                        {renderSortLabel('By User', 'actor')}
+                        <select
+                          value={actorFilter}
+                          onChange={(e) => setActorFilter(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                        >
+                          <option value="all">All users</option>
+                          {actorOptions.map(actor => (
+                            <option key={actor.value} value={actor.value}>
+                              {actor.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs text-gray-700 dark:text-gray-200">
-                      {renderSortLabel('Affected User(s)', 'affected')}
+                    <th className="px-4 py-3 align-top text-left">
+                      <div className="space-y-2">
+                        {renderSortLabel('Affected User(s)', 'affected')}
+                        <input
+                          type="text"
+                          value={affectedFilter}
+                          onChange={(e) => setAffectedFilter(e.target.value)}
+                          placeholder="Filter affected users"
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                        />
+                      </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs text-gray-700 dark:text-gray-200">
-                      {renderSortLabel('Accountant', 'team')}
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs text-gray-700 dark:text-gray-200">
-                      {renderSortLabel('Description / Details', 'description')}
-                    </th>
-                  </tr>
-                  <tr className="border-t border-gray-200 dark:border-gray-600">
-                    <th className="px-4 py-3 align-top">
-                      <input
-                        type="date"
-                        value={dateFilter}
-                        onChange={(e) => setDateFilter(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
-                      />
-                    </th>
-                    <th className="px-4 py-3 align-top">
-                      <select
-                        value={pageFilter}
-                        onChange={(e) => setPageFilter(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
-                      >
-                        {PAGE_OPTIONS.map(option => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </th>
-                    <th className="px-4 py-3 align-top">
-                      <select
-                        value={actionFilter}
-                        onChange={(e) => setActionFilter(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
-                      >
-                        <option value="all">All actions</option>
-                        {actionOptions.map(action => (
-                          <option key={action} value={action}>
-                            {action.replace(/_/g, ' ')}
-                          </option>
-                        ))}
-                      </select>
-                    </th>
-                    <th className="px-4 py-3 align-top">
-                      <select
-                        value={entityFilter}
-                        onChange={(e) => setEntityFilter(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
-                      >
-                        <option value="all">All entities</option>
-                        {entityOptions.map(entity => (
-                          <option key={entity} value={entity}>
-                            {entity.replace(/_/g, ' ')}
-                          </option>
-                        ))}
-                      </select>
-                    </th>
-                    <th className="px-4 py-3 align-top">
-                      <select
-                        value={actorFilter}
-                        onChange={(e) => setActorFilter(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
-                      >
-                        <option value="all">All users</option>
-                        {actorOptions.map(actor => (
-                          <option key={actor.value} value={actor.value}>
-                            {actor.label}
-                          </option>
-                        ))}
-                      </select>
-                    </th>
-                    <th className="px-4 py-3 align-top">
-                      <input
-                        type="text"
-                        value={affectedFilter}
-                        onChange={(e) => setAffectedFilter(e.target.value)}
-                        placeholder="Filter affected users"
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
-                      />
-                    </th>
-                    <th className="px-4 py-3 align-top">
-                      <select
-                        value={teamFilter}
-                        onChange={(e) => setTeamFilter(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
-                      >
-                        <option value="all">All accountants</option>
-                        {teams.map(team => (
-                          <option key={team.id} value={String(team.id)}>
-                            {team.name}
-                          </option>
-                        ))}
-                      </select>
-                    </th>
-                    <th className="px-4 py-3 align-top">
-                      <input
-                        type="text"
-                        value={descriptionFilter}
-                        onChange={(e) => setDescriptionFilter(e.target.value)}
-                        placeholder="Filter description"
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
-                      />
+                    <th className="px-4 py-3 align-top text-left min-w-[420px]">
+                      <div className="space-y-2">
+                        {renderSortLabel('Description / Details', 'description')}
+                        <input
+                          type="text"
+                          value={descriptionFilter}
+                          onChange={(e) => setDescriptionFilter(e.target.value)}
+                          placeholder="Filter description"
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                        />
+                      </div>
                     </th>
                   </tr>
                 </thead>
@@ -640,10 +618,6 @@ export const AuditLog: React.FC = () => {
 
                         <td className="px-4 py-4 align-top">
                           {renderAffectedUsers(log)}
-                        </td>
-
-                        <td className="px-4 py-4 align-top">
-                          <div className="text-sm text-gray-900 dark:text-white">{getTeamName(log)}</div>
                         </td>
 
                         <td className="px-4 py-4 align-top min-w-[420px]">
