@@ -35,6 +35,19 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
   const selectedYear = month >= 4 ? financialYear.start : financialYear.end;
   const daysInSelectedMonth = new Date(selectedYear, month, 0).getDate();
 
+  const today = new Date();
+  const isCurrentMonth =
+    selectedYear === today.getFullYear() && month === today.getMonth() + 1;
+  const isFutureMonth =
+    selectedYear > today.getFullYear() ||
+    (selectedYear === today.getFullYear() && month > today.getMonth() + 1);
+
+  const actualVisibleDay = isFutureMonth
+    ? 0
+    : isCurrentMonth
+    ? Math.min(today.getDate(), daysInSelectedMonth)
+    : daysInSelectedMonth;
+
   const dailyTarget = workingDays > 0 ? target / workingDays : 0;
 
   const workingDaysList = useMemo(() => {
@@ -70,7 +83,11 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
       }
 
       expectedCumulative.push(expectedRunning);
-      actualRunning += deliveredByDay[d] || 0;
+
+      if (d <= actualVisibleDay) {
+        actualRunning += deliveredByDay[d] || 0;
+      }
+
       actualCumulative.push(actualRunning);
     }
 
@@ -96,7 +113,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
       barValues,
       expectedValues,
     };
-  }, [dailyTarget, daysInSelectedMonth, deliveredByDay, target, viewMode, workingDaysList]);
+  }, [actualVisibleDay, dailyTarget, daysInSelectedMonth, deliveredByDay, target, viewMode, workingDaysList]);
 
   const safeMaxValue = useMemo(() => {
     const values =
@@ -216,6 +233,11 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
 
           {series.barValues.map((value, idx) => {
             const day = idx + 1;
+
+            if (day > actualVisibleDay) {
+              return null;
+            }
+
             const ratio = safeMaxValue > 0 ? value / safeMaxValue : 0;
             const barHeight = Math.max(0, ratio * BAR_AREA_HEIGHT);
             const x = getX(day);
