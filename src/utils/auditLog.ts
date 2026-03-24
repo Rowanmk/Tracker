@@ -93,26 +93,41 @@ export async function logTrackerSheetUpdate({
   actorName = null,
 }: TrackerAuditParams): Promise<void> {
   const uniqueSubjectIds = Array.from(new Set(subjectStaffIds)).filter((id) => Number.isFinite(id));
+  const normalizedSubjectNames = Array.from(new Set(subjectStaffNames.filter(Boolean)));
   const targetScope = uniqueSubjectIds.length > 1 ? 'multiple users' : 'single user';
+  const actionType =
+    previousTotal === 0 && newTotal > 0
+      ? 'create'
+      : newTotal === 0
+      ? 'delete'
+      : 'update';
+
+  const changeAmount = newTotal - previousTotal;
+  const targetNamesText =
+    normalizedSubjectNames.length > 0 ? normalizedSubjectNames.join(', ') : 'a user';
 
   await createAuditLog({
     pagePath: '/tracker',
     pageLabel: 'My Tracker',
-    actionType: previousTotal === 0 && newTotal > 0 ? 'create' : newTotal === 0 ? 'delete' : 'update',
+    actionType,
     entityType: 'tracker_entry',
     entityId: `${serviceId}-${date}-${uniqueSubjectIds.join(',')}`,
     actorStaffId,
     teamId: null,
     description:
-      uniqueSubjectIds.length > 1
-        ? `${actorName || 'A user'} updated My Tracker for ${subjectStaffNames.join(', ')} on ${date} (${serviceName}: ${previousTotal} → ${newTotal})`
-        : `${actorName || 'A user'} updated My Tracker for ${subjectStaffNames[0] || 'a user'} on ${date} (${serviceName}: ${previousTotal} → ${newTotal})`,
+      actionType === 'create'
+        ? `${actorName || 'A user'} added ${newTotal} ${serviceName} item(s) in My Tracker for ${targetNamesText} on ${date}`
+        : actionType === 'delete'
+        ? `${actorName || 'A user'} removed ${previousTotal} ${serviceName} item(s) from My Tracker for ${targetNamesText} on ${date}`
+        : `${actorName || 'A user'} updated My Tracker for ${targetNamesText} on ${date} (${serviceName}: ${previousTotal} → ${newTotal})`,
     metadata: {
       page: 'My Tracker',
+      actor_staff_id: actorStaffId,
+      updated_by_name: actorName,
       target_scope: targetScope,
       affected_user_count: uniqueSubjectIds.length,
       affected_user_ids: uniqueSubjectIds,
-      affected_user_names: subjectStaffNames,
+      affected_user_names: normalizedSubjectNames,
       service_id: serviceId,
       service_name: serviceName,
       date,
@@ -120,8 +135,13 @@ export async function logTrackerSheetUpdate({
       year,
       previous_total: previousTotal,
       new_total: newTotal,
-      change_amount: newTotal - previousTotal,
-      updated_by_name: actorName,
+      change_amount: changeAmount,
+      exact_change:
+        actionType === 'create'
+          ? `Added ${newTotal} to ${serviceName}`
+          : actionType === 'delete'
+          ? `Removed ${previousTotal} from ${serviceName}`
+          : `Changed ${serviceName} from ${previousTotal} to ${newTotal}`,
     },
   });
 }
@@ -143,6 +163,12 @@ export async function logMonthlyTargetsSaved({
     changed_cells: number;
     changed_months: number[];
     changed_services: string[];
+    changes?: Array<{
+      month: number;
+      service_name: string;
+      previous_value: number;
+      new_value: number;
+    }>;
   }>;
   totalsByStaff: Array<{
     staff_id: number;
@@ -164,11 +190,14 @@ export async function logMonthlyTargetsSaved({
     teamId: null,
     description: `${actorName || 'A user'} saved targets for ${changedStaffSummaries.length} user(s) in FY ${financialYearLabel}`,
     metadata: {
+      actor_staff_id: actorStaffId,
+      updated_by_name: actorName,
       financial_year: financialYearLabel,
       affected_user_count: changedStaffSummaries.length,
+      affected_user_ids: changedStaffSummaries.map((staff) => staff.staff_id),
+      affected_user_names: changedStaffSummaries.map((staff) => staff.name),
       affected_users: changedStaffSummaries,
       totals_by_user: totalsByStaff,
-      updated_by_name: actorName,
     },
   });
 }
@@ -195,6 +224,7 @@ export async function logStaffBatchChange({
     description,
     metadata: {
       ...toSafeJsonObject(metadata),
+      actor_staff_id: actorStaffId,
       affected_user_count: affectedStaff.length,
       affected_user_ids: affectedStaff.map((staff) => staff.staff_id),
       affected_user_names: affectedStaff.map((staff) => staff.name),

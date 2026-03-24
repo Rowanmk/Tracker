@@ -81,6 +81,7 @@ export const Settings: React.FC = () => {
   const [isSavingAccount, setIsSavingAccount] = useState(false);
 
   const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [initialPermissionsSnapshot, setInitialPermissionsSnapshot] = useState<string>('');
   const [isSavingPermissions, setIsSavingPermissions] = useState(false);
 
   const [bankHolidays, setBankHolidays] = useState<BankHoliday[]>([]);
@@ -172,7 +173,15 @@ export const Settings: React.FC = () => {
       }
 
       if (!permsResult.error) {
-        setPermissions(permsResult.data || []);
+        const nextPermissions = permsResult.data || [];
+        setPermissions(nextPermissions);
+        setInitialPermissionsSnapshot(JSON.stringify(
+          nextPermissions.map((permission) => ({
+            role: permission.role,
+            page_path: permission.page_path,
+            is_visible: permission.is_visible,
+          })).sort((a, b) => `${a.role}-${a.page_path}`.localeCompare(`${b.role}-${b.page_path}`))
+        ));
       }
 
       if (teamsResult.error) {
@@ -244,11 +253,16 @@ export const Settings: React.FC = () => {
     setFeedback(null);
 
     try {
+      const requestedName = newUserName.trim();
+      const requestedAccessLevel = newUserAccessLevel;
+      const requestedWorkCategory = newUserWorkCategory;
+      const requestedRegion = newUserRegion;
+
       const insertPayload: Database['public']['Tables']['staff']['Insert'] = {
-        name: newUserName.trim(),
+        name: requestedName,
         password: newUserPassword.trim() || null,
-        role: getRoleValueFromAccessLevel(newUserAccessLevel, newUserWorkCategory),
-        home_region: newUserRegion,
+        role: getRoleValueFromAccessLevel(requestedAccessLevel, requestedWorkCategory),
+        home_region: requestedRegion,
         team_id: null,
         is_hidden: false,
       };
@@ -288,10 +302,15 @@ export const Settings: React.FC = () => {
             },
           ],
           metadata: {
-            access_level: newUserAccessLevel,
-            work_category: newUserWorkCategory,
-            role: data.role,
-            home_region: data.home_region,
+            exact_change: `Created user ${data.name}`,
+            previous: null,
+            current: {
+              name: data.name,
+              role: data.role,
+              home_region: data.home_region,
+              access_level: requestedAccessLevel,
+              work_category: requestedWorkCategory,
+            },
           },
         });
         setTimedFeedback('Successfully added user');
@@ -327,10 +346,13 @@ export const Settings: React.FC = () => {
     try {
       const previousValues = {
         name: editingUser.name,
+        password_set: Boolean(editingUser.password),
         role: editingUser.role,
         home_region: editingUser.home_region,
         accessLevel: editingUser.accessLevel,
         workCategory: editingUser.workCategory,
+        security_question_set: Boolean(editingUser.security_question),
+        security_answer_set: Boolean(editingUser.security_answer),
       };
 
       const updatePayload: Database['public']['Tables']['staff']['Update'] = {
@@ -377,13 +399,17 @@ export const Settings: React.FC = () => {
             },
           ],
           metadata: {
+            exact_change: `Updated user ${data.name}`,
             previous: previousValues,
             current: {
               name: data.name,
+              password_set: Boolean(data.password),
               role: data.role,
               home_region: data.home_region,
               access_level: editForm.accessLevel,
               work_category: editForm.workCategory,
+              security_question_set: Boolean(data.security_question),
+              security_answer_set: Boolean(data.security_answer),
             },
           },
         });
@@ -402,6 +428,12 @@ export const Settings: React.FC = () => {
     setFeedback(null);
 
     try {
+      const previousValues = {
+        password_set: Boolean(currentStaff.password),
+        security_question_set: Boolean(currentStaff.security_question),
+        security_answer_set: Boolean(currentStaff.security_answer),
+      };
+
       const updates: Database['public']['Tables']['staff']['Update'] = {
         security_question: accountForm.security_question.trim() || null,
         security_answer: accountForm.security_answer.trim() || null,
@@ -431,6 +463,14 @@ export const Settings: React.FC = () => {
           actorStaffId: currentStaff.staff_id,
           teamId: currentStaff.team_id,
           metadata: {
+            actor_staff_id: currentStaff.staff_id,
+            exact_change: 'Updated own account settings',
+            previous: previousValues,
+            current: {
+              password_set: Boolean(updates.password || currentStaff.password),
+              security_question_set: Boolean(updates.security_question),
+              security_answer_set: Boolean(updates.security_answer),
+            },
             updated_password: Boolean(updates.password),
             updated_security_question: true,
           },
@@ -467,11 +507,29 @@ export const Settings: React.FC = () => {
 
     setIsSavingPermissions(true);
     try {
-      const beforePermissions = permissions.map((permission) => ({
+      const beforePermissions = initialPermissionsSnapshot
+        ? JSON.parse(initialPermissionsSnapshot) as Array<{
+            role: string;
+            page_path: string;
+            is_visible: boolean | null;
+          }>
+        : [];
+
+      const afterPermissions = permissions.map((permission) => ({
         role: permission.role,
         page_path: permission.page_path,
         is_visible: permission.is_visible,
       }));
+
+      const changedPermissions = afterPermissions.filter((afterPermission) => {
+        const beforePermission = beforePermissions.find(
+          (permission) =>
+            permission.role === afterPermission.role &&
+            permission.page_path === afterPermission.page_path
+        );
+
+        return (beforePermission?.is_visible ?? true) !== (afterPermission.is_visible ?? true);
+      });
 
       const { error: upsertError } = await supabase
         .from('role_permissions')
@@ -498,10 +556,17 @@ export const Settings: React.FC = () => {
           actorStaffId: currentStaff.staff_id,
           teamId: currentStaff.team_id,
           metadata: {
+            actor_staff_id: currentStaff.staff_id,
+            exact_change: `Updated ${changedPermissions.length} permission setting(s)`,
             permission_count: permissions.length,
-            permissions: beforePermissions,
+            changed_permissions: changedPermissions,
+            previous: beforePermissions,
+            current: afterPermissions,
           },
         });
+        setInitialPermissionsSnapshot(JSON.stringify(
+          afterPermissions.sort((a, b) => `${a.role}-${a.page_path}`.localeCompare(`${b.role}-${b.page_path}`))
+        ));
         setTimedFeedback('Successfully saved permissions');
       }
     } catch {

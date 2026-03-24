@@ -30,6 +30,8 @@ const PAGE_OPTIONS = [
 const isJsonObject = (value: Json | null): value is Record<string, Json | undefined> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
+const isJsonArray = (value: Json | undefined): value is Json[] => Array.isArray(value);
+
 export const AuditLog: React.FC = () => {
   const { isAdmin, allStaff } = useAuth();
 
@@ -180,9 +182,103 @@ export const AuditLog: React.FC = () => {
       parts.push(`${metadata.affected_user_count} user(s)`);
     }
 
+    if (typeof metadata.exact_change === 'string') {
+      parts.push(metadata.exact_change);
+    }
+
     if (parts.length === 0) return null;
 
     return <div className="text-xs text-gray-500 mt-1">{parts.join(' • ')}</div>;
+  };
+
+  const renderExactChanges = (log: AuditLogWithRelations) => {
+    const metadata = isJsonObject(log.metadata) ? log.metadata : null;
+    if (!metadata) return null;
+
+    const affectedUsers = isJsonArray(metadata.affected_users)
+      ? metadata.affected_users.filter((item): item is Record<string, Json | undefined> => !!item && typeof item === 'object' && !Array.isArray(item))
+      : [];
+
+    if (affectedUsers.length > 0) {
+      return (
+        <div className="mt-2 space-y-2">
+          {affectedUsers.slice(0, 4).map((user, index) => {
+            const userName = typeof user.name === 'string' ? user.name : `User ${index + 1}`;
+            const changes = isJsonArray(user.changes)
+              ? user.changes.filter((item): item is Record<string, Json | undefined> => !!item && typeof item === 'object' && !Array.isArray(item))
+              : [];
+
+            return (
+              <div key={`${userName}-${index}`} className="rounded-md bg-gray-50 border border-gray-200 px-3 py-2">
+                <div className="text-xs font-semibold text-gray-700">{userName}</div>
+                {changes.length > 0 ? (
+                  <div className="mt-1 space-y-1">
+                    {changes.slice(0, 3).map((change, changeIndex) => {
+                      const month = typeof change.month === 'number' ? change.month : null;
+                      const serviceName = typeof change.service_name === 'string' ? change.service_name : 'Service';
+                      const previousValue = typeof change.previous_value === 'number' ? change.previous_value : 0;
+                      const newValue = typeof change.new_value === 'number' ? change.new_value : 0;
+
+                      return (
+                        <div key={`${serviceName}-${changeIndex}`} className="text-xs text-gray-600">
+                          {serviceName}{month ? ` (month ${month})` : ''}: {previousValue} → {newValue}
+                        </div>
+                      );
+                    })}
+                    {changes.length > 3 && (
+                      <div className="text-xs text-gray-400">
+                        +{changes.length - 3} more change(s)
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-1 text-xs text-gray-600">
+                    {typeof user.changed_cells === 'number' ? `${user.changed_cells} field(s) changed` : 'Updated'}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {affectedUsers.length > 4 && (
+            <div className="text-xs text-gray-400">
+              +{affectedUsers.length - 4} more user(s)
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const previous = isJsonObject(metadata.previous) ? metadata.previous : null;
+    const current = isJsonObject(metadata.current) ? metadata.current : null;
+
+    if (previous || current) {
+      const keys = Array.from(new Set([
+        ...Object.keys(previous || {}),
+        ...Object.keys(current || {}),
+      ])).filter((key) => JSON.stringify(previous?.[key]) !== JSON.stringify(current?.[key]));
+
+      if (keys.length === 0) {
+        return null;
+      }
+
+      return (
+        <div className="mt-2 rounded-md bg-gray-50 border border-gray-200 px-3 py-2">
+          {keys.slice(0, 5).map((key) => (
+            <div key={key} className="text-xs text-gray-600">
+              <span className="font-semibold text-gray-700">{key.replace(/_/g, ' ')}:</span>{' '}
+              {String(previous?.[key] ?? '—')} → {String(current?.[key] ?? '—')}
+            </div>
+          ))}
+          {keys.length > 5 && (
+            <div className="text-xs text-gray-400 mt-1">
+              +{keys.length - 5} more field change(s)
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return null;
   };
 
   if (!isAdmin) {
@@ -271,51 +367,70 @@ export const AuditLog: React.FC = () => {
           <p className="text-red-800">⚠️ {error}</p>
         </div>
       ) : (
-        <div className="bg-white shadow rounded-lg border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Page</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">By User</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Affected User(s)</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Accountant</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Change</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredLogs.map(log => {
-                  const { date, time } = formatDateTime(log.created_at);
+        <div className="space-y-4">
+          {filteredLogs.length === 0 ? (
+            <div className="bg-white shadow rounded-lg border border-gray-200 px-6 py-10 text-center text-sm text-gray-500">
+              No audit records found for the selected filters.
+            </div>
+          ) : (
+            filteredLogs.map(log => {
+              const { date, time } = formatDateTime(log.created_at);
 
-                  return (
-                    <tr key={log.id}>
-                      <td className="px-6 py-4 text-sm text-gray-900">{date}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500">{time}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{log.page_label}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{getActorLabel(log)}</td>
-                      <td className="px-6 py-4">{renderAffectedUsers(log)}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500">{getTeamName(log)}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        <div>{log.description}</div>
-                        {renderMetadataSummary(log)}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500 capitalize">{log.action_type.replace(/_/g, ' ')}</td>
-                    </tr>
-                  );
-                })}
-                {filteredLogs.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-500">
-                      No audit records found for the selected filters.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              return (
+                <div key={log.id} className="bg-white shadow rounded-lg border border-gray-200 p-5">
+                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-gray-100 text-gray-700 text-xs font-semibold uppercase tracking-wide">
+                          {log.page_label}
+                        </span>
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold uppercase tracking-wide">
+                          {log.action_type.replace(/_/g, ' ')}
+                        </span>
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-gray-50 text-gray-500 text-xs font-semibold uppercase tracking-wide">
+                          {log.entity_type.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+
+                      <div className="text-sm font-semibold text-gray-900">
+                        {log.description}
+                      </div>
+
+                      {renderMetadataSummary(log)}
+                      {renderExactChanges(log)}
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 lg:min-w-[420px]">
+                      <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Date</div>
+                        <div className="text-sm text-gray-900">{date}</div>
+                      </div>
+                      <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Time</div>
+                        <div className="text-sm text-gray-900">{time}</div>
+                      </div>
+                      <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">By User</div>
+                        <div className="text-sm text-gray-900">{getActorLabel(log)}</div>
+                      </div>
+                      <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Affected User(s)</div>
+                        {renderAffectedUsers(log)}
+                      </div>
+                      <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Accountant</div>
+                        <div className="text-sm text-gray-900">{getTeamName(log)}</div>
+                      </div>
+                      <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Record ID</div>
+                        <div className="text-sm text-gray-900">{log.id}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       )}
     </div>

@@ -348,7 +348,12 @@ export const TargetsControl: React.FC = () => {
                 const key = `${staffMember.staff_id}-${month}-${serviceName}`;
                 return (lastSavedSnapshot[key] ?? 0) !== (value ?? 0);
               })
-              .map(([serviceName]) => ({ month, serviceName }));
+              .map(([serviceName, value]) => ({
+                month,
+                serviceName,
+                previousValue: lastSavedSnapshot[`${staffMember.staff_id}-${month}-${serviceName}`] ?? 0,
+                newValue: value ?? 0,
+              }));
           });
 
           return {
@@ -358,6 +363,12 @@ export const TargetsControl: React.FC = () => {
             changed_cells: changedKeys.length,
             changed_months: Array.from(new Set(changedKeys.map((item) => item.month))).sort((a, b) => a - b),
             changed_services: Array.from(new Set(changedKeys.map((item) => item.serviceName))).sort(),
+            changes: changedKeys.map((item) => ({
+              month: item.month,
+              service_name: item.serviceName,
+              previous_value: item.previousValue,
+              new_value: item.newValue,
+            })),
           };
         })
         .filter((staffMember) => staffMember.changed_cells > 0);
