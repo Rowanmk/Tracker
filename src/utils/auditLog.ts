@@ -2,6 +2,7 @@ import { supabase } from '../supabase/client';
 import type { Database, Json } from '../supabase/types';
 
 type AuditLogInsert = Database['public']['Tables']['audit_logs']['Insert'];
+type StaffRow = Database['public']['Tables']['staff']['Row'];
 
 interface CreateAuditLogParams {
   pagePath: string;
@@ -14,6 +15,43 @@ interface CreateAuditLogParams {
   teamId?: number | null;
   metadata?: Json;
 }
+
+interface TrackerAuditParams {
+  actorStaffId?: number | null;
+  subjectStaffIds: number[];
+  serviceId: number;
+  serviceName: string;
+  date: string;
+  month: number;
+  year: number;
+  previousTotal: number;
+  newTotal: number;
+  subjectStaffNames?: string[];
+  actorName?: string | null;
+}
+
+interface StaffBatchAuditParams {
+  actorStaffId?: number | null;
+  actorName?: string | null;
+  pagePath: string;
+  pageLabel: string;
+  actionType: string;
+  entityType: string;
+  description: string;
+  affectedStaff: Array<{
+    staff_id: number;
+    name: string;
+    team_id?: number | null;
+  }>;
+  metadata?: Json;
+}
+
+const toSafeJsonObject = (value: Json | undefined): Record<string, Json | undefined> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, Json | undefined>;
+};
 
 export async function createAuditLog({
   pagePath,
@@ -39,4 +77,143 @@ export async function createAuditLog({
   };
 
   await supabase.from('audit_logs').insert(payload);
+}
+
+export async function logTrackerSheetUpdate({
+  actorStaffId = null,
+  subjectStaffIds,
+  serviceId,
+  serviceName,
+  date,
+  month,
+  year,
+  previousTotal,
+  newTotal,
+  subjectStaffNames = [],
+  actorName = null,
+}: TrackerAuditParams): Promise<void> {
+  const uniqueSubjectIds = Array.from(new Set(subjectStaffIds)).filter((id) => Number.isFinite(id));
+  const targetScope = uniqueSubjectIds.length > 1 ? 'multiple users' : 'single user';
+
+  await createAuditLog({
+    pagePath: '/tracker',
+    pageLabel: 'My Tracker',
+    actionType: previousTotal === 0 && newTotal > 0 ? 'create' : newTotal === 0 ? 'delete' : 'update',
+    entityType: 'tracker_entry',
+    entityId: `${serviceId}-${date}-${uniqueSubjectIds.join(',')}`,
+    actorStaffId,
+    teamId: null,
+    description:
+      uniqueSubjectIds.length > 1
+        ? `${actorName || 'A user'} updated My Tracker for ${subjectStaffNames.join(', ')} on ${date} (${serviceName}: ${previousTotal} → ${newTotal})`
+        : `${actorName || 'A user'} updated My Tracker for ${subjectStaffNames[0] || 'a user'} on ${date} (${serviceName}: ${previousTotal} → ${newTotal})`,
+    metadata: {
+      page: 'My Tracker',
+      target_scope: targetScope,
+      affected_user_count: uniqueSubjectIds.length,
+      affected_user_ids: uniqueSubjectIds,
+      affected_user_names: subjectStaffNames,
+      service_id: serviceId,
+      service_name: serviceName,
+      date,
+      month,
+      year,
+      previous_total: previousTotal,
+      new_total: newTotal,
+      change_amount: newTotal - previousTotal,
+      updated_by_name: actorName,
+    },
+  });
+}
+
+export async function logMonthlyTargetsSaved({
+  actorStaffId = null,
+  actorName = null,
+  financialYearLabel,
+  changedStaffSummaries,
+  totalsByStaff,
+}: {
+  actorStaffId?: number | null;
+  actorName?: string | null;
+  financialYearLabel: string;
+  changedStaffSummaries: Array<{
+    staff_id: number;
+    name: string;
+    team_id?: number | null;
+    changed_cells: number;
+    changed_months: number[];
+    changed_services: string[];
+  }>;
+  totalsByStaff: Array<{
+    staff_id: number;
+    name: string;
+    annual_total: number;
+  }>;
+}): Promise<void> {
+  if (changedStaffSummaries.length === 0) {
+    return;
+  }
+
+  await createAuditLog({
+    pagePath: '/targets',
+    pageLabel: 'Targets Control',
+    actionType: 'update',
+    entityType: 'monthly_targets',
+    entityId: financialYearLabel,
+    actorStaffId,
+    teamId: null,
+    description: `${actorName || 'A user'} saved targets for ${changedStaffSummaries.length} user(s) in FY ${financialYearLabel}`,
+    metadata: {
+      financial_year: financialYearLabel,
+      affected_user_count: changedStaffSummaries.length,
+      affected_users: changedStaffSummaries,
+      totals_by_user: totalsByStaff,
+      updated_by_name: actorName,
+    },
+  });
+}
+
+export async function logStaffBatchChange({
+  actorStaffId = null,
+  actorName = null,
+  pagePath,
+  pageLabel,
+  actionType,
+  entityType,
+  description,
+  affectedStaff,
+  metadata = {},
+}: StaffBatchAuditParams): Promise<void> {
+  await createAuditLog({
+    pagePath,
+    pageLabel,
+    actionType,
+    entityType,
+    entityId: affectedStaff.map((staff) => staff.staff_id).join(','),
+    actorStaffId,
+    teamId: affectedStaff.length === 1 ? affectedStaff[0].team_id || null : null,
+    description,
+    metadata: {
+      ...toSafeJsonObject(metadata),
+      affected_user_count: affectedStaff.length,
+      affected_user_ids: affectedStaff.map((staff) => staff.staff_id),
+      affected_user_names: affectedStaff.map((staff) => staff.name),
+      updated_by_name: actorName,
+    },
+  });
+}
+
+export async function getActorNamesForLogs(staffIds: Array<number | null | undefined>) {
+  const uniqueIds = Array.from(new Set(staffIds.filter((id): id is number => typeof id === 'number')));
+
+  if (uniqueIds.length === 0) {
+    return new Map<number, StaffRow>();
+  }
+
+  const { data } = await supabase
+    .from('staff')
+    .select('*')
+    .in('staff_id', uniqueIds);
+
+  return new Map((data || []).map((staff) => [staff.staff_id, staff]));
 }

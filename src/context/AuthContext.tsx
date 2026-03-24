@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback, useMemo } from 'react';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
+import { createAuditLog } from '../utils/auditLog';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
 type Team = Database['public']['Tables']['teams']['Row'];
@@ -116,10 +117,41 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsAuthenticated(true);
     localStorage.setItem('crew_tracker_staff_id', matched.staff_id.toString());
     setSelectedTeamId(String(matched.staff_id));
+
+    await createAuditLog({
+      pagePath: '/login',
+      pageLabel: 'Login',
+      actionType: 'login',
+      entityType: 'session',
+      entityId: String(matched.staff_id),
+      description: `${matched.name} signed in`,
+      actorStaffId: matched.staff_id,
+      teamId: matched.team_id,
+      metadata: {
+        username_entered: enteredUsername,
+      },
+    });
+
     return {};
   };
 
   const signOut = async () => {
+    const signedOutStaff = currentStaff;
+
+    if (signedOutStaff) {
+      await createAuditLog({
+        pagePath: '/login',
+        pageLabel: 'Login',
+        actionType: 'logout',
+        entityType: 'session',
+        entityId: String(signedOutStaff.staff_id),
+        description: `${signedOutStaff.name} signed out`,
+        actorStaffId: signedOutStaff.staff_id,
+        teamId: signedOutStaff.team_id,
+        metadata: {},
+      });
+    }
+
     setCurrentStaff(null);
     setIsAuthenticated(false);
     setSelectedTeamId(null);
@@ -189,6 +221,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (updateError) {
       return { error: 'Failed to reset password.' };
     }
+
+    await createAuditLog({
+      pagePath: '/forgot-password',
+      pageLabel: 'Forgot Password',
+      actionType: 'password_reset',
+      entityType: 'account',
+      entityId: String(matched.staff_id),
+      description: `Password reset completed for ${matched.name}`,
+      actorStaffId: matched.staff_id,
+      teamId: matched.team_id,
+      metadata: {
+        reset_via: 'security_question',
+      },
+    });
 
     await fetchStaff();
     return {};

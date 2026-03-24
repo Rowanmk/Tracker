@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabase/client';
 import { useAuth } from '../context/AuthContext';
-import type { Database } from '../supabase/types';
+import type { Database, Json } from '../supabase/types';
+import { getActorNamesForLogs } from '../utils/auditLog';
 
 type AuditLogRow = Database['public']['Tables']['audit_logs']['Row'];
 type Staff = Database['public']['Tables']['staff']['Row'];
@@ -22,13 +23,19 @@ const PAGE_OPTIONS = [
   { value: '/targets', label: 'Targets Control' },
   { value: '/settings', label: 'Settings' },
   { value: '/audit-log', label: 'Audit Log' },
+  { value: '/login', label: 'Login' },
+  { value: '/forgot-password', label: 'Forgot Password' },
 ];
+
+const isJsonObject = (value: Json | null): value is Record<string, Json | undefined> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
 
 export const AuditLog: React.FC = () => {
   const { isAdmin, allStaff } = useAuth();
 
   const [logs, setLogs] = useState<AuditLogWithRelations[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [actorNames, setActorNames] = useState<Map<number, Staff>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,7 +61,16 @@ export const AuditLog: React.FC = () => {
         setError('Failed to load audit log');
         setLogs([]);
       } else {
-        setLogs((logsResult.data as AuditLogWithRelations[]) || []);
+        const nextLogs = (logsResult.data as AuditLogWithRelations[]) || [];
+        setLogs(nextLogs);
+
+        const actors = await getActorNamesForLogs(nextLogs.map((log) => {
+          if (isJsonObject(log.metadata) && typeof log.metadata.actor_staff_id === 'number') {
+            return log.metadata.actor_staff_id;
+          }
+          return null;
+        }));
+        setActorNames(actors);
       }
 
       if (!teamsResult.error) {
@@ -79,8 +95,12 @@ export const AuditLog: React.FC = () => {
 
   const filteredLogs = useMemo(() => {
     return logs.filter(log => {
+      const metadata = isJsonObject(log.metadata) ? log.metadata : null;
+      const effectiveActorId =
+        typeof metadata?.actor_staff_id === 'number' ? metadata.actor_staff_id : log.staff_id;
+
       const pageMatch = pageFilter === 'all' || log.page_path === pageFilter;
-      const staffMatch = staffFilter === 'all' || String(log.staff_id) === staffFilter;
+      const staffMatch = staffFilter === 'all' || String(effectiveActorId) === staffFilter;
       const teamMatch = teamFilter === 'all' || String(log.team_id) === teamFilter;
       return pageMatch && staffMatch && teamMatch;
     });
@@ -94,6 +114,7 @@ export const AuditLog: React.FC = () => {
       time: date.toLocaleTimeString('en-GB', {
         hour: '2-digit',
         minute: '2-digit',
+        second: '2-digit',
       }),
     };
   };
@@ -104,6 +125,64 @@ export const AuditLog: React.FC = () => {
       return teams.find(team => team.id === log.staff?.team_id)?.name || 'Unknown';
     }
     return 'Unassigned';
+  };
+
+  const getActorLabel = (log: AuditLogWithRelations) => {
+    const metadata = isJsonObject(log.metadata) ? log.metadata : null;
+    const explicitActorId = typeof metadata?.actor_staff_id === 'number' ? metadata.actor_staff_id : null;
+    const explicitActorName = typeof metadata?.updated_by_name === 'string' ? metadata.updated_by_name : null;
+
+    if (explicitActorName) return explicitActorName;
+    if (explicitActorId && actorNames.get(explicitActorId)?.name) {
+      return actorNames.get(explicitActorId)?.name || 'Unknown';
+    }
+    return log.staff?.name || 'Unknown';
+  };
+
+  const renderAffectedUsers = (log: AuditLogWithRelations) => {
+    const metadata = isJsonObject(log.metadata) ? log.metadata : null;
+    const affectedUserNames = Array.isArray(metadata?.affected_user_names)
+      ? metadata?.affected_user_names.filter((value): value is string => typeof value === 'string')
+      : [];
+
+    if (affectedUserNames.length === 0) {
+      return <span className="text-sm text-gray-400">—</span>;
+    }
+
+    return (
+      <div className="text-sm text-gray-900">
+        {affectedUserNames.length > 3
+          ? `${affectedUserNames.slice(0, 3).join(', ')} +${affectedUserNames.length - 3} more`
+          : affectedUserNames.join(', ')}
+      </div>
+    );
+  };
+
+  const renderMetadataSummary = (log: AuditLogWithRelations) => {
+    const metadata = isJsonObject(log.metadata) ? log.metadata : null;
+    if (!metadata) return null;
+
+    const parts: string[] = [];
+
+    if (typeof metadata.service_name === 'string' && typeof metadata.date === 'string') {
+      parts.push(`${metadata.service_name} on ${metadata.date}`);
+    }
+
+    if (typeof metadata.previous_total === 'number' && typeof metadata.new_total === 'number') {
+      parts.push(`${metadata.previous_total} → ${metadata.new_total}`);
+    }
+
+    if (typeof metadata.financial_year === 'string') {
+      parts.push(`FY ${metadata.financial_year}`);
+    }
+
+    if (typeof metadata.affected_user_count === 'number') {
+      parts.push(`${metadata.affected_user_count} user(s)`);
+    }
+
+    if (parts.length === 0) return null;
+
+    return <div className="text-xs text-gray-500 mt-1">{parts.join(' • ')}</div>;
   };
 
   if (!isAdmin) {
@@ -119,7 +198,7 @@ export const AuditLog: React.FC = () => {
       <div className="page-header">
         <h2 className="page-title">Audit Log</h2>
         <p className="page-subtitle">
-          View recorded changes by page, user, accountant, date and time.
+          View recorded changes by page, user, affected user, date, time and action details.
         </p>
       </div>
 
@@ -141,7 +220,7 @@ export const AuditLog: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">User</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">By User</label>
             <select
               value={staffFilter}
               onChange={e => setStaffFilter(e.target.value)}
@@ -200,7 +279,8 @@ export const AuditLog: React.FC = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Page</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">By User</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Affected User(s)</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Accountant</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Change</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
@@ -215,16 +295,20 @@ export const AuditLog: React.FC = () => {
                       <td className="px-6 py-4 text-sm text-gray-900">{date}</td>
                       <td className="px-6 py-4 text-sm text-gray-500">{time}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{log.page_label}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{log.staff?.name || 'Unknown'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{getActorLabel(log)}</td>
+                      <td className="px-6 py-4">{renderAffectedUsers(log)}</td>
                       <td className="px-6 py-4 text-sm text-gray-500">{getTeamName(log)}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{log.description}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">
+                        <div>{log.description}</div>
+                        {renderMetadataSummary(log)}
+                      </td>
                       <td className="px-6 py-4 text-sm text-gray-500 capitalize">{log.action_type.replace(/_/g, ' ')}</td>
                     </tr>
                   );
                 })}
                 {filteredLogs.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-6 py-10 text-center text-sm text-gray-500">
+                    <td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-500">
                       No audit records found for the selected filters.
                     </td>
                   </tr>

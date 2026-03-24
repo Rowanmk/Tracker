@@ -9,6 +9,7 @@ import { StaffPerformanceBar } from "../components/StaffPerformanceBar";
 import { useStaffPerformance } from "../hooks/useStaffPerformance";
 import { supabase } from "../supabase/client";
 import { loadTargets } from "../utils/loadTargets";
+import { logTrackerSheetUpdate } from "../utils/auditLog";
 
 interface DailyEntry {
   date: string;
@@ -168,11 +169,13 @@ export const StaffTracker: React.FC = () => {
   };
 
   const handleInputBlur = async (serviceId: number, day: number, value: string) => {
-    if (editableStaffIds.length === 0) return;
+    if (editableStaffIds.length === 0 || !currentStaff) return;
 
     const parsedValue = parseInt(value, 10);
     const numValue = Number.isNaN(parsedValue) ? 0 : Math.max(parsedValue, 0);
     const date = `${year}-${String(selectedMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+    const service = displayServices.find((item) => item.service_id === serviceId);
 
     const { data: existingRows } = await supabase
       .from("dailyactivity")
@@ -223,6 +226,22 @@ export const StaffTracker: React.FC = () => {
         day,
         month: selectedMonth,
         year,
+      });
+    }
+
+    if (existingTotal !== numValue && service) {
+      await logTrackerSheetUpdate({
+        actorStaffId: currentStaff.staff_id,
+        actorName: currentStaff.name,
+        subjectStaffIds: editableStaffIds,
+        subjectStaffNames: selectedAccountants.map((staff) => staff.name),
+        serviceId,
+        serviceName: service.service_name,
+        date,
+        month: selectedMonth,
+        year,
+        previousTotal: existingTotal,
+        newTotal: numValue,
       });
     }
 

@@ -4,7 +4,7 @@ import { useDate } from '../context/DateContext';
 import { CalendarMonthYearSelector } from '../components/CalendarMonthYearSelector';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
-import { createAuditLog } from '../utils/auditLog';
+import { logStaffBatchChange, createAuditLog } from '../utils/auditLog';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
 type Team = Database['public']['Tables']['teams']['Row'];
@@ -272,15 +272,21 @@ export const Settings: React.FC = () => {
         setNewUserWorkCategory('assistant');
         setNewUserRegion('england-and-wales');
         await refreshStaff();
-        await createAuditLog({
+        await logStaffBatchChange({
           pagePath: '/settings',
           pageLabel: 'Settings',
           actionType: 'create',
           entityType: 'user',
-          entityId: String(data.staff_id),
-          description: `Created user ${data.name}`,
+          description: `${currentStaff.name} created user ${data.name}`,
           actorStaffId: currentStaff.staff_id,
-          teamId: data.team_id,
+          actorName: currentStaff.name,
+          affectedStaff: [
+            {
+              staff_id: data.staff_id,
+              name: data.name,
+              team_id: data.team_id,
+            },
+          ],
           metadata: {
             access_level: newUserAccessLevel,
             work_category: newUserWorkCategory,
@@ -319,6 +325,14 @@ export const Settings: React.FC = () => {
     setFeedback(null);
 
     try {
+      const previousValues = {
+        name: editingUser.name,
+        role: editingUser.role,
+        home_region: editingUser.home_region,
+        accessLevel: editingUser.accessLevel,
+        workCategory: editingUser.workCategory,
+      };
+
       const updatePayload: Database['public']['Tables']['staff']['Update'] = {
         name: editForm.name.trim(),
         password: editForm.password.trim() || null,
@@ -347,20 +361,30 @@ export const Settings: React.FC = () => {
         );
         setEditingUser(null);
         await refreshStaff();
-        await createAuditLog({
+        await logStaffBatchChange({
           pagePath: '/settings',
           pageLabel: 'Settings',
           actionType: 'update',
           entityType: 'user',
-          entityId: String(editingUser.staff_id),
-          description: `Updated user ${data.name}`,
+          description: `${currentStaff.name} updated user ${data.name}`,
           actorStaffId: currentStaff.staff_id,
-          teamId: data.team_id,
+          actorName: currentStaff.name,
+          affectedStaff: [
+            {
+              staff_id: editingUser.staff_id,
+              name: data.name,
+              team_id: data.team_id,
+            },
+          ],
           metadata: {
-            access_level: editForm.accessLevel,
-            work_category: editForm.workCategory,
-            role: data.role,
-            home_region: data.home_region,
+            previous: previousValues,
+            current: {
+              name: data.name,
+              role: data.role,
+              home_region: data.home_region,
+              access_level: editForm.accessLevel,
+              work_category: editForm.workCategory,
+            },
           },
         });
         setTimedFeedback('Successfully updated user');
@@ -403,7 +427,7 @@ export const Settings: React.FC = () => {
           actionType: 'update',
           entityType: 'account',
           entityId: String(currentStaff.staff_id),
-          description: `Updated account settings for ${currentStaff.name}`,
+          description: `${currentStaff.name} updated their account settings`,
           actorStaffId: currentStaff.staff_id,
           teamId: currentStaff.team_id,
           metadata: {
@@ -443,6 +467,12 @@ export const Settings: React.FC = () => {
 
     setIsSavingPermissions(true);
     try {
+      const beforePermissions = permissions.map((permission) => ({
+        role: permission.role,
+        page_path: permission.page_path,
+        is_visible: permission.is_visible,
+      }));
+
       const { error: upsertError } = await supabase
         .from('role_permissions')
         .upsert(
@@ -464,11 +494,12 @@ export const Settings: React.FC = () => {
           actionType: 'update',
           entityType: 'permissions',
           entityId: 'role_permissions',
-          description: 'Updated role permissions',
+          description: `${currentStaff.name} updated role permissions`,
           actorStaffId: currentStaff.staff_id,
           teamId: currentStaff.team_id,
           metadata: {
             permission_count: permissions.length,
+            permissions: beforePermissions,
           },
         });
         setTimedFeedback('Successfully saved permissions');

@@ -8,12 +8,14 @@ import { isTargetInFinancialYear } from '../utils/loadTargets';
 import { unparse } from 'papaparse';
 import type { FinancialYear } from '../utils/financialYear';
 import type { Database } from '../supabase/types';
+import { logMonthlyTargetsSaved } from '../utils/auditLog';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
 
 interface TargetData {
   staff_id: number;
   name: string;
+  team_id?: number | null;
   targets: {
     [month: number]: {
       [service: string]: number;
@@ -46,6 +48,7 @@ export const TargetsControl: React.FC = () => {
     allStaff,
     loading: authLoading,
     error: authError,
+    currentStaff,
   } = useAuth();
   const { services, loading: servicesLoading, error: servicesError } = useServices();
 
@@ -66,6 +69,7 @@ export const TargetsControl: React.FC = () => {
   });
 
   const [targetData, setTargetData] = useState<TargetData[]>([]);
+  const [lastSavedSnapshot, setLastSavedSnapshot] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -77,9 +81,23 @@ export const TargetsControl: React.FC = () => {
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
   const scrollPositionsRef = useRef<Record<number, number>>({});
 
+  const buildSnapshot = (data: TargetData[]) => {
+    const snapshot: Record<string, number> = {};
+    data.forEach((staffMember) => {
+      Object.entries(staffMember.targets).forEach(([monthStr, monthTargets]) => {
+        const month = Number(monthStr);
+        Object.entries(monthTargets).forEach(([serviceName, value]) => {
+          snapshot[`${staffMember.staff_id}-${month}-${serviceName}`] = value ?? 0;
+        });
+      });
+    });
+    return snapshot;
+  };
+
   const fetchTargets = async (fy: FinancialYear) => {
     if (!activeAccountants.length || !targetableServices.length) {
       setTargetData([]);
+      setLastSavedSnapshot({});
       setLoading(false);
       return;
     }
@@ -115,11 +133,12 @@ export const TargetsControl: React.FC = () => {
             }
           });
 
-          return { staff_id: staffMember.staff_id, name: staffMember.name, targets };
+          return { staff_id: staffMember.staff_id, name: staffMember.name, team_id: staffMember.team_id, targets };
         })
       );
 
       setTargetData(data);
+      setLastSavedSnapshot(buildSnapshot(data));
       setLocalInputState({});
       setHasUnsavedChanges(false);
       inputRefs.current.clear();
@@ -320,6 +339,44 @@ export const TargetsControl: React.FC = () => {
         })
       );
 
+      const changedStaffSummaries = targetData
+        .map((staffMember) => {
+          const changedKeys = Object.entries(staffMember.targets).flatMap(([monthStr, monthTargets]) => {
+            const month = Number(monthStr);
+            return Object.entries(monthTargets)
+              .filter(([serviceName, value]) => {
+                const key = `${staffMember.staff_id}-${month}-${serviceName}`;
+                return (lastSavedSnapshot[key] ?? 0) !== (value ?? 0);
+              })
+              .map(([serviceName]) => ({ month, serviceName }));
+          });
+
+          return {
+            staff_id: staffMember.staff_id,
+            name: staffMember.name,
+            team_id: staffMember.team_id,
+            changed_cells: changedKeys.length,
+            changed_months: Array.from(new Set(changedKeys.map((item) => item.month))).sort((a, b) => a - b),
+            changed_services: Array.from(new Set(changedKeys.map((item) => item.serviceName))).sort(),
+          };
+        })
+        .filter((staffMember) => staffMember.changed_cells > 0);
+
+      if (currentStaff && changedStaffSummaries.length > 0) {
+        await logMonthlyTargetsSaved({
+          actorStaffId: currentStaff.staff_id,
+          actorName: currentStaff.name,
+          financialYearLabel: selectedFinancialYear.label,
+          changedStaffSummaries,
+          totalsByStaff: targetData.map((staffMember) => ({
+            staff_id: staffMember.staff_id,
+            name: staffMember.name,
+            annual_total: monthData.reduce((sum, m) => sum + calculateMonthlyTotal(staffMember.staff_id, m.number), 0),
+          })),
+        });
+      }
+
+      setLastSavedSnapshot(buildSnapshot(targetData));
       setHasUnsavedChanges(false);
       setSaveMessage('✅ Targets saved successfully');
       setTimeout(() => setSaveMessage(null), 3000);
