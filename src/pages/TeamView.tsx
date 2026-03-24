@@ -345,6 +345,10 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPerc
 
   const linePoints = data.map((d, i) => `${getX(i)},${getY(d.rollingAverage)}`).join(' ');
 
+  const formatValue = (value: number, asPercentage?: boolean) => {
+    return `${Math.round(value)}${asPercentage ? '%' : ''}`;
+  };
+
   return (
     <svg viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`} className="w-full h-full min-h-[280px]">
       <g transform={`translate(${PADDING_LEFT}, 15)`}>
@@ -381,6 +385,8 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPerc
         const x = getX(i);
         const y = getY(d.actual);
         const height = PADDING_TOP + CHART_HEIGHT - y;
+        const valueLabelY = Math.max(14, y - 8);
+
         return (
           <g key={`bar-${i}`}>
             <rect
@@ -394,6 +400,14 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPerc
             >
               <title>Actual: {d.actual}{isPercentage ? '%' : ''}</title>
             </rect>
+            <text
+              x={x}
+              y={valueLabelY}
+              textAnchor="middle"
+              className="text-[10px] font-bold fill-gray-700 dark:fill-gray-200"
+            >
+              {formatValue(d.actual, isPercentage)}
+            </text>
             <text
               x={x}
               y={VIEWBOX_HEIGHT - 15}
@@ -416,20 +430,35 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPerc
         className="transition-all duration-500 ease-out"
       />
 
-      {data.map((d, i) => (
-        <circle
-          key={`dot-${i}`}
-          cx={getX(i)}
-          cy={getY(d.rollingAverage)}
-          r={4}
-          fill="#FF8A2A"
-          stroke="#fff"
-          strokeWidth="2"
-          className="dark:stroke-gray-800 transition-all duration-500 ease-out"
-        >
-          <title>Rolling Avg: {d.rollingAverage.toFixed(1)}{isPercentage ? '%' : ''}</title>
-        </circle>
-      ))}
+      {data.map((d, i) => {
+        const pointX = getX(i);
+        const pointY = getY(d.rollingAverage);
+        const labelY = Math.max(14, pointY - 10);
+
+        return (
+          <g key={`dot-group-${i}`}>
+            <text
+              x={pointX}
+              y={labelY}
+              textAnchor="middle"
+              className="text-[10px] font-bold fill-[#FF8A2A]"
+            >
+              {formatValue(d.rollingAverage, isPercentage)}
+            </text>
+            <circle
+              cx={pointX}
+              cy={pointY}
+              r={4}
+              fill="#FF8A2A"
+              stroke="#fff"
+              strokeWidth="2"
+              className="dark:stroke-gray-800 transition-all duration-500 ease-out"
+            >
+              <title>Rolling Avg: {d.rollingAverage.toFixed(1)}{isPercentage ? '%' : ''}</title>
+            </circle>
+          </g>
+        );
+      })}
     </svg>
   );
 };
