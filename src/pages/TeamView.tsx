@@ -67,9 +67,10 @@ export const TeamView: React.FC = () => {
 
         const visibleAccountants = allStaff.filter(s => !s.is_hidden && isAccountant(s.role));
 
-        const filteredStaff = selectedTeamId === "all" || !selectedTeamId
-          ? visibleAccountants
-          : visibleAccountants.filter(s => String(s.staff_id) === selectedTeamId);
+        const filteredStaff =
+          selectedTeamId === 'team-view' || selectedTeamId === 'all' || !selectedTeamId
+            ? visibleAccountants
+            : visibleAccountants.filter(s => String(s.staff_id) === selectedTeamId);
 
         const staffIds = filteredStaff.map(s => s.staff_id);
 
@@ -113,7 +114,14 @@ export const TeamView: React.FC = () => {
           const [eYear, eMonth, eDay] = endDateStr.split('-').map(Number);
           const localEndDate = new Date(eYear, eMonth - 1, eDay);
 
-          const bagels = generateBagelDays(finalActivities, bankHolidays, filteredStaff, bagelService.service_id, localStartDate, localEndDate);
+          const bagels = generateBagelDays(
+            finalActivities,
+            bankHolidays,
+            filteredStaff,
+            bagelService.service_id,
+            localStartDate,
+            localEndDate
+          );
           finalActivities = [...finalActivities, ...bagels];
         }
 
@@ -223,7 +231,7 @@ export const TeamView: React.FC = () => {
       }
     };
 
-    fetchStatsData();
+    void fetchStatsData();
   }, [allStaff, services, selectedTeamId, authLoading, servicesLoading]);
 
   useEffect(() => {
@@ -375,7 +383,7 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPerc
               y2={y}
               stroke="#E5E7EB"
               className="dark:stroke-gray-700"
-              strokeDasharray={ratio === 0 ? "" : "4 4"}
+              strokeDasharray={ratio === 0 ? '' : '4 4'}
             />
           </g>
         );
