@@ -41,9 +41,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
   const handleSelectOption = (value: number | "team-view") => {
     onTeamChange(value);
 
-    if (value === "team-view") {
-      navigate("/");
-    } else if (location.pathname === "/team" && typeof value === "number") {
+    if (value === "team-view" && location.pathname === "/") {
       navigate("/");
     }
 
