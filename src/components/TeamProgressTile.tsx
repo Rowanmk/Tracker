@@ -25,6 +25,16 @@ interface TeamProgressTileProps {
   financialYear: FinancialYear;
 }
 
+const getRunRateBarColor = (achievedPercent: number, elapsedWorkingDayPercent: number) => {
+  if (elapsedWorkingDayPercent <= 0) return '#008A00';
+
+  const paceRatio = (achievedPercent / elapsedWorkingDayPercent) * 100;
+
+  if (paceRatio >= 100) return '#008A00';
+  if (paceRatio >= 80) return '#FF8A2A';
+  return '#FF3B30';
+};
+
 export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
   services,
   staffPerformance,
@@ -79,47 +89,24 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
   );
 
   const rows = useMemo(() => {
-    const getBarColor = (delivered: number, target: number) => {
-      const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
-      const difference = delivered - expectedSoFar;
-      const twentyFivePercent = target * 0.25;
-
-      if (difference >= 0) {
-        return '#008A00';
-      }
-      if (difference >= -twentyFivePercent) {
-        return '#FF8A2A';
-      }
-      return '#FF3B30';
-    };
-
     return services.map((service) => {
       const delivered = staffPerformance.reduce((sum, staff) => sum + (staff.services[service.service_name] || 0), 0);
       const target = serviceTargets[service.service_id] || 0;
-      const percentage = target > 0 ? (delivered / target) * 100 : 0;
-      const barColor = getBarColor(delivered, target);
+      const achievedPercent = target > 0 ? (delivered / target) * 100 : 0;
+      const barColor = getRunRateBarColor(achievedPercent, todayExpectedPercentage);
       const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
       const difference = delivered - expectedSoFar;
-      const twentyFivePercent = target * 0.25;
-
-      let badgeColor = '#FF3B30';
-      if (difference >= 0) {
-        badgeColor = '#008A00';
-      } else if (difference >= -twentyFivePercent) {
-        badgeColor = '#FF8A2A';
-      }
 
       return {
         ...service,
         delivered,
         target,
-        percentage,
+        achievedPercent,
         barColor,
         difference,
-        badgeColor,
       };
     });
-  }, [services, staffPerformance, serviceTargets, workingDays, workingDaysUpToToday]);
+  }, [services, staffPerformance, serviceTargets, todayExpectedPercentage, workingDays, workingDaysUpToToday]);
 
   if (loading) {
     return (
@@ -152,7 +139,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
                       {Math.round(row.delivered)} / {Math.round(row.target)}
                     </span>
                     <span className="text-sm text-gray-600 dark:text-gray-400">
-                      ({Math.round(row.percentage)}%)
+                      ({Math.round(row.achievedPercent)}%)
                     </span>
                   </div>
                 </div>
@@ -163,10 +150,10 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
                       <div
                         className="h-8 rounded-full shadow-sm transition-[width] duration-[800ms] ease-in-out"
                         style={{
-                          width: `${Math.min(row.percentage, 100)}%`,
+                          width: `${Math.min(row.achievedPercent, 100)}%`,
                           backgroundColor: row.barColor,
                         }}
-                        title={`${row.service_name}: ${Math.round(row.delivered)}/${Math.round(row.target)} (${Math.round(row.percentage)}%)`}
+                        title={`${row.service_name}: ${Math.round(row.delivered)}/${Math.round(row.target)} (${Math.round(row.achievedPercent)}%)`}
                       />
                       {row.target > 0 && (
                         <div
@@ -180,7 +167,14 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
                   <div className="ml-3 flex items-center" style={{ minWidth: '40px' }}>
                     <span
                       className="inline-flex items-center px-2 py-1 rounded text-sm font-bold"
-                      style={{ color: Math.abs(row.difference) < 0.5 ? '#6B7280' : row.badgeColor }}
+                      style={{
+                        color:
+                          roundedDifference > 0
+                            ? '#008A00'
+                            : roundedDifference < 0
+                            ? '#FF3B30'
+                            : '#6B7280',
+                      }}
                     >
                       {roundedDifference > 0 ? `+${roundedDifference}` : roundedDifference}
                     </span>

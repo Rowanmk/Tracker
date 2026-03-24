@@ -15,8 +15,6 @@ import { usePerformanceSummary } from "../hooks/usePerformanceSummary";
 const DAY_TRANSITION_DURATION_MS = 800;
 const DAY_STEP_PAUSE_MS = 150;
 
-type PlaybackStatus = "idle" | "playing" | "paused";
-
 interface PlaybackControllerState {
   currentDayIndex: number;
   targetDayIndex: number;
@@ -26,6 +24,36 @@ interface PlaybackControllerState {
 }
 
 const easeInOut = (t: number) => 0.5 - Math.cos(Math.PI * t) / 2;
+
+const getRunRateStatusColor = (achievedPercent: number, elapsedWorkingDayPercent: number) => {
+  if (elapsedWorkingDayPercent <= 0) {
+    return {
+      bar: "#008A00",
+      text: "text-green-700",
+    };
+  }
+
+  const paceRatio = (achievedPercent / elapsedWorkingDayPercent) * 100;
+
+  if (paceRatio >= 100) {
+    return {
+      bar: "#008A00",
+      text: "text-green-700",
+    };
+  }
+
+  if (paceRatio >= 80) {
+    return {
+      bar: "#FF8A2A",
+      text: "text-orange-700",
+    };
+  }
+
+  return {
+    bar: "#FF3B30",
+    text: "text-red-700",
+  };
+};
 
 export const Dashboard: React.FC = () => {
   const { viewMode } = useDashboardView();
@@ -157,10 +185,6 @@ export const Dashboard: React.FC = () => {
         const easedProgress = easeInOut(linearProgress);
         const animationProgress = safeFromDay + (nextDay - safeFromDay) * easedProgress;
 
-        // Root flashing cause fixed:
-        // playback now updates a single scalar animationProgress with requestAnimationFrame.
-        // Charts stay mounted and derive interpolated values from this progress instead of
-        // rebuilding day snapshots or stepping through abrupt day-level state swaps.
         setPlaybackController({
           currentDayIndex: safeFromDay,
           targetDayIndex: safeTarget,
@@ -318,7 +342,6 @@ export const Dashboard: React.FC = () => {
   });
 
   const variance = performanceSummary.delivered - performanceSummary.expected;
-  const isAhead = variance >= 0;
 
   const handleDaySelect = (day: number) => {
     stopPlaybackLoop();
@@ -364,6 +387,11 @@ export const Dashboard: React.FC = () => {
     performanceSummary.target > 0
       ? Math.min((performanceSummary.expected / performanceSummary.target) * 100, 100)
       : 0;
+
+  const elapsedWorkingDayPercent =
+    teamWorkingDays > 0 ? (workingDaysElapsedToPlayback / teamWorkingDays) * 100 : 0;
+
+  const globalProgressStatus = getRunRateStatusColor(deliveredPercent, elapsedWorkingDayPercent);
 
   const selectedDayIndicator = Math.max(
     1,
@@ -429,19 +457,20 @@ export const Dashboard: React.FC = () => {
         </div>
         <div className="relative w-full h-6 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner">
           <div
-            className={`${isAhead ? "bg-green-600" : "bg-red-600"} h-6 rounded-full transition-[width] duration-[800ms] ease-in-out`}
-            style={{ width: `${deliveredPercent}%` }}
+            className="h-6 rounded-full transition-[width] duration-[800ms] ease-in-out"
+            style={{
+              width: `${deliveredPercent}%`,
+              backgroundColor: globalProgressStatus.bar,
+            }}
           />
           <div
             className="absolute top-0 h-6 w-0.5 bg-[#001B47] transition-[left] duration-[800ms] ease-in-out"
             style={{ left: `${expectedPercent}%` }}
           />
           <div
-            className={`absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold ${
-              isAhead ? "text-green-700" : "text-red-700"
-            }`}
+            className={`absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold ${globalProgressStatus.text}`}
           >
-            {isAhead ? "+" : "-"}
+            {variance > 0 ? "+" : variance < 0 ? "-" : ""}
             {Math.abs(Math.round(variance))}
           </div>
         </div>
