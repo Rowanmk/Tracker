@@ -14,8 +14,6 @@ import { Settings } from './pages/Settings';
 import { AuditLog } from './pages/AuditLog';
 import { Login } from './pages/Login';
 import { ForgotPassword } from './pages/ForgotPassword';
-import { AuthDiagnostics } from './pages/AuthDiagnostics';
-import { RowanLoginTest } from './pages/RowanLoginTest';
 
 const getFirstAllowedPath = (hasPermission: (path: string) => boolean) => {
   const protectedPaths = [
@@ -94,8 +92,6 @@ const ProtectedApp: React.FC = () => {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/auth-diagnostics" element={<AuthDiagnostics />} />
-        <Route path="/rowan-login-test" element={<RowanLoginTest />} />
         <Route path="*" element={<AuthRedirect />} />
       </Routes>
     );
@@ -103,9 +99,7 @@ const ProtectedApp: React.FC = () => {
 
   if (
     location.pathname === '/login' ||
-    location.pathname === '/forgot-password' ||
-    location.pathname === '/auth-diagnostics' ||
-    location.pathname === '/rowan-login-test'
+    location.pathname === '/forgot-password'
   ) {
     const fallback = getFirstAllowedPath(hasPermission);
     if (fallback) {

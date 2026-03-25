@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
-import type { FinancialYear } from './financialYear';
+import type { FinancialYear } from '../utils/financialYear';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
 type Team = Database['public']['Tables']['teams']['Row'];
@@ -198,7 +198,7 @@ export const useSelfAssessmentProgress = (
       }
     };
 
-    fetchData();
+    void fetchData();
   }, [financialYear, allStaff, teams, services]);
 
   return { teamProgress, loading, error };

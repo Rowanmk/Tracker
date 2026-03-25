@@ -114,18 +114,6 @@ export const Login: React.FC = () => {
               >
                 Forgot Password?
               </Link>
-              <Link
-                to="/auth-diagnostics"
-                className="text-sm text-gray-500 hover:text-[#001B47] hover:underline font-medium"
-              >
-                Run login diagnostics
-              </Link>
-              <Link
-                to="/rowan-login-test"
-                className="text-sm text-gray-500 hover:text-[#001B47] hover:underline font-medium"
-              >
-                Test Rowan login
-              </Link>
             </div>
           </form>
         )}
