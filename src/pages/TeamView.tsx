@@ -133,33 +133,50 @@ export const TeamView: React.FC = () => {
         });
 
         const monthActuals: Record<string, number> = {};
-        const bagelDaysByMonth = new Map<string, Set<string>>();
+        const bagelUsersByDate = new Map<string, Set<number>>();
 
         finalActivities.forEach(a => {
           if (!a.service_id || !a.date) return;
           const service = services.find(s => s.service_id === a.service_id);
           if (!service) return;
 
+          if (service.service_name === 'Bagel Days') {
+            if (!a.staff_id) return;
+            if (!bagelUsersByDate.has(a.date)) {
+              bagelUsersByDate.set(a.date, new Set<number>());
+            }
+            bagelUsersByDate.get(a.date)?.add(a.staff_id);
+            return;
+          }
+
           const [yearStr, monthStr] = a.date.split('-');
           const key = `${parseInt(yearStr, 10)}-${parseInt(monthStr, 10)}`;
 
-          if (service.service_name === 'Bagel Days') {
-            if (!bagelDaysByMonth.has(key)) {
-              bagelDaysByMonth.set(key, new Set<string>());
-            }
-            bagelDaysByMonth.get(key)?.add(a.date);
-          } else {
-            if (!serviceMonthTotals[a.service_id]) serviceMonthTotals[a.service_id] = {};
-            serviceMonthTotals[a.service_id][key] = (serviceMonthTotals[a.service_id][key] || 0) + (a.delivered_count || 0);
-            monthActuals[key] = (monthActuals[key] || 0) + (a.delivered_count || 0);
-          }
+          if (!serviceMonthTotals[a.service_id]) serviceMonthTotals[a.service_id] = {};
+          serviceMonthTotals[a.service_id][key] = (serviceMonthTotals[a.service_id][key] || 0) + (a.delivered_count || 0);
+          monthActuals[key] = (monthActuals[key] || 0) + (a.delivered_count || 0);
         });
 
         if (bagelService) {
           serviceMonthTotals[bagelService.service_id] = {};
+
+          const fullSelectedStaffCount = filteredStaff.length;
+
           all24Months.forEach(({ year, month }) => {
+            const daysInMonth = new Date(year, month, 0).getDate();
+            let monthBagelDays = 0;
+
+            for (let day = 1; day <= daysInMonth; day++) {
+              const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              const bagelUsersForDate = bagelUsersByDate.get(dateStr);
+
+              if (bagelUsersForDate && bagelUsersForDate.size === fullSelectedStaffCount) {
+                monthBagelDays += 1;
+              }
+            }
+
             const key = `${year}-${month}`;
-            serviceMonthTotals[bagelService.service_id][key] = bagelDaysByMonth.get(key)?.size || 0;
+            serviceMonthTotals[bagelService.service_id][key] = monthBagelDays;
           });
         }
 
@@ -322,6 +339,11 @@ export const TeamView: React.FC = () => {
                   {activeStat.service.service_name === '% of Target Achieved' && (
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                       * Monthly bars: (Monthly Deliveries / Monthly Target). Line: (12-Month Deliveries Sum / 12-Month Target Sum).
+                    </p>
+                  )}
+                  {activeStat.service.service_name === 'Bagel Days' && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                      * Bagel Days count working days where no selected user recorded any actuals on that day.
                     </p>
                   )}
                 </div>
