@@ -9,7 +9,7 @@ A React-based performance tracking application for contracting division staff wi
 - **Annual Summary**: Year-to-date performance analysis
 - **User Tracker**: Individual daily activity tracking
 - **Targets Control**: Admin interface for setting monthly targets
-- **Authentication**: Google OAuth integration via Supabase
+- **Authentication**: Secure Email/Password authentication via Supabase
 
 ## Tech Stack
 
@@ -64,4 +64,10 @@ The application uses the following Supabase tables:
 
 ## Authentication
 
-Users authenticate via Google OAuth through Supabase Auth. User records must be created in the database and linked to user accounts via the `user_id` field.
+Users authenticate via Email and Password through Supabase Auth. User records must be created in the database and linked to user accounts via the `user_id` field.
+
+**Default Admin Account:**
+- **Email:** `rowan@thecrew.co.uk`
+- **Password:** `Rowan123!` *(Please change this in Settings after logging in)*
+
+Admins can create new users and manage existing staff members directly from the Settings page.
