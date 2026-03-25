@@ -26,9 +26,52 @@ interface AccountantRankingRow {
   rollingAverage: number;
 }
 
+type ActivityRow = {
+  staff_id: number | null;
+  service_id: number | null;
+  date: string;
+  delivered_count: number;
+};
+
+type TargetRow = {
+  staff_id: number | null;
+  month: number;
+  year: number;
+  target_value: number;
+};
+
 const isAccountant = (role: string) => {
   const normalizedRole = (role || '').toLowerCase();
   return normalizedRole === 'staff' || normalizedRole === 'admin';
+};
+
+const getMonthKey = (year: number, month: number) => `${year}-${month}`;
+
+const getLastTwelveAverage = (values: number[]) => {
+  if (values.length < 12) return 0;
+  const lastTwelve = values.slice(values.length - 12);
+  const sum = lastTwelve.reduce((total, value) => total + value, 0);
+  return sum / 12;
+};
+
+const getLastTwelvePercent = (
+  months: Array<{ year: number; month: number }>,
+  actualMap: Record<string, number>,
+  targetMap: Record<string, number>
+) => {
+  if (months.length < 12) return 0;
+
+  const lastTwelve = months.slice(months.length - 12);
+  const actualSum = lastTwelve.reduce(
+    (total, month) => total + (actualMap[getMonthKey(month.year, month.month)] || 0),
+    0
+  );
+  const targetSum = lastTwelve.reduce(
+    (total, month) => total + (targetMap[getMonthKey(month.year, month.month)] || 0),
+    0
+  );
+
+  return targetSum > 0 ? (actualSum / targetSum) * 100 : 0;
 };
 
 export const TeamView: React.FC = () => {
@@ -75,15 +118,15 @@ export const TeamView: React.FC = () => {
         const lastDayOfLastMonth = new Date(lastMonth.year, lastMonth.month, 0).getDate();
         const endDateStr = `${lastMonth.year}-${String(lastMonth.month).padStart(2, '0')}-${String(lastDayOfLastMonth).padStart(2, '0')}`;
 
-        const visibleAccountants = allStaff.filter(s => !s.is_hidden && isAccountant(s.role));
+        const visibleAccountants = allStaff.filter((s) => !s.is_hidden && isAccountant(s.role));
 
         const filteredStaff =
           selectedTeamId === 'team-view' || selectedTeamId === 'all' || !selectedTeamId
             ? visibleAccountants
-            : visibleAccountants.filter(s => String(s.staff_id) === selectedTeamId);
+            : visibleAccountants.filter((s) => String(s.staff_id) === selectedTeamId);
 
-        const staffIds = filteredStaff.map(s => s.staff_id);
-        const allVisibleAccountantIds = visibleAccountants.map(s => s.staff_id);
+        const staffIds = filteredStaff.map((s) => s.staff_id);
+        const allVisibleAccountantIds = visibleAccountants.map((s) => s.staff_id);
 
         if (staffIds.length === 0) {
           setStatsData([]);
@@ -134,9 +177,9 @@ export const TeamView: React.FC = () => {
           .gte('date', startDateStr)
           .lte('date', endDateStr);
 
-        let finalActivities = activities || [];
-        let finalRankingActivities = rankingActivities || [];
-        const bagelService = services.find(s => s.service_name === 'Bagel Days');
+        let finalActivities: ActivityRow[] = (activities || []) as ActivityRow[];
+        let finalRankingActivities: ActivityRow[] = (rankingActivities || []) as ActivityRow[];
+        const bagelService = services.find((s) => s.service_name === 'Bagel Days');
 
         if (bagelService && bankHolidays) {
           const [sYear, sMonth, sDay] = startDateStr.split('-').map(Number);
@@ -152,7 +195,7 @@ export const TeamView: React.FC = () => {
             bagelService.service_id,
             localStartDate,
             localEndDate
-          );
+          ) as ActivityRow[];
           finalActivities = [...finalActivities, ...bagels];
 
           const rankingBagels = generateBagelDays(
@@ -162,99 +205,95 @@ export const TeamView: React.FC = () => {
             bagelService.service_id,
             localStartDate,
             localEndDate
-          );
+          ) as ActivityRow[];
           finalRankingActivities = [...finalRankingActivities, ...rankingBagels];
         }
 
         const displayServices = services;
+        const monthActuals: Record<string, number> = {};
+        const monthTargets: Record<string, number> = {};
 
-        const serviceMonthTotals: Record<number, Record<string, number>> = {};
-        displayServices.forEach(s => {
-          serviceMonthTotals[s.service_id] = {};
+        (targets as TargetRow[] | null)?.forEach((target) => {
+          const key = getMonthKey(target.year, target.month);
+          monthTargets[key] = (monthTargets[key] || 0) + (target.target_value || 0);
         });
 
-        const monthActuals: Record<string, number> = {};
-        const bagelUsersByDate = new Map<string, Set<number>>();
+        finalActivities.forEach((activity) => {
+          if (!activity.date || activity.service_id == null) return;
+          const service = services.find((s) => s.service_id === activity.service_id);
+          if (!service || service.service_name === 'Bagel Days') return;
 
-        finalActivities.forEach(a => {
-          if (!a.service_id || !a.date) return;
-          const service = services.find(s => s.service_id === a.service_id);
-          if (!service) return;
+          const [yearStr, monthStr] = activity.date.split('-');
+          const key = getMonthKey(parseInt(yearStr, 10), parseInt(monthStr, 10));
+          monthActuals[key] = (monthActuals[key] || 0) + (activity.delivered_count || 0);
+        });
+
+        const processedStats: ServiceStats[] = displayServices.map((service) => {
+          const serviceMonthTotals: Record<string, number> = {};
 
           if (service.service_name === 'Bagel Days') {
-            if (!a.staff_id) return;
-            if (!bagelUsersByDate.has(a.date)) {
-              bagelUsersByDate.set(a.date, new Set<number>());
-            }
-            bagelUsersByDate.get(a.date)?.add(a.staff_id);
-            return;
+            const bagelUsersByDate = new Map<string, Set<number>>();
+            finalActivities.forEach((activity) => {
+              if (
+                activity.service_id !== service.service_id ||
+                !activity.date ||
+                activity.staff_id == null
+              ) {
+                return;
+              }
+
+              if (!bagelUsersByDate.has(activity.date)) {
+                bagelUsersByDate.set(activity.date, new Set<number>());
+              }
+
+              bagelUsersByDate.get(activity.date)?.add(activity.staff_id);
+            });
+
+            const fullSelectedStaffCount = filteredStaff.length;
+
+            all24Months.forEach(({ year, month }) => {
+              const daysInMonth = new Date(year, month, 0).getDate();
+              let monthBagelDays = 0;
+
+              for (let day = 1; day <= daysInMonth; day++) {
+                const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const bagelUsersForDate = bagelUsersByDate.get(dateStr);
+
+                if (bagelUsersForDate && bagelUsersForDate.size === fullSelectedStaffCount) {
+                  monthBagelDays += 1;
+                }
+              }
+
+              serviceMonthTotals[getMonthKey(year, month)] = monthBagelDays;
+            });
+          } else {
+            finalActivities.forEach((activity) => {
+              if (!activity.date || activity.service_id !== service.service_id) return;
+
+              const [yearStr, monthStr] = activity.date.split('-');
+              const key = getMonthKey(parseInt(yearStr, 10), parseInt(monthStr, 10));
+              serviceMonthTotals[key] = (serviceMonthTotals[key] || 0) + (activity.delivered_count || 0);
+            });
           }
 
-          const [yearStr, monthStr] = a.date.split('-');
-          const key = `${parseInt(yearStr, 10)}-${parseInt(monthStr, 10)}`;
-
-          if (!serviceMonthTotals[a.service_id]) serviceMonthTotals[a.service_id] = {};
-          serviceMonthTotals[a.service_id][key] = (serviceMonthTotals[a.service_id][key] || 0) + (a.delivered_count || 0);
-          monthActuals[key] = (monthActuals[key] || 0) + (a.delivered_count || 0);
-        });
-
-        if (bagelService) {
-          serviceMonthTotals[bagelService.service_id] = {};
-
-          const fullSelectedStaffCount = filteredStaff.length;
-
-          all24Months.forEach(({ year, month }) => {
-            const daysInMonth = new Date(year, month, 0).getDate();
-            let monthBagelDays = 0;
-
-            for (let day = 1; day <= daysInMonth; day++) {
-              const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-              const bagelUsersForDate = bagelUsersByDate.get(dateStr);
-
-              if (bagelUsersForDate && bagelUsersForDate.size === fullSelectedStaffCount) {
-                monthBagelDays += 1;
-              }
-            }
-
-            const key = `${year}-${month}`;
-            serviceMonthTotals[bagelService.service_id][key] = monthBagelDays;
-          });
-        }
-
-        const monthTargets: Record<string, number> = {};
-        targets?.forEach(t => {
-          const key = `${t.year}-${t.month}`;
-          monthTargets[key] = (monthTargets[key] || 0) + (t.target_value || 0);
-        });
-
-        const processedStats: ServiceStats[] = displayServices.map(service => {
-          const monthlyActuals = all24Months.map(m => {
-            const key = `${m.year}-${m.month}`;
-            return serviceMonthTotals[service.service_id]?.[key] || 0;
-          });
+          const monthlyActuals = all24Months.map((month) => serviceMonthTotals[getMonthKey(month.year, month.month)] || 0);
 
           const last12Data: MonthlyData[] = [];
-
           for (let i = 12; i < 24; i++) {
             const actual = monthlyActuals[i];
-
-            let rollingSum = 0;
-            for (let j = i - 11; j <= i; j++) {
-              rollingSum += monthlyActuals[j];
-            }
-            const rollingAverage = rollingSum / 12;
+            const rollingAverage = monthlyActuals.slice(i - 11, i + 1).reduce((sum, value) => sum + value, 0) / 12;
 
             last12Data.push({
               year: all24Months[i].year,
               month: all24Months[i].month,
               actual,
-              rollingAverage
+              rollingAverage,
             });
           }
 
           return {
             service,
-            data: last12Data
+            data: last12Data,
           };
         });
 
@@ -262,112 +301,107 @@ export const TeamView: React.FC = () => {
 
         for (let i = 12; i < 24; i++) {
           const currentMonth = all24Months[i];
-          const currentKey = `${currentMonth.year}-${currentMonth.month}`;
+          const currentKey = getMonthKey(currentMonth.year, currentMonth.month);
           const currentActual = monthActuals[currentKey] || 0;
           const currentTarget = monthTargets[currentKey] || 0;
           const actualPercent = currentTarget > 0 ? (currentActual / currentTarget) * 100 : 0;
 
-          let rollingActualSum = 0;
-          let rollingTargetSum = 0;
-          for (let j = i - 11; j <= i; j++) {
-            const jMonth = all24Months[j];
-            const jKey = `${jMonth.year}-${jMonth.month}`;
-            rollingActualSum += monthActuals[jKey] || 0;
-            rollingTargetSum += monthTargets[jKey] || 0;
-          }
+          const rollingMonths = all24Months.slice(i - 11, i + 1);
+          const rollingActualSum = rollingMonths.reduce(
+            (sum, month) => sum + (monthActuals[getMonthKey(month.year, month.month)] || 0),
+            0
+          );
+          const rollingTargetSum = rollingMonths.reduce(
+            (sum, month) => sum + (monthTargets[getMonthKey(month.year, month.month)] || 0),
+            0
+          );
           const rollingAverage = rollingTargetSum > 0 ? (rollingActualSum / rollingTargetSum) * 100 : 0;
 
           percentData.push({
             year: currentMonth.year,
             month: currentMonth.month,
-            actual: Math.round(actualPercent),
-            rollingAverage
+            actual: actualPercent,
+            rollingAverage,
           });
         }
 
         processedStats.push({
           service: {
             service_id: -1,
-            service_name: '% of Target Achieved'
+            service_name: '% of Target Achieved',
           },
           data: percentData,
-          isPercentage: true
+          isPercentage: true,
         });
 
-        const isPercentRanking = activeServiceId === -1 || (!activeServiceId && processedStats[0]?.service.service_id === -1);
-        const rankingServiceId = activeServiceId && activeServiceId !== -1 ? activeServiceId : null;
+        const activeMetricId =
+          activeServiceId && processedStats.some((stat) => stat.service.service_id === activeServiceId)
+            ? activeServiceId
+            : processedStats[0]?.service.service_id ?? null;
 
-        const rankingRows: AccountantRankingRow[] = visibleAccountants.map((staffMember) => {
-          const monthlySeries = all24Months.map(({ year, month }) => {
-            const monthKey = `${year}-${month}`;
+        const rankingRows: AccountantRankingRow[] = visibleAccountants
+          .map((staffMember) => {
+            const monthlyActualByService: Record<string, number> = {};
+            const monthlyAllActuals: Record<string, number> = {};
+            const monthlyTargetsByStaff: Record<string, number> = {};
+            const bagelCountsByMonth: Record<string, number> = {};
 
-            if (isPercentRanking) {
-              const monthActual = (finalRankingActivities || [])
-                .filter(activity => {
-                  if (activity.staff_id !== staffMember.staff_id || !activity.date) return false;
-                  const [activityYear, activityMonth] = activity.date.split('-').map(Number);
-                  const service = services.find(s => s.service_id === activity.service_id);
-                  return activityYear === year && activityMonth === month && service?.service_name !== 'Bagel Days';
-                })
-                .reduce((sum, activity) => sum + (activity.delivered_count || 0), 0);
+            finalRankingActivities.forEach((activity) => {
+              if (activity.staff_id !== staffMember.staff_id || !activity.date || activity.service_id == null) {
+                return;
+              }
 
-              const monthTarget = (allTargets || [])
-                .filter(target =>
-                  target.staff_id === staffMember.staff_id &&
-                  target.year === year &&
-                  target.month === month
-                )
-                .reduce((sum, target) => sum + (target.target_value || 0), 0);
+              const [yearStr, monthStr] = activity.date.split('-');
+              const key = getMonthKey(parseInt(yearStr, 10), parseInt(monthStr, 10));
+              const service = services.find((item) => item.service_id === activity.service_id);
 
-              return monthTarget > 0 ? (monthActual / monthTarget) * 100 : 0;
+              if (!service) return;
+
+              if (service.service_name === 'Bagel Days') {
+                bagelCountsByMonth[key] = (bagelCountsByMonth[key] || 0) + (activity.delivered_count || 0);
+                return;
+              }
+
+              monthlyAllActuals[key] = (monthlyAllActuals[key] || 0) + (activity.delivered_count || 0);
+
+              const serviceKey = `${key}-${activity.service_id}`;
+              monthlyActualByService[serviceKey] = (monthlyActualByService[serviceKey] || 0) + (activity.delivered_count || 0);
+            });
+
+            (allTargets as TargetRow[] | null)?.forEach((target) => {
+              if (target.staff_id !== staffMember.staff_id) return;
+              const key = getMonthKey(target.year, target.month);
+              monthlyTargetsByStaff[key] = (monthlyTargetsByStaff[key] || 0) + (target.target_value || 0);
+            });
+
+            let rollingAverage = 0;
+
+            if (activeMetricId === -1) {
+              rollingAverage = getLastTwelvePercent(all24Months, monthlyAllActuals, monthlyTargetsByStaff);
+            } else {
+              const activeService = services.find((service) => service.service_id === activeMetricId);
+
+              if (activeService?.service_name === 'Bagel Days') {
+                const monthlySeries = all24Months.map(
+                  (month) => bagelCountsByMonth[getMonthKey(month.year, month.month)] || 0
+                );
+                rollingAverage = getLastTwelveAverage(monthlySeries);
+              } else if (activeMetricId != null) {
+                const monthlySeries = all24Months.map((month) => {
+                  const key = `${getMonthKey(month.year, month.month)}-${activeMetricId}`;
+                  return monthlyActualByService[key] || 0;
+                });
+                rollingAverage = getLastTwelveAverage(monthlySeries);
+              }
             }
 
-            if (rankingServiceId == null) {
-              return 0;
-            }
-
-            const activeService = services.find(service => service.service_id === rankingServiceId);
-            if (!activeService) {
-              return 0;
-            }
-
-            if (activeService.service_name === 'Bagel Days') {
-              const staffBagelCount = (finalRankingActivities || [])
-                .filter(activity => {
-                  if (activity.staff_id !== staffMember.staff_id || !activity.date || activity.service_id !== rankingServiceId) {
-                    return false;
-                  }
-                  const [activityYear, activityMonth] = activity.date.split('-').map(Number);
-                  return activityYear === year && activityMonth === month;
-                })
-                .reduce((sum, activity) => sum + (activity.delivered_count || 0), 0);
-
-              return staffBagelCount;
-            }
-
-            return (finalRankingActivities || [])
-              .filter(activity => {
-                if (activity.staff_id !== staffMember.staff_id || !activity.date || activity.service_id !== rankingServiceId) {
-                  return false;
-                }
-                const [activityYear, activityMonth] = activity.date.split('-').map(Number);
-                return activityYear === year && activityMonth === month;
-              })
-              .reduce((sum, activity) => sum + (activity.delivered_count || 0), 0);
-          });
-
-          let rollingAverage = 0;
-          for (let i = 12; i < 24; i++) {
-            rollingAverage += monthlySeries[i];
-          }
-          rollingAverage = rollingAverage / 12;
-
-          return {
-            staff_id: staffMember.staff_id,
-            name: staffMember.name,
-            rollingAverage,
-          };
-        }).sort((a, b) => b.rollingAverage - a.rollingAverage);
+            return {
+              staff_id: staffMember.staff_id,
+              name: staffMember.name,
+              rollingAverage,
+            };
+          })
+          .sort((a, b) => b.rollingAverage - a.rollingAverage);
 
         setStatsData(processedStats);
         setAccountantRankings(rankingRows);
@@ -383,14 +417,14 @@ export const TeamView: React.FC = () => {
 
   useEffect(() => {
     if (statsData.length > 0) {
-      if (!activeServiceId || !statsData.find(s => s.service.service_id === activeServiceId)) {
+      if (!activeServiceId || !statsData.find((s) => s.service.service_id === activeServiceId)) {
         setActiveServiceId(statsData[0].service.service_id);
       }
     }
   }, [statsData, activeServiceId]);
 
   const activeStat = useMemo(
-    () => statsData.find(s => s.service.service_id === activeServiceId),
+    () => statsData.find((s) => s.service.service_id === activeServiceId),
     [statsData, activeServiceId]
   );
 
@@ -416,7 +450,7 @@ export const TeamView: React.FC = () => {
       ) : (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {statsData.map(stat => {
+            {statsData.map((stat) => {
               const latestMonth = stat.data[11];
               const isActive = activeServiceId === stat.service.service_id;
 
@@ -473,7 +507,7 @@ export const TeamView: React.FC = () => {
                       Latest Month Actual
                     </div>
                     <div className="text-2xl font-bold text-[#001B47] dark:text-blue-400">
-                      {activeStat.data[11].actual}{activeStat.isPercentage ? '%' : ''}
+                      {activeStat.data[11].actual.toFixed(1).replace(/\.0$/, '')}{activeStat.isPercentage ? '%' : ''}
                     </div>
                   </div>
                 </div>
@@ -510,7 +544,7 @@ export const TeamView: React.FC = () => {
   );
 };
 
-const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPercentage?: boolean }) => {
+const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPercentage?: boolean }) => {
   const VIEWBOX_WIDTH = 800;
   const VIEWBOX_HEIGHT = 320;
   const PADDING_TOP = 40;
@@ -521,7 +555,7 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPerc
   const CHART_WIDTH = VIEWBOX_WIDTH - PADDING_LEFT - PADDING_RIGHT;
   const CHART_HEIGHT = VIEWBOX_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
 
-  const maxY = Math.max(...data.map(d => Math.max(d.actual, d.rollingAverage)), 10) * 1.15;
+  const maxY = Math.max(...data.map((d) => Math.max(d.actual, d.rollingAverage)), 10) * 1.15;
 
   const getX = (index: number) => PADDING_LEFT + (index * (CHART_WIDTH / 12)) + (CHART_WIDTH / 24);
   const getY = (val: number) => PADDING_TOP + CHART_HEIGHT - (val / maxY) * CHART_HEIGHT;
@@ -545,7 +579,7 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPerc
         <text x="158" y="10" className="text-xs fill-gray-600 dark:fill-gray-300 font-medium">12-Month Rolling Average</text>
       </g>
 
-      {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
+      {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
         const y = PADDING_TOP + CHART_HEIGHT - (ratio * CHART_HEIGHT);
         const val = Math.round(ratio * maxY);
         return (
@@ -669,7 +703,7 @@ const AccountantRankingChart = ({
   const CHART_WIDTH = VIEWBOX_WIDTH - PADDING_LEFT - PADDING_RIGHT;
   const CHART_HEIGHT = VIEWBOX_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
 
-  const maxValue = Math.max(...data.map(item => item.rollingAverage), 1) * 1.1;
+  const maxValue = Math.max(...data.map((item) => item.rollingAverage), 1) * 1.1;
   const rowHeight = CHART_HEIGHT / Math.max(data.length, 1);
   const barHeight = Math.min(26, rowHeight * 0.62);
 
