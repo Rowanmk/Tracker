@@ -1,4 +1,3 @@
-// Full new code
 import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback, useMemo } from 'react';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
@@ -22,7 +21,7 @@ interface AuthContextType {
   isAdmin: boolean;
   isAuthenticated: boolean;
   selectedTeamId: string | null;
-  onTeamChange: (teamId: number | "all" | "team-view") => void;
+  onTeamChange: (teamId: number | 'all' | 'team-view') => void;
   showFallbackWarning: boolean;
   error: string | null;
   staffLoaded: boolean;
@@ -35,8 +34,10 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 const PERMANENT_ADMIN_NAME = 'rowan';
+const PERMANENT_ADMIN_EMAIL = 'rowan@thecrew.co.uk';
 
 const normalizeFirstName = (name?: string | null) => (name || '').split(' ')[0]?.trim().toLowerCase() || '';
+const normalizeEmail = (email?: string | null) => (email || '').trim().toLowerCase();
 
 const isAccountant = (staffMember: Staff) => {
   const role = (staffMember.role || '').toLowerCase();
@@ -47,9 +48,13 @@ const isAccountant = (staffMember: Staff) => {
 
 const enforcePermanentAdmin = (staffMember: Staff): Staff => {
   const firstName = normalizeFirstName(staffMember.name);
-  if (firstName === PERMANENT_ADMIN_NAME && staffMember.role !== 'admin') {
+  const isPermanentAdmin =
+    firstName === PERMANENT_ADMIN_NAME || normalizeEmail((staffMember as Staff & { email?: string | null }).email) === PERMANENT_ADMIN_EMAIL;
+
+  if (isPermanentAdmin && staffMember.role !== 'admin') {
     return { ...staffMember, role: 'admin' };
   }
+
   return staffMember;
 };
 
@@ -65,8 +70,101 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  const findMatchingStaffForSession = useCallback(async (userId: string, email?: string | null) => {
+    const normalizedSessionEmail = normalizeEmail(email);
+
+    const { data: linkedStaff } = await supabase
+      .from('staff')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (linkedStaff) {
+      return enforcePermanentAdmin(linkedStaff);
+    }
+
+    const { data: allStaffRows } = await supabase
+      .from('staff')
+      .select('*')
+      .order('staff_id');
+
+    const normalizedStaffRows = (allStaffRows || []).map(enforcePermanentAdmin);
+
+    const exactEmailMatch =
+      normalizedSessionEmail
+        ? normalizedStaffRows.find((row) => normalizeEmail((row as Staff & { email?: string | null }).email) === normalizedSessionEmail)
+        : null;
+
+    if (exactEmailMatch) {
+      await supabase
+        .from('staff')
+        .update({
+          user_id: userId,
+          role:
+            normalizeEmail((exactEmailMatch as Staff & { email?: string | null }).email) === PERMANENT_ADMIN_EMAIL ||
+            normalizeFirstName(exactEmailMatch.name) === PERMANENT_ADMIN_NAME
+              ? 'admin'
+              : exactEmailMatch.role,
+          is_hidden: false,
+        })
+        .eq('staff_id', exactEmailMatch.staff_id);
+
+      return {
+        ...exactEmailMatch,
+        user_id: userId,
+        role:
+          normalizeEmail((exactEmailMatch as Staff & { email?: string | null }).email) === PERMANENT_ADMIN_EMAIL ||
+          normalizeFirstName(exactEmailMatch.name) === PERMANENT_ADMIN_NAME
+            ? 'admin'
+            : exactEmailMatch.role,
+        is_hidden: false,
+      } as Staff;
+    }
+
+    const rowanNameMatch = normalizedStaffRows.find(
+      (row) => normalizeFirstName(row.name) === PERMANENT_ADMIN_NAME
+    );
+
+    if (normalizedSessionEmail === PERMANENT_ADMIN_EMAIL && rowanNameMatch) {
+      await supabase
+        .from('staff')
+        .update({
+          user_id: userId,
+          role: 'admin',
+          is_hidden: false,
+        })
+        .eq('staff_id', rowanNameMatch.staff_id);
+
+      return {
+        ...rowanNameMatch,
+        user_id: userId,
+        role: 'admin',
+        is_hidden: false,
+      } as Staff;
+    }
+
+    return null;
+  }, []);
+
+  const applyAuthenticatedStaff = useCallback((staffMember: Staff) => {
+    const normalized = enforcePermanentAdmin(staffMember);
+    setCurrentStaff(normalized);
+    setIsAuthenticated(true);
+    const savedTeam = localStorage.getItem('crew_tracker_team_id');
+    setSelectedTeamId(savedTeam || String(normalized.staff_id));
+  }, []);
+
+  const clearAuthenticatedStaff = useCallback(() => {
+    setCurrentStaff(null);
+    setIsAuthenticated(false);
+    setSelectedTeamId(null);
+    localStorage.removeItem('crew_tracker_team_id');
+  }, []);
+
   const fetchStaff = async () => {
     try {
+      setError(null);
+
       const [staffRes, teamsRes, permsRes] = await Promise.all([
         supabase.from('staff').select('*').order('name'),
         supabase.from('teams').select('*').order('name'),
@@ -78,47 +176,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const normalizedStaff = (staffRes.data || []).map(enforcePermanentAdmin);
       setAllStaff(normalizedStaff);
-      setStaff(normalizedStaff.filter(s => !s.is_hidden));
+      setStaff(normalizedStaff.filter((s) => !s.is_hidden));
       setTeams(teamsRes.data || []);
       setPermissions(permsRes.data || []);
 
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (session?.user) {
-        const found = normalizedStaff.find(s => s.user_id === session.user.id);
-        if (found) {
-          setCurrentStaff(found);
-          setIsAuthenticated(true);
-          const savedTeam = localStorage.getItem('crew_tracker_team_id');
-          setSelectedTeamId(savedTeam || String(found.staff_id));
+        const matchedStaff = await findMatchingStaffForSession(session.user.id, session.user.email);
+
+        if (matchedStaff) {
+          applyAuthenticatedStaff(matchedStaff);
         } else {
-          // Check DB directly just in case
-          const { data: staffData } = await supabase.from('staff').select('*').eq('user_id', session.user.id).maybeSingle();
-          if (staffData) {
-            const normalized = enforcePermanentAdmin(staffData);
-            setCurrentStaff(normalized);
-            setIsAuthenticated(true);
-            const savedTeam = localStorage.getItem('crew_tracker_team_id');
-            setSelectedTeamId(savedTeam || String(normalized.staff_id));
-          } else {
-            // Auto-create staff record if missing
-            const newStaff = {
-              user_id: session.user.id,
-              email: session.user.email,
-              name: session.user.email?.split('@')[0] || 'New User',
-              role: session.user.email === 'rowan@thecrew.co.uk' ? 'admin' : 'user',
-              is_hidden: false
-            };
-            const { data: insertedStaff } = await supabase.from('staff').insert(newStaff).select().single();
-            if (insertedStaff) {
-              const normalized = enforcePermanentAdmin(insertedStaff);
-              setCurrentStaff(normalized);
-              setIsAuthenticated(true);
-              setSelectedTeamId(String(normalized.staff_id));
-            } else {
-              await supabase.auth.signOut();
-            }
-          }
+          await supabase.auth.signOut();
+          clearAuthenticatedStaff();
+          setError('Your login is valid, but no linked staff profile was found. Please run the Rowan recovery SQL or contact an administrator.');
         }
+      } else {
+        clearAuthenticatedStaff();
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load staff data');
@@ -129,88 +206,68 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   useEffect(() => {
-    fetchStaff();
+    void fetchStaff();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        const { data: staffData } = await supabase.from('staff').select('*').eq('user_id', session.user.id).maybeSingle();
-        if (staffData) {
-          const normalized = enforcePermanentAdmin(staffData);
-          setCurrentStaff(normalized);
-          setIsAuthenticated(true);
-          const savedTeam = localStorage.getItem('crew_tracker_team_id');
-          setSelectedTeamId(savedTeam || String(normalized.staff_id));
+        const matchedStaff = await findMatchingStaffForSession(session.user.id, session.user.email);
+
+        if (matchedStaff) {
+          applyAuthenticatedStaff(matchedStaff);
+          await fetchStaff();
         } else {
-          // Auto-create staff profile if missing
-          const newStaff = {
-            user_id: session.user.id,
-            email: session.user.email,
-            name: session.user.email?.split('@')[0] || 'New User',
-            role: session.user.email === 'rowan@thecrew.co.uk' ? 'admin' : 'user',
-            is_hidden: false
-          };
-          const { data: insertedStaff } = await supabase.from('staff').insert(newStaff).select().single();
-          if (insertedStaff) {
-            const normalized = enforcePermanentAdmin(insertedStaff);
-            setCurrentStaff(normalized);
-            setIsAuthenticated(true);
-            setSelectedTeamId(String(normalized.staff_id));
-          } else {
-            await supabase.auth.signOut();
-          }
+          await supabase.auth.signOut();
+          clearAuthenticatedStaff();
+          setError('Your login is valid, but no linked staff profile was found. Please run the Rowan recovery SQL or contact an administrator.');
         }
       } else if (event === 'SIGNED_OUT') {
-        setCurrentStaff(null);
-        setIsAuthenticated(false);
-        setSelectedTeamId(null);
-        localStorage.removeItem('crew_tracker_team_id');
+        clearAuthenticatedStaff();
       }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [applyAuthenticatedStaff, clearAuthenticatedStaff, findMatchingStaffForSession]);
 
   const signInWithEmail = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: error.message };
+    setError(null);
+
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    if (signInError) return { error: signInError.message };
 
     if (data.user) {
-      const { data: staffData } = await supabase.from('staff').select('*').eq('user_id', data.user.id).maybeSingle();
-      if (staffData) {
-        await createAuditLog({
-          pagePath: '/login',
-          pageLabel: 'Login',
-          actionType: 'login',
-          entityType: 'session',
-          entityId: String(staffData.staff_id),
-          description: `${staffData.name} signed in`,
-          actorStaffId: staffData.staff_id,
-          teamId: staffData.team_id,
-          metadata: { email_entered: email },
-        });
-      } else {
-        // Auto-create staff record if missing
-        const newStaff = {
-          user_id: data.user.id,
-          email: data.user.email,
-          name: data.user.email?.split('@')[0] || 'New User',
-          role: data.user.email === 'rowan@thecrew.co.uk' ? 'admin' : 'user',
-          is_hidden: false
+      const matchedStaff = await findMatchingStaffForSession(data.user.id, data.user.email);
+
+      if (!matchedStaff) {
+        await supabase.auth.signOut();
+        return {
+          error:
+            'Login succeeded, but your account is not linked to a staff profile. Run the Rowan recovery SQL and then sign in again.',
         };
-        const { data: insertedStaff, error: insertError } = await supabase.from('staff').insert(newStaff).select().single();
-        if (insertError || !insertedStaff) {
-          await supabase.auth.signOut();
-          return { error: "Login successful, but failed to link to a staff profile." };
-        }
       }
+
+      await fetchStaff();
+
+      await createAuditLog({
+        pagePath: '/login',
+        pageLabel: 'Login',
+        actionType: 'login',
+        entityType: 'session',
+        entityId: String(matchedStaff.staff_id),
+        description: `${matchedStaff.name} signed in`,
+        actorStaffId: matchedStaff.staff_id,
+        teamId: matchedStaff.team_id,
+        metadata: { email_entered: email },
+      });
     }
 
     return {};
   };
 
   const signUpWithEmail = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) return { error: error.message };
+    const { error: signUpError } = await supabase.auth.signUp({ email, password });
+    if (signUpError) return { error: signUpError.message };
     return {};
   };
 
@@ -235,10 +292,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const resetPassword = async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: window.location.origin + '/settings',
     });
-    if (error) return { error: error.message };
+    if (resetError) return { error: resetError.message };
     return {};
   };
 
@@ -261,22 +318,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const hasPermission = useCallback((path: string): boolean => {
     if (!currentStaff) return false;
     const roleForPermissions = currentStaff.role === 'user' ? 'staff' : currentStaff.role;
-    const perm = permissions.find(p => p.role === roleForPermissions && p.page_path === path);
+    const perm = permissions.find((p) => p.role === roleForPermissions && p.page_path === path);
     return perm ? perm.is_visible !== false : true;
   }, [currentStaff, permissions]);
 
   const accountantStaff = useMemo(
     () =>
       allStaff
-        .filter(staffMember => !staffMember.is_hidden && isAccountant(staffMember))
+        .filter((staffMember) => !staffMember.is_hidden && isAccountant(staffMember))
         .sort((a, b) => a.name.localeCompare(b.name)),
     [allStaff]
   );
 
   const accountantTeams = useMemo(
     () =>
-      teams.filter(team =>
-        accountantStaff.some(staffMember => staffMember.team_id === team.id)
+      teams.filter((team) =>
+        accountantStaff.some((staffMember) => staffMember.team_id === team.id)
       ),
     [teams, accountantStaff]
   );

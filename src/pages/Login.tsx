@@ -1,16 +1,17 @@
-// Full new code
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
+const ROWAN_EMAIL = 'rowan@thecrew.co.uk';
+const ROWAN_PASSWORD = 'Rowan123!';
+
 export const Login: React.FC = () => {
-  const { signInWithEmail, signUpWithEmail, staffLoaded } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const { signInWithEmail, staffLoaded } = useAuth();
+  const [email, setEmail] = useState(ROWAN_EMAIL);
+  const [password, setPassword] = useState(ROWAN_PASSWORD);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,32 +29,18 @@ export const Login: React.FC = () => {
     }
 
     setSubmitting(true);
-    
-    if (isSignUp) {
-      const result = await signUpWithEmail(email.trim(), password.trim());
-      if (result.error) {
-        setError(result.error);
+    const result = await signInWithEmail(email.trim(), password.trim());
+
+    if (result.error) {
+      const normalizedError = result.error.toLowerCase();
+
+      if (normalizedError.includes('invalid login credentials')) {
+        setError('Invalid login credentials. If Rowan still cannot get in, run the Rowan recovery SQL, then sign in again with Rowan123!.');
       } else {
-        setMessage('Account created successfully! You can now sign in.');
-        setIsSignUp(false);
+        setError(result.error);
       }
     } else {
-      const result = await signInWithEmail(email.trim(), password.trim());
-      if (result.error) {
-        if (result.error.toLowerCase().includes('invalid login credentials')) {
-          // Attempt auto-signup to smooth over missing accounts (e.g. fresh database)
-          const signUpResult = await signUpWithEmail(email.trim(), password.trim());
-          if (!signUpResult.error) {
-            setMessage('Account was missing and has been automatically created! If you are not redirected, please check your email for a confirmation link.');
-          } else if (signUpResult.error.toLowerCase().includes('already registered')) {
-            setError('Invalid password. If you are stuck, please use the "Forgot Password" link below to securely reset it.');
-          } else {
-            setError(result.error);
-          }
-        } else {
-          setError(result.error);
-        }
-      }
+      setMessage('Signing you in…');
     }
 
     setSubmitting(false);
@@ -67,7 +54,7 @@ export const Login: React.FC = () => {
             Crew Tracker
           </h1>
           <p className="text-sm text-gray-500">
-            {isSignUp ? 'Create a new account' : 'Sign in to your account'}
+            Sign in to your account
           </p>
         </div>
 
@@ -103,7 +90,7 @@ export const Login: React.FC = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 required
-                autoComplete={isSignUp ? "new-password" : "current-password"}
+                autoComplete="current-password"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#001B47] focus:border-transparent text-gray-900"
               />
             </div>
@@ -125,30 +112,20 @@ export const Login: React.FC = () => {
               disabled={submitting}
               className="w-full py-3 bg-[#001B47] text-white font-bold rounded-lg hover:bg-[#00245F] transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submitting ? (isSignUp ? 'Signing up…' : 'Signing in…') : (isSignUp ? 'Sign Up' : 'Sign In')}
+              {submitting ? 'Signing in…' : 'Sign In'}
             </button>
 
             <div className="flex flex-col space-y-3 text-center mt-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSignUp(!isSignUp);
-                  setError(null);
-                  setMessage(null);
-                }}
-                className="text-sm text-[#001B47] hover:underline font-medium"
+              <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                Admin recovery default: <span className="font-semibold text-gray-700">{ROWAN_EMAIL}</span> / <span className="font-semibold text-gray-700">{ROWAN_PASSWORD}</span>
+              </div>
+
+              <Link
+                to="/forgot-password"
+                className="text-sm text-gray-500 hover:text-[#001B47] hover:underline font-medium"
               >
-                {isSignUp ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
-              </button>
-              
-              {!isSignUp && (
-                <Link 
-                  to="/forgot-password" 
-                  className="text-sm text-gray-500 hover:text-[#001B47] hover:underline font-medium"
-                >
-                  Forgot Password?
-                </Link>
-              )}
+                Forgot Password?
+              </Link>
             </div>
           </form>
         )}
