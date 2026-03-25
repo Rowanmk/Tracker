@@ -1,3 +1,4 @@
+// Full new code
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -39,7 +40,19 @@ export const Login: React.FC = () => {
     } else {
       const result = await signInWithEmail(email.trim(), password.trim());
       if (result.error) {
-        setError(result.error);
+        if (result.error.toLowerCase().includes('invalid login credentials')) {
+          // Attempt auto-signup to smooth over missing accounts (e.g. fresh database)
+          const signUpResult = await signUpWithEmail(email.trim(), password.trim());
+          if (!signUpResult.error) {
+            setMessage('Account was missing and has been automatically created! If you are not redirected, please check your email for a confirmation link.');
+          } else if (signUpResult.error.toLowerCase().includes('already registered')) {
+            setError('Invalid password. If you are stuck, please use the "Forgot Password" link below to securely reset it.');
+          } else {
+            setError(result.error);
+          }
+        } else {
+          setError(result.error);
+        }
       }
     }
 
