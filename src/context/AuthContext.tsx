@@ -11,9 +11,8 @@ interface AuthContextType {
   user: null;
   loading: boolean;
   signOut: () => Promise<void>;
-  signInWithCredentials: (username: string, password: string) => Promise<{ error?: string }>;
-  getSecurityQuestion: (username: string) => Promise<{ question?: string; error?: string }>;
-  resetPasswordWithSecurityAnswer: (username: string, answer: string, newPassword: string) => Promise<{ error?: string }>;
+  signInWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
+  resetPassword: (email: string) => Promise<{ error?: string }>;
   staff: Staff[];
   allStaff: Staff[];
   teams: Team[];
@@ -81,13 +80,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setTeams(teamsRes.data || []);
       setPermissions(permsRes.data || []);
 
-      const savedStaffId = localStorage.getItem('crew_tracker_staff_id');
-      if (savedStaffId) {
-        const found = normalizedStaff.find(s => s.staff_id === Number(savedStaffId));
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const found = normalizedStaff.find(s => s.user_id === session.user.id);
         if (found) {
           setCurrentStaff(found);
           setIsAuthenticated(true);
-          setSelectedTeamId(String(found.staff_id));
+          const savedTeam = localStorage.getItem('crew_tracker_team_id');
+          setSelectedTeamId(savedTeam || String(found.staff_id));
         }
       }
     } catch (err: unknown) {
@@ -100,37 +100,48 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     fetchStaff();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        const { data: staffData } = await supabase.from('staff').select('*').eq('user_id', session.user.id).single();
+        if (staffData) {
+          const normalized = enforcePermanentAdmin(staffData);
+          setCurrentStaff(normalized);
+          setIsAuthenticated(true);
+          const savedTeam = localStorage.getItem('crew_tracker_team_id');
+          setSelectedTeamId(savedTeam || String(normalized.staff_id));
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentStaff(null);
+        setIsAuthenticated(false);
+        setSelectedTeamId(null);
+        localStorage.removeItem('crew_tracker_team_id');
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const signInWithCredentials = async (username: string, password: string) => {
-    const enteredUsername = username.toLowerCase().trim();
-    const matched = allStaff.find(
-      s => normalizeFirstName(s.name) === enteredUsername && !s.is_hidden
-    );
+  const signInWithEmail = async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { error: error.message };
 
-    if (!matched) return { error: 'Invalid username or password.' };
-
-    const dbPassword = matched.password || normalizeFirstName(matched.name);
-    if (password.trim() !== dbPassword) return { error: 'Invalid username or password.' };
-
-    setCurrentStaff(matched);
-    setIsAuthenticated(true);
-    localStorage.setItem('crew_tracker_staff_id', matched.staff_id.toString());
-    setSelectedTeamId(String(matched.staff_id));
-
-    await createAuditLog({
-      pagePath: '/login',
-      pageLabel: 'Login',
-      actionType: 'login',
-      entityType: 'session',
-      entityId: String(matched.staff_id),
-      description: `${matched.name} signed in`,
-      actorStaffId: matched.staff_id,
-      teamId: matched.team_id,
-      metadata: {
-        username_entered: enteredUsername,
-      },
-    });
+    if (data.user) {
+      const { data: staffData } = await supabase.from('staff').select('*').eq('user_id', data.user.id).single();
+      if (staffData) {
+        await createAuditLog({
+          pagePath: '/login',
+          pageLabel: 'Login',
+          actionType: 'login',
+          entityType: 'session',
+          entityId: String(staffData.staff_id),
+          description: `${staffData.name} signed in`,
+          actorStaffId: staffData.staff_id,
+          teamId: staffData.team_id,
+          metadata: { email_entered: email },
+        });
+      }
+    }
 
     return {};
   };
@@ -152,92 +163,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
     }
 
-    setCurrentStaff(null);
-    setIsAuthenticated(false);
-    setSelectedTeamId(null);
-    localStorage.removeItem('crew_tracker_staff_id');
+    await supabase.auth.signOut();
+  };
+
+  const resetPassword = async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/settings',
+    });
+    if (error) return { error: error.message };
+    return {};
   };
 
   const onTeamChange = (teamId: number | 'all' | 'team-view') => {
     if (teamId === 'all') {
       if (currentStaff) {
         setSelectedTeamId(String(currentStaff.staff_id));
+        localStorage.setItem('crew_tracker_team_id', String(currentStaff.staff_id));
       } else {
         setSelectedTeamId(null);
+        localStorage.removeItem('crew_tracker_team_id');
       }
       return;
     }
 
     setSelectedTeamId(teamId.toString());
-  };
-
-  const getSecurityQuestion = async (username: string) => {
-    const enteredUsername = username.toLowerCase().trim();
-    const matched = allStaff.find(
-      s => normalizeFirstName(s.name) === enteredUsername && !s.is_hidden
-    );
-
-    if (!matched) {
-      return { error: 'No user found with that username.' };
-    }
-
-    if (!matched.security_question?.trim()) {
-      return { error: 'No security question is set for this user.' };
-    }
-
-    return { question: matched.security_question };
-  };
-
-  const resetPasswordWithSecurityAnswer = async (
-    username: string,
-    answer: string,
-    newPassword: string
-  ) => {
-    const enteredUsername = username.toLowerCase().trim();
-    const matched = allStaff.find(
-      s => normalizeFirstName(s.name) === enteredUsername && !s.is_hidden
-    );
-
-    if (!matched) {
-      return { error: 'No user found with that username.' };
-    }
-
-    const storedAnswer = matched.security_answer?.trim().toLowerCase();
-    const providedAnswer = answer.trim().toLowerCase();
-
-    if (!storedAnswer) {
-      return { error: 'No security answer is set for this user.' };
-    }
-
-    if (storedAnswer !== providedAnswer) {
-      return { error: 'Incorrect security answer.' };
-    }
-
-    const { error: updateError } = await supabase
-      .from('staff')
-      .update({ password: newPassword.trim() })
-      .eq('staff_id', matched.staff_id);
-
-    if (updateError) {
-      return { error: 'Failed to reset password.' };
-    }
-
-    await createAuditLog({
-      pagePath: '/forgot-password',
-      pageLabel: 'Forgot Password',
-      actionType: 'password_reset',
-      entityType: 'account',
-      entityId: String(matched.staff_id),
-      description: `Password reset completed for ${matched.name}`,
-      actorStaffId: matched.staff_id,
-      teamId: matched.team_id,
-      metadata: {
-        reset_via: 'security_question',
-      },
-    });
-
-    await fetchStaff();
-    return {};
+    localStorage.setItem('crew_tracker_team_id', teamId.toString());
   };
 
   const hasPermission = useCallback((path: string): boolean => {
@@ -267,9 +217,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     user: null,
     loading,
     signOut,
-    signInWithCredentials,
-    getSecurityQuestion,
-    resetPasswordWithSecurityAnswer,
+    signInWithEmail,
+    resetPassword,
     staff,
     allStaff,
     teams: accountantTeams,

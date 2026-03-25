@@ -49,6 +49,7 @@ export const Settings: React.FC = () => {
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const [newUserName, setNewUserName] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserAccessLevel, setNewUserAccessLevel] = useState<AccessLevel>('user');
   const [newUserWorkCategory, setNewUserWorkCategory] = useState<WorkCategory>('assistant');
@@ -60,7 +61,6 @@ export const Settings: React.FC = () => {
   const [editingUser, setEditingUser] = useState<StaffWithDerivedCategories | null>(null);
   const [editForm, setEditForm] = useState({
     name: '',
-    password: '',
     accessLevel: 'user' as AccessLevel,
     workCategory: 'assistant' as WorkCategory,
     home_region: 'england-and-wales' as
@@ -247,7 +247,7 @@ export const Settings: React.FC = () => {
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUserName.trim() || !currentStaff) return;
+    if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword.trim() || !currentStaff) return;
 
     setIsAddingUser(true);
     setFeedback(null);
@@ -258,29 +258,25 @@ export const Settings: React.FC = () => {
       const requestedWorkCategory = newUserWorkCategory;
       const requestedRegion = newUserRegion;
 
-      const insertPayload: Database['public']['Tables']['staff']['Insert'] = {
-        name: requestedName,
-        password: newUserPassword.trim() || null,
-        role: getRoleValueFromAccessLevel(requestedAccessLevel, requestedWorkCategory),
-        home_region: requestedRegion,
-        team_id: null,
-        is_hidden: false,
-      };
+      const { data, error: insertError } = await supabase.functions.invoke('create-user', {
+        body: {
+          email: newUserEmail.trim(),
+          password: newUserPassword.trim(),
+          name: requestedName,
+          role: getRoleValueFromAccessLevel(requestedAccessLevel, requestedWorkCategory),
+          home_region: requestedRegion
+        }
+      });
 
-      const { data, error: insertError } = await supabase
-        .from('staff')
-        .insert(insertPayload)
-        .select('*')
-        .single();
-
-      if (insertError) {
-        setTimedFeedback(getErrorMessage('Failed to add user', insertError));
-      } else {
-        const normalizedUser = deriveStaffCategories(data as Staff);
+      if (insertError || data?.error) {
+        setTimedFeedback(getErrorMessage('Failed to add user', insertError || new Error(data?.error)));
+      } else if (data?.user) {
+        const normalizedUser = deriveStaffCategories(data.user as Staff);
         setAllUsers(prev =>
           [...prev, normalizedUser].sort((a, b) => a.name.localeCompare(b.name))
         );
         setNewUserName('');
+        setNewUserEmail('');
         setNewUserPassword('');
         setNewUserAccessLevel('user');
         setNewUserWorkCategory('assistant');
@@ -291,23 +287,24 @@ export const Settings: React.FC = () => {
           pageLabel: 'Settings',
           actionType: 'create',
           entityType: 'user',
-          description: `${currentStaff.name} created user ${data.name}`,
+          description: `${currentStaff.name} created user ${data.user.name}`,
           actorStaffId: currentStaff.staff_id,
           actorName: currentStaff.name,
           affectedStaff: [
             {
-              staff_id: data.staff_id,
-              name: data.name,
-              team_id: data.team_id,
+              staff_id: data.user.staff_id,
+              name: data.user.name,
+              team_id: data.user.team_id,
             },
           ],
           metadata: {
-            exact_change: `Created user ${data.name}`,
+            exact_change: `Created user ${data.user.name}`,
             previous: null,
             current: {
-              name: data.name,
-              role: data.role,
-              home_region: data.home_region,
+              name: data.user.name,
+              email: data.user.email,
+              role: data.user.role,
+              home_region: data.user.home_region,
               access_level: requestedAccessLevel,
               work_category: requestedWorkCategory,
             },
@@ -315,7 +312,7 @@ export const Settings: React.FC = () => {
         });
         setTimedFeedback('Successfully added user');
       }
-    } catch {
+    } catch (err) {
       setTimedFeedback('Failed to connect to database');
     } finally {
       setIsAddingUser(false);
@@ -326,7 +323,6 @@ export const Settings: React.FC = () => {
     setEditingUser(user);
     setEditForm({
       name: user.name,
-      password: user.password || '',
       accessLevel: user.accessLevel,
       workCategory: user.workCategory,
       home_region: (user.home_region as
@@ -346,7 +342,6 @@ export const Settings: React.FC = () => {
     try {
       const previousValues = {
         name: editingUser.name,
-        password_set: Boolean(editingUser.password),
         role: editingUser.role,
         home_region: editingUser.home_region,
         accessLevel: editingUser.accessLevel,
@@ -357,7 +352,6 @@ export const Settings: React.FC = () => {
 
       const updatePayload: Database['public']['Tables']['staff']['Update'] = {
         name: editForm.name.trim(),
-        password: editForm.password.trim() || null,
         role: getRoleValueFromAccessLevel(editForm.accessLevel, editForm.workCategory),
         home_region: editForm.home_region,
         security_question: editForm.security_question.trim() || null,
@@ -403,7 +397,6 @@ export const Settings: React.FC = () => {
             previous: previousValues,
             current: {
               name: data.name,
-              password_set: Boolean(data.password),
               role: data.role,
               home_region: data.home_region,
               access_level: editForm.accessLevel,
@@ -429,19 +422,19 @@ export const Settings: React.FC = () => {
 
     try {
       const previousValues = {
-        password_set: Boolean(currentStaff.password),
         security_question_set: Boolean(currentStaff.security_question),
         security_answer_set: Boolean(currentStaff.security_answer),
       };
+
+      if (accountForm.password.trim()) {
+        const { error: authError } = await supabase.auth.updateUser({ password: accountForm.password.trim() });
+        if (authError) throw authError;
+      }
 
       const updates: Database['public']['Tables']['staff']['Update'] = {
         security_question: accountForm.security_question.trim() || null,
         security_answer: accountForm.security_answer.trim() || null,
       };
-
-      if (accountForm.password.trim()) {
-        updates.password = accountForm.password.trim();
-      }
 
       const { error: updateError } = await supabase
         .from('staff')
@@ -467,18 +460,18 @@ export const Settings: React.FC = () => {
             exact_change: 'Updated own account settings',
             previous: previousValues,
             current: {
-              password_set: Boolean(updates.password || currentStaff.password),
+              password_set: Boolean(accountForm.password.trim()),
               security_question_set: Boolean(updates.security_question),
               security_answer_set: Boolean(updates.security_answer),
             },
-            updated_password: Boolean(updates.password),
+            updated_password: Boolean(accountForm.password.trim()),
             updated_security_question: true,
           },
         });
         setTimedFeedback('Successfully updated account settings');
       }
-    } catch {
-      setTimedFeedback('Failed to connect to database');
+    } catch (err: any) {
+      setTimedFeedback(getErrorMessage('Failed to update account', err));
     } finally {
       setIsSavingAccount(false);
     }
@@ -729,7 +722,7 @@ export const Settings: React.FC = () => {
           <div className="mt-6 space-y-6">
             <div className="bg-white shadow rounded-lg p-6">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Add New User</h3>
-              <form onSubmit={handleAddUser} className="grid grid-cols-1 md:grid-cols-6 gap-4">
+              <form onSubmit={handleAddUser} className="grid grid-cols-1 md:grid-cols-7 gap-4">
                 <input
                   type="text"
                   value={newUserName}
@@ -739,11 +732,20 @@ export const Settings: React.FC = () => {
                   required
                 />
                 <input
+                  type="email"
+                  value={newUserEmail}
+                  onChange={e => setNewUserEmail(e.target.value)}
+                  className="px-3 py-2 border rounded-md"
+                  placeholder="Email"
+                  required
+                />
+                <input
                   type="password"
                   value={newUserPassword}
                   onChange={e => setNewUserPassword(e.target.value)}
                   className="px-3 py-2 border rounded-md"
-                  placeholder="Password (optional)"
+                  placeholder="Password"
+                  required
                 />
                 <select
                   value={newUserAccessLevel}
@@ -791,6 +793,7 @@ export const Settings: React.FC = () => {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Access</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Work Category</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Region</th>
@@ -803,6 +806,7 @@ export const Settings: React.FC = () => {
                         .map(user => (
                           <tr key={user.staff_id}>
                             <td className="px-6 py-4 text-sm font-medium text-gray-900">{user.name}</td>
+                            <td className="px-6 py-4 text-sm text-gray-500">{user.email || '—'}</td>
                             <td className="px-6 py-4 text-sm text-gray-500">
                               {accessLevelLabels[user.accessLevel]}
                             </td>
@@ -970,16 +974,6 @@ export const Settings: React.FC = () => {
                   value={editForm.name}
                   onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
                   className="w-full px-3 py-2 border rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Password</label>
-                <input
-                  type="password"
-                  value={editForm.password}
-                  onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-md"
-                  placeholder="Leave blank to keep current"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">

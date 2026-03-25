@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export const Login: React.FC = () => {
-  const { signInWithCredentials, staffLoaded, allStaff } = useAuth();
-  const [username, setUsername] = useState('');
+  const { signInWithEmail, staffLoaded } = useAuth();
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -14,22 +14,17 @@ export const Login: React.FC = () => {
     setError(null);
 
     if (!staffLoaded) {
-      setError('User data is still loading. Please wait a moment and try again.');
+      setError('System is still loading. Please wait a moment and try again.');
       return;
     }
 
-    if (allStaff.length === 0) {
-      setError('No user records available. Please contact an administrator.');
-      return;
-    }
-
-    if (!username.trim() || !password.trim()) {
-      setError('Please enter your username and password.');
+    if (!email.trim() || !password.trim()) {
+      setError('Please enter your email and password.');
       return;
     }
 
     setSubmitting(true);
-    const result = await signInWithCredentials(username.trim(), password.trim());
+    const result = await signInWithEmail(email.trim(), password.trim());
 
     if (result.error) {
       setError(result.error);
@@ -37,8 +32,6 @@ export const Login: React.FC = () => {
 
     setSubmitting(false);
   };
-
-  const isReady = staffLoaded && allStaff.length > 0;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#001B47] via-[#0060B8] to-[#007EE0]">
@@ -52,21 +45,21 @@ export const Login: React.FC = () => {
 
         {!staffLoaded ? (
           <div className="text-center py-6 text-gray-500 text-sm">
-            Loading user data…
+            Loading system...
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Username
+                Email Address
               </label>
               <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your first name"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your email"
                 required
-                autoComplete="username"
+                autoComplete="email"
                 autoFocus
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#001B47] focus:border-transparent text-gray-900"
               />
@@ -95,10 +88,10 @@ export const Login: React.FC = () => {
 
             <button
               type="submit"
-              disabled={submitting || !isReady}
+              disabled={submitting}
               className="w-full py-3 bg-[#001B47] text-white font-bold rounded-lg hover:bg-[#00245F] transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submitting ? 'Signing in…' : !isReady ? 'Loading…' : 'Sign In'}
+              {submitting ? 'Signing in…' : 'Sign In'}
             </button>
 
             <div className="text-center">
@@ -111,10 +104,6 @@ export const Login: React.FC = () => {
             </div>
           </form>
         )}
-
-        <p className="text-center text-xs text-gray-400 mt-6">
-          Your username and password are your first name
-        </p>
       </div>
     </div>
   );
