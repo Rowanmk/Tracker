@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const ROWAN_EMAIL = 'rowan@thecrew.co.uk';
-const ROWAN_PASSWORD = 'Rowan123!';
+const RECOVERY_ADMIN_EMAIL = 'admin@thecrew.co.uk';
+const RECOVERY_ADMIN_PASSWORD = 'Admin123!';
 
 export const Login: React.FC = () => {
   const { signInWithEmail, staffLoaded } = useAuth();
@@ -112,9 +112,9 @@ export const Login: React.FC = () => {
 
             <div className="flex flex-col space-y-3 text-center mt-4">
               <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                If Rowan is locked out, run the Rowan recovery SQL, then sign in with{' '}
-                <span className="font-semibold text-gray-700">{ROWAN_EMAIL}</span> /{' '}
-                <span className="font-semibold text-gray-700">{ROWAN_PASSWORD}</span>
+                If you are locked out, run the admin recovery SQL, then sign in with{' '}
+                <span className="font-semibold text-gray-700">{RECOVERY_ADMIN_EMAIL}</span> /{' '}
+                <span className="font-semibold text-gray-700">{RECOVERY_ADMIN_PASSWORD}</span>
               </div>
 
               <Link

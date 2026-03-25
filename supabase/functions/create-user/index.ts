@@ -24,53 +24,94 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return new Response(JSON.stringify({ error: "Missing Supabase environment configuration" }), {
+        headers: corsHeaders,
+        status: 500,
+      });
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Verify the caller is an admin
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("Missing Authorization header");
-    const token = authHeader.replace("Bearer ", "");
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) throw new Error("Unauthorized");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Missing Authorization header" }), {
+        headers: corsHeaders,
+        status: 401,
+      });
+    }
 
-    const { data: callerStaff } = await supabase
+    const token = authHeader.replace("Bearer ", "");
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        headers: corsHeaders,
+        status: 401,
+      });
+    }
+
+    const { data: callerStaff, error: callerStaffError } = await supabase
       .from("staff")
       .select("role")
       .eq("user_id", user.id)
-      .single();
-      
-    if (callerStaff?.role !== "admin") throw new Error("Forbidden: Admins only");
+      .maybeSingle();
+
+    if (callerStaffError || callerStaff?.role !== "admin") {
+      return new Response(JSON.stringify({ error: "Forbidden: Admins only" }), {
+        headers: corsHeaders,
+        status: 403,
+      });
+    }
 
     const { email, password, name, role, home_region } = await req.json();
 
-    // Create user in Supabase Auth
+    if (!email || !password || !name || !role) {
+      return new Response(JSON.stringify({ error: "Missing required user fields" }), {
+        headers: corsHeaders,
+        status: 400,
+      });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+
     const { data: authData, error: createAuthError } = await supabase.auth.admin.createUser({
-      email,
-      password,
+      email: normalizedEmail,
+      password: String(password),
       email_confirm: true,
+      user_metadata: { name: String(name).trim() },
     });
 
-    if (createAuthError) throw createAuthError;
+    if (createAuthError || !authData.user) {
+      return new Response(JSON.stringify({ error: createAuthError?.message || "Failed to create auth user" }), {
+        headers: corsHeaders,
+        status: 400,
+      });
+    }
 
-    // Insert into staff table
     const { data: staffData, error: staffError } = await supabase
       .from("staff")
       .insert({
         user_id: authData.user.id,
-        email,
-        name,
-        role,
-        home_region,
+        name: String(name).trim(),
+        role: String(role),
+        home_region: home_region || "england-and-wales",
         is_hidden: false,
       })
       .select()
       .single();
 
     if (staffError) {
-      // Rollback auth user creation if staff insert fails
       await supabase.auth.admin.deleteUser(authData.user.id);
-      throw staffError;
+
+      return new Response(JSON.stringify({ error: staffError.message }), {
+        headers: corsHeaders,
+        status: 400,
+      });
     }
 
     return new Response(JSON.stringify({ user: staffData }), {
@@ -78,8 +119,6 @@ serve(async (req) => {
       status: 200,
     });
   } catch (err) {
-    console.error("Supabase Edge error:", err);
-
     return new Response(JSON.stringify({ error: String(err) }), {
       headers: corsHeaders,
       status: 500,
