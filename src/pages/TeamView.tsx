@@ -40,6 +40,16 @@ type TargetRow = {
   target_value: number;
 };
 
+type BankHolidayRow = {
+  date: string;
+  region: string;
+};
+
+type StaffForBagels = {
+  staff_id: number;
+  home_region?: string | null;
+};
+
 const isAccountant = (role: string) => {
   const normalizedRole = (role || '').toLowerCase();
   return normalizedRole === 'staff' || normalizedRole === 'admin';
@@ -74,38 +84,44 @@ const getLastTwelvePercent = (
   return targetSum > 0 ? (actualSum / targetSum) * 100 : 0;
 };
 
-const buildTeamBagelMonthTotals = (
-  activities: ActivityRow[],
+const buildPerStaffBagelMonthTotals = (
+  rawActivities: ActivityRow[],
   allMonths: Array<{ year: number; month: number }>,
-  selectedStaff: Array<{ staff_id: number }>
+  bankHolidays: BankHolidayRow[],
+  staffList: StaffForBagels[],
+  bagelServiceId: number,
+  startDate: Date,
+  endDate: Date
 ) => {
-  const selectedStaffIds = new Set(selectedStaff.map((staff) => staff.staff_id));
-  const activityDatesByMonth = new Map<string, Set<string>>();
+  const generatedBagels = generateBagelDays(
+    rawActivities,
+    bankHolidays,
+    staffList,
+    bagelServiceId,
+    startDate,
+    endDate
+  ) as ActivityRow[];
 
-  activities.forEach((activity) => {
-    if (
-      activity.staff_id == null ||
-      !selectedStaffIds.has(activity.staff_id) ||
-      !activity.date
-    ) {
-      return;
-    }
+  const monthlyByStaff = new Map<number, Record<string, number>>();
 
+  staffList.forEach((staff) => {
+    const monthTotals: Record<string, number> = {};
+    allMonths.forEach(({ year, month }) => {
+      monthTotals[getMonthKey(year, month)] = 0;
+    });
+    monthlyByStaff.set(staff.staff_id, monthTotals);
+  });
+
+  generatedBagels.forEach((activity) => {
+    if (!activity.date || activity.staff_id == null) return;
     const [yearStr, monthStr] = activity.date.split('-');
     const monthKey = getMonthKey(parseInt(yearStr, 10), parseInt(monthStr, 10));
-    if (!activityDatesByMonth.has(monthKey)) {
-      activityDatesByMonth.set(monthKey, new Set<string>());
-    }
-    activityDatesByMonth.get(monthKey)?.add(activity.date);
+    const current = monthlyByStaff.get(activity.staff_id);
+    if (!current) return;
+    current[monthKey] = (current[monthKey] || 0) + (activity.delivered_count || 0);
   });
 
-  const bagelDaysByMonth: Record<string, number> = {};
-  allMonths.forEach(({ year, month }) => {
-    const monthKey = getMonthKey(year, month);
-    bagelDaysByMonth[monthKey] = activityDatesByMonth.get(monthKey)?.size || 0;
-  });
-
-  return bagelDaysByMonth;
+  return monthlyByStaff;
 };
 
 export const TeamView: React.FC = () => {
@@ -213,15 +229,16 @@ export const TeamView: React.FC = () => {
 
         let finalActivities: ActivityRow[] = (activities || []) as ActivityRow[];
         let finalRankingActivities: ActivityRow[] = (rankingActivities || []) as ActivityRow[];
+        const rawRankingActivities: ActivityRow[] = (rankingActivities || []) as ActivityRow[];
         const bagelService = services.find((s) => s.service_name === 'Bagel Days');
 
+        const [sYear, sMonth, sDay] = startDateStr.split('-').map(Number);
+        const localStartDate = new Date(sYear, sMonth - 1, sDay);
+
+        const [eYear, eMonth, eDay] = endDateStr.split('-').map(Number);
+        const localEndDate = new Date(eYear, eMonth - 1, eDay);
+
         if (bagelService && bankHolidays) {
-          const [sYear, sMonth, sDay] = startDateStr.split('-').map(Number);
-          const localStartDate = new Date(sYear, sMonth - 1, sDay);
-
-          const [eYear, eMonth, eDay] = endDateStr.split('-').map(Number);
-          const localEndDate = new Date(eYear, eMonth - 1, eDay);
-
           const bagels = generateBagelDays(
             finalActivities,
             bankHolidays,
@@ -373,6 +390,19 @@ export const TeamView: React.FC = () => {
             ? activeServiceId
             : processedStats[0]?.service.service_id ?? null;
 
+        const perStaffBagelMonthTotals =
+          bagelService && bankHolidays
+            ? buildPerStaffBagelMonthTotals(
+                rawRankingActivities,
+                all24Months,
+                bankHolidays as BankHolidayRow[],
+                visibleAccountants,
+                bagelService.service_id,
+                localStartDate,
+                localEndDate
+              )
+            : new Map<number, Record<string, number>>();
+
         const rankingRows: AccountantRankingRow[] = visibleAccountants
           .map((staffMember) => {
             const monthlyActualByService: Record<string, number> = {};
@@ -413,20 +443,9 @@ export const TeamView: React.FC = () => {
               const activeService = services.find((service) => service.service_id === activeMetricId);
 
               if (activeService?.service_name === 'Bagel Days') {
-                const singleStaffBagelActivities = finalRankingActivities.filter(
-                  (activity) =>
-                    activity.staff_id === staffMember.staff_id &&
-                    activity.service_id === activeService.service_id
-                );
-
-                const singleStaffBagelMonths = buildTeamBagelMonthTotals(
-                  singleStaffBagelActivities,
-                  all24Months,
-                  [staffMember]
-                );
-
+                const bagelTotalsForStaff = perStaffBagelMonthTotals.get(staffMember.staff_id) || {};
                 const monthlySeries = all24Months.map(
-                  (month) => singleStaffBagelMonths[getMonthKey(month.year, month.month)] || 0
+                  (month) => bagelTotalsForStaff[getMonthKey(month.year, month.month)] || 0
                 );
                 rollingAverage = getLastTwelveAverage(monthlySeries);
               } else if (activeMetricId != null) {
