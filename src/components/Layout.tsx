@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { DashboardViewProvider } from "../context/DashboardViewContext";
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
-  const { currentStaff, accountantStaff, onTeamChange, selectedTeamId, signOut, hasPermission } = useAuth();
+  const { currentStaff, accountantStaff, onTeamChange, selectedTeamId, hasPermission } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -112,11 +112,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                       </button>
                     ))}
                   </div>
-
-                  <div className="border-t border-gray-200" />
-                  <button onClick={signOut} className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition font-semibold">
-                    Log Out
-                  </button>
                 </div>
               )}
             </div>

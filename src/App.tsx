@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { DateProvider } from './context/DateContext';
@@ -12,8 +12,6 @@ import { SelfAssessmentProgress } from './pages/SelfAssessmentProgress';
 import { TargetsControl } from './pages/TargetsControl';
 import { Settings } from './pages/Settings';
 import { AuditLog } from './pages/AuditLog';
-import { Login } from './pages/Login';
-import { ForgotPassword } from './pages/ForgotPassword';
 
 const getFirstAllowedPath = (hasPermission: (path: string) => boolean) => {
   const protectedPaths = [
@@ -54,30 +52,8 @@ const ProtectedRoute: React.FC<{
   return element;
 };
 
-const AuthRedirect: React.FC = () => {
-  const { isAuthenticated, hasPermission } = useAuth();
-
-  if (isAuthenticated) {
-    const fallback = getFirstAllowedPath(hasPermission);
-    if (fallback) {
-      return <Navigate to={fallback} replace />;
-    }
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
-          <h2 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h2>
-          <p className="text-gray-600">You do not have permission to view any pages. Please contact an administrator.</p>
-        </div>
-      </div>
-    );
-  }
-
-  return <Navigate to="/login" replace />;
-};
-
-const ProtectedApp: React.FC = () => {
-  const { isAuthenticated, loading, hasPermission } = useAuth();
-  const location = useLocation();
+const AppRoutes: React.FC = () => {
+  const { loading, hasPermission } = useAuth();
 
   if (loading) {
     return (
@@ -85,26 +61,6 @@ const ProtectedApp: React.FC = () => {
         <div className="text-gray-500 text-lg">Loading…</div>
       </div>
     );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="*" element={<AuthRedirect />} />
-      </Routes>
-    );
-  }
-
-  if (
-    location.pathname === '/login' ||
-    location.pathname === '/forgot-password'
-  ) {
-    const fallback = getFirstAllowedPath(hasPermission);
-    if (fallback) {
-      return <Navigate to={fallback} replace />;
-    }
   }
 
   return (
@@ -118,6 +74,8 @@ const ProtectedApp: React.FC = () => {
         <Route path="/targets" element={<ProtectedRoute path="/targets" element={<TargetsControl />} />} />
         <Route path="/settings" element={<ProtectedRoute path="/settings" element={<Settings />} />} />
         <Route path="/audit-log" element={<ProtectedRoute path="/audit-log" element={<AuditLog />} />} />
+        <Route path="/login" element={<Navigate to={getFirstAllowedPath(hasPermission) || '/'} replace />} />
+        <Route path="/forgot-password" element={<Navigate to={getFirstAllowedPath(hasPermission) || '/'} replace />} />
         <Route path="*" element={<Navigate to={getFirstAllowedPath(hasPermission) || '/'} replace />} />
       </Routes>
     </Layout>
@@ -130,7 +88,7 @@ const App: React.FC = () => {
       <AuthProvider>
         <DateProvider>
           <Router>
-            <ProtectedApp />
+            <AppRoutes />
           </Router>
         </DateProvider>
       </AuthProvider>
