@@ -48,8 +48,7 @@ const isAccountant = (staffMember: Staff) => {
 
 const enforcePermanentAdmin = (staffMember: Staff): Staff => {
   const firstName = normalizeFirstName(staffMember.name);
-  const isPermanentAdmin =
-    firstName === PERMANENT_ADMIN_NAME || normalizeEmail((staffMember as Staff & { email?: string | null }).email) === PERMANENT_ADMIN_EMAIL;
+  const isPermanentAdmin = firstName === PERMANENT_ADMIN_NAME;
 
   if (isPermanentAdmin && staffMember.role !== 'admin') {
     return { ...staffMember, role: 'admin' };
@@ -57,6 +56,9 @@ const enforcePermanentAdmin = (staffMember: Staff): Staff => {
 
   return staffMember;
 };
+
+const rowanRecoveryMessage =
+  'Rowan admin access is not correctly linked. Run the Rowan recovery SQL, then sign in with rowan@thecrew.co.uk and Rowan123!.';
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [loading, setLoading] = useState<boolean>(true);
@@ -90,37 +92,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const normalizedStaffRows = (allStaffRows || []).map(enforcePermanentAdmin);
 
-    const exactEmailMatch =
-      normalizedSessionEmail
-        ? normalizedStaffRows.find((row) => normalizeEmail((row as Staff & { email?: string | null }).email) === normalizedSessionEmail)
-        : null;
-
-    if (exactEmailMatch) {
-      await supabase
-        .from('staff')
-        .update({
-          user_id: userId,
-          role:
-            normalizeEmail((exactEmailMatch as Staff & { email?: string | null }).email) === PERMANENT_ADMIN_EMAIL ||
-            normalizeFirstName(exactEmailMatch.name) === PERMANENT_ADMIN_NAME
-              ? 'admin'
-              : exactEmailMatch.role,
-          is_hidden: false,
-        })
-        .eq('staff_id', exactEmailMatch.staff_id);
-
-      return {
-        ...exactEmailMatch,
-        user_id: userId,
-        role:
-          normalizeEmail((exactEmailMatch as Staff & { email?: string | null }).email) === PERMANENT_ADMIN_EMAIL ||
-          normalizeFirstName(exactEmailMatch.name) === PERMANENT_ADMIN_NAME
-            ? 'admin'
-            : exactEmailMatch.role,
-        is_hidden: false,
-      } as Staff;
-    }
-
     const rowanNameMatch = normalizedStaffRows.find(
       (row) => normalizeFirstName(row.name) === PERMANENT_ADMIN_NAME
     );
@@ -132,6 +103,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           user_id: userId,
           role: 'admin',
           is_hidden: false,
+          home_region: rowanNameMatch.home_region || 'england-and-wales',
         })
         .eq('staff_id', rowanNameMatch.staff_id);
 
@@ -140,6 +112,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         user_id: userId,
         role: 'admin',
         is_hidden: false,
+        home_region: rowanNameMatch.home_region || 'england-and-wales',
       } as Staff;
     }
 
@@ -192,7 +165,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } else {
           await supabase.auth.signOut();
           clearAuthenticatedStaff();
-          setError('Your login is valid, but no linked staff profile was found. Please run the Rowan recovery SQL or contact an administrator.');
+          setError(rowanRecoveryMessage);
         }
       } else {
         clearAuthenticatedStaff();
@@ -220,7 +193,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } else {
           await supabase.auth.signOut();
           clearAuthenticatedStaff();
-          setError('Your login is valid, but no linked staff profile was found. Please run the Rowan recovery SQL or contact an administrator.');
+          setError(rowanRecoveryMessage);
         }
       } else if (event === 'SIGNED_OUT') {
         clearAuthenticatedStaff();
@@ -234,7 +207,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
 
     const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    if (signInError) return { error: signInError.message };
+    if (signInError) {
+      const normalizedEmail = normalizeEmail(email);
+      const normalizedMessage = signInError.message.toLowerCase();
+
+      if (
+        normalizedEmail === PERMANENT_ADMIN_EMAIL &&
+        normalizedMessage.includes('invalid login credentials')
+      ) {
+        return { error: rowanRecoveryMessage };
+      }
+
+      return { error: signInError.message };
+    }
 
     if (data.user) {
       const matchedStaff = await findMatchingStaffForSession(data.user.id, data.user.email);
@@ -242,8 +227,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!matchedStaff) {
         await supabase.auth.signOut();
         return {
-          error:
-            'Login succeeded, but your account is not linked to a staff profile. Run the Rowan recovery SQL and then sign in again.',
+          error: rowanRecoveryMessage,
         };
       }
 

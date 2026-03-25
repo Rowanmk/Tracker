@@ -7,8 +7,8 @@ const ROWAN_PASSWORD = 'Rowan123!';
 
 export const Login: React.FC = () => {
   const { signInWithEmail, staffLoaded } = useAuth();
-  const [email, setEmail] = useState(ROWAN_EMAIL);
-  const [password, setPassword] = useState(ROWAN_PASSWORD);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -29,16 +29,11 @@ export const Login: React.FC = () => {
     }
 
     setSubmitting(true);
-    const result = await signInWithEmail(email.trim(), password.trim());
+    const trimmedEmail = email.trim();
+    const result = await signInWithEmail(trimmedEmail, password.trim());
 
     if (result.error) {
-      const normalizedError = result.error.toLowerCase();
-
-      if (normalizedError.includes('invalid login credentials')) {
-        setError('Invalid login credentials. If Rowan still cannot get in, run the Rowan recovery SQL, then sign in again with Rowan123!.');
-      } else {
-        setError(result.error);
-      }
+      setError(result.error);
     } else {
       setMessage('Signing you in…');
     }
@@ -117,7 +112,9 @@ export const Login: React.FC = () => {
 
             <div className="flex flex-col space-y-3 text-center mt-4">
               <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                Admin recovery default: <span className="font-semibold text-gray-700">{ROWAN_EMAIL}</span> / <span className="font-semibold text-gray-700">{ROWAN_PASSWORD}</span>
+                If Rowan is locked out, run the Rowan recovery SQL, then sign in with{' '}
+                <span className="font-semibold text-gray-700">{ROWAN_EMAIL}</span> /{' '}
+                <span className="font-semibold text-gray-700">{ROWAN_PASSWORD}</span>
               </div>
 
               <Link
