@@ -74,6 +74,40 @@ const getLastTwelvePercent = (
   return targetSum > 0 ? (actualSum / targetSum) * 100 : 0;
 };
 
+const buildTeamBagelMonthTotals = (
+  activities: ActivityRow[],
+  allMonths: Array<{ year: number; month: number }>,
+  selectedStaff: Array<{ staff_id: number }>
+) => {
+  const selectedStaffIds = new Set(selectedStaff.map((staff) => staff.staff_id));
+  const activityDatesByMonth = new Map<string, Set<string>>();
+
+  activities.forEach((activity) => {
+    if (
+      activity.staff_id == null ||
+      !selectedStaffIds.has(activity.staff_id) ||
+      !activity.date
+    ) {
+      return;
+    }
+
+    const [yearStr, monthStr] = activity.date.split('-');
+    const monthKey = getMonthKey(parseInt(yearStr, 10), parseInt(monthStr, 10));
+    if (!activityDatesByMonth.has(monthKey)) {
+      activityDatesByMonth.set(monthKey, new Set<string>());
+    }
+    activityDatesByMonth.get(monthKey)?.add(activity.date);
+  });
+
+  const bagelDaysByMonth: Record<string, number> = {};
+  allMonths.forEach(({ year, month }) => {
+    const monthKey = getMonthKey(year, month);
+    bagelDaysByMonth[monthKey] = activityDatesByMonth.get(monthKey)?.size || 0;
+  });
+
+  return bagelDaysByMonth;
+};
+
 export const TeamView: React.FC = () => {
   const { allStaff, selectedTeamId, loading: authLoading } = useAuth();
   const { services, loading: servicesLoading } = useServices();
@@ -344,7 +378,6 @@ export const TeamView: React.FC = () => {
             const monthlyActualByService: Record<string, number> = {};
             const monthlyAllActuals: Record<string, number> = {};
             const monthlyTargetsByStaff: Record<string, number> = {};
-            const bagelCountsByMonth: Record<string, number> = {};
 
             finalRankingActivities.forEach((activity) => {
               if (activity.staff_id !== staffMember.staff_id || !activity.date || activity.service_id == null) {
@@ -356,9 +389,7 @@ export const TeamView: React.FC = () => {
               const service = services.find((item) => item.service_id === activity.service_id);
 
               if (!service) return;
-
               if (service.service_name === 'Bagel Days') {
-                bagelCountsByMonth[key] = (bagelCountsByMonth[key] || 0) + (activity.delivered_count || 0);
                 return;
               }
 
@@ -382,8 +413,20 @@ export const TeamView: React.FC = () => {
               const activeService = services.find((service) => service.service_id === activeMetricId);
 
               if (activeService?.service_name === 'Bagel Days') {
+                const singleStaffBagelActivities = finalRankingActivities.filter(
+                  (activity) =>
+                    activity.staff_id === staffMember.staff_id &&
+                    activity.service_id === activeService.service_id
+                );
+
+                const singleStaffBagelMonths = buildTeamBagelMonthTotals(
+                  singleStaffBagelActivities,
+                  all24Months,
+                  [staffMember]
+                );
+
                 const monthlySeries = all24Months.map(
-                  (month) => bagelCountsByMonth[getMonthKey(month.year, month.month)] || 0
+                  (month) => singleStaffBagelMonths[getMonthKey(month.year, month.month)] || 0
                 );
                 rollingAverage = getLastTwelveAverage(monthlySeries);
               } else if (activeMetricId != null) {
