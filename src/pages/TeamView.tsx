@@ -50,6 +50,8 @@ type StaffForBagels = {
   home_region?: string | null;
 };
 
+type HeatmapData = Record<string, { total: number; byService: Record<number, number> }>;
+
 const isAccountant = (role: string) => {
   const normalizedRole = (role || '').toLowerCase();
   return normalizedRole === 'staff' || normalizedRole === 'admin';
@@ -131,6 +133,10 @@ export const TeamView: React.FC = () => {
   const [statsData, setStatsData] = useState<ServiceStats[]>([]);
   const [activeServiceId, setActiveServiceId] = useState<number | null>(null);
   const [accountantRankings, setAccountantRankings] = useState<AccountantRankingRow[]>([]);
+  
+  const [heatmapData, setHeatmapData] = useState<HeatmapData>({});
+  const [heatmapMonths, setHeatmapMonths] = useState<Array<{ year: number; month: number }>>([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -150,23 +156,28 @@ export const TeamView: React.FC = () => {
 
       try {
         const today = new Date();
-        const lastCompletedMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-
-        const all24Months: Array<{ year: number; month: number }> = [];
-        const startMonth = new Date(lastCompletedMonth.getFullYear(), lastCompletedMonth.getMonth() - 23, 1);
+        
+        // We need 24 months ending in LAST month for the rolling average.
+        // AND we need the CURRENT month for the heatmap.
+        // So we fetch 25 months ending in the CURRENT month.
+        const all25Months: Array<{ year: number; month: number }> = [];
+        const startMonth = new Date(today.getFullYear(), today.getMonth() - 24, 1);
 
         const curr = new Date(startMonth);
-        for (let i = 0; i < 24; i++) {
-          all24Months.push({ year: curr.getFullYear(), month: curr.getMonth() + 1 });
+        for (let i = 0; i < 25; i++) {
+          all25Months.push({ year: curr.getFullYear(), month: curr.getMonth() + 1 });
           curr.setMonth(curr.getMonth() + 1);
         }
 
-        const firstMonth = all24Months[0];
-        const lastMonth = all24Months[23];
+        const all24Months = all25Months.slice(0, 24); // 24 months ending in last month
+        const heatmapMonthsList = all25Months.slice(13, 25); // 12 months ending in current month
+
+        const firstMonth = all25Months[0];
+        const lastMonth = all25Months[24];
 
         const startDateStr = `${firstMonth.year}-${String(firstMonth.month).padStart(2, '0')}-01`;
-        const lastDayOfLastMonth = new Date(lastMonth.year, lastMonth.month, 0).getDate();
-        const endDateStr = `${lastMonth.year}-${String(lastMonth.month).padStart(2, '0')}-${String(lastDayOfLastMonth).padStart(2, '0')}`;
+        const lastDayOfEndMonth = new Date(lastMonth.year, lastMonth.month, 0).getDate();
+        const endDateStr = `${lastMonth.year}-${String(lastMonth.month).padStart(2, '0')}-${String(lastDayOfEndMonth).padStart(2, '0')}`;
 
         const visibleAccountants = allStaff.filter((s) => !s.is_hidden && isAccountant(s.role));
 
@@ -181,6 +192,8 @@ export const TeamView: React.FC = () => {
         if (staffIds.length === 0) {
           setStatsData([]);
           setAccountantRankings([]);
+          setHeatmapData({});
+          setHeatmapMonths([]);
           setLoading(false);
           return;
         }
@@ -282,6 +295,25 @@ export const TeamView: React.FC = () => {
           ) as ActivityRow[];
           finalRankingActivities = [...finalRankingActivities, ...rankingBagels];
         }
+
+        // Build Heatmap Data
+        const dailyTotals: HeatmapData = {};
+        finalActivities.forEach((activity) => {
+          if (!activity.date) return;
+          if (!dailyTotals[activity.date]) {
+            dailyTotals[activity.date] = { total: 0, byService: {} };
+          }
+          const count = activity.delivered_count || 0;
+          const service = services.find((s) => s.service_id === activity.service_id);
+          
+          if (service && service.service_name !== 'Bagel Days') {
+            dailyTotals[activity.date].total += count;
+          }
+          if (activity.service_id) {
+            dailyTotals[activity.date].byService[activity.service_id] =
+              (dailyTotals[activity.date].byService[activity.service_id] || 0) + count;
+          }
+        });
 
         const displayServices = services;
         const monthActuals: Record<string, number> = {};
@@ -493,6 +525,8 @@ export const TeamView: React.FC = () => {
 
         setStatsData(processedStats);
         setAccountantRankings(rankingRows);
+        setHeatmapData(dailyTotals);
+        setHeatmapMonths(heatmapMonthsList);
       } catch {
         setError('Failed to load Stats and Figures');
       } finally {
@@ -626,8 +660,140 @@ export const TeamView: React.FC = () => {
               </div>
             </div>
           )}
+
+          {heatmapMonths.length > 0 && (
+            <DeliveryHeatmap
+              heatmapData={heatmapData}
+              months={heatmapMonths}
+              services={services.filter(s => s.service_name !== 'Bagel Days')}
+            />
+          )}
         </div>
       )}
+    </div>
+  );
+};
+
+const DeliveryHeatmap = ({
+  heatmapData,
+  months,
+  services
+}: {
+  heatmapData: HeatmapData;
+  months: Array<{ year: number; month: number }>;
+  services: Array<{ service_id: number; service_name: string }>;
+}) => {
+  const [selectedServiceId, setSelectedServiceId] = useState<number | 'all'>('all');
+
+  const maxVal = useMemo(() => {
+    let max = 0;
+    months.forEach(m => {
+      for (let day = 1; day <= 31; day++) {
+        const dateStr = `${m.year}-${String(m.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const data = heatmapData[dateStr];
+        if (data) {
+          const val = selectedServiceId === 'all' ? data.total : (data.byService[selectedServiceId] || 0);
+          if (val > max) max = val;
+        }
+      }
+    });
+    return Math.max(max, 1);
+  }, [heatmapData, months, selectedServiceId]);
+
+  const getColorClass = (val: number, max: number) => {
+    if (val === 0) return 'bg-transparent text-gray-400 dark:text-gray-500';
+    const ratio = val / max;
+    if (ratio <= 0.25) return 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200';
+    if (ratio <= 0.5) return 'bg-blue-300 dark:bg-blue-700/60 text-blue-900 dark:text-blue-100';
+    if (ratio <= 0.75) return 'bg-blue-500 dark:bg-blue-600/80 text-white';
+    return 'bg-blue-700 dark:bg-blue-500 text-white';
+  };
+
+  const getMonthName = (monthNum: number) => {
+    const date = new Date(2000, monthNum - 1, 1);
+    return date.toLocaleString('default', { month: 'short' });
+  };
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6 mt-6 transition-all duration-300 animate-fade-in">
+      <div className="mb-6">
+        <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+          Daily Delivery Heatmap
+        </h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          Items delivered per day over the last 12 months
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-6">
+        <button
+          onClick={() => setSelectedServiceId('all')}
+          className={`px-4 py-2 rounded-md text-sm font-bold transition-colors ${
+            selectedServiceId === 'all'
+              ? 'bg-[#001B47] text-white'
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+          }`}
+        >
+          All
+        </button>
+        {services.map(s => (
+          <button
+            key={s.service_id}
+            onClick={() => setSelectedServiceId(s.service_id)}
+            className={`px-4 py-2 rounded-md text-sm font-bold transition-colors ${
+              selectedServiceId === s.service_id
+                ? 'bg-[#001B47] text-white'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+            }`}
+          >
+            {s.service_name}
+          </button>
+        ))}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr>
+              <th className="border border-gray-200 dark:border-gray-700 p-2 bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 font-bold w-12 text-center">
+                Day
+              </th>
+              {months.map(m => (
+                <th key={`${m.year}-${m.month}`} className="border border-gray-200 dark:border-gray-700 p-2 bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 font-bold text-center min-w-[60px]">
+                  {getMonthName(m.month)} {m.year.toString().slice(-2)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+              <tr key={day}>
+                <td className="border border-gray-200 dark:border-gray-700 p-2 font-bold text-center bg-gray-50 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300">
+                  {day}
+                </td>
+                {months.map(m => {
+                  const dateStr = `${m.year}-${String(m.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                  const isValidDate = new Date(m.year, m.month - 1, day).getMonth() + 1 === m.month;
+
+                  if (!isValidDate) {
+                    return <td key={dateStr} className="border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800/50"></td>;
+                  }
+
+                  const data = heatmapData[dateStr];
+                  const val = data ? (selectedServiceId === 'all' ? data.total : (data.byService[selectedServiceId] || 0)) : 0;
+                  const colorClass = getColorClass(val, maxVal);
+
+                  return (
+                    <td key={dateStr} className={`border border-gray-200 dark:border-gray-700 p-1 text-center font-medium transition-colors ${colorClass}`} title={`${dateStr}: ${val} items`}>
+                      {val > 0 ? val : ''}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
