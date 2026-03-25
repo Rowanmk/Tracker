@@ -185,41 +185,65 @@ export const TeamView: React.FC = () => {
           return;
         }
 
-        const { data: activities, error: fetchError } = await supabase
-          .from('dailyactivity')
-          .select('staff_id, service_id, date, delivered_count')
-          .in('staff_id', staffIds)
-          .gte('date', startDateStr)
-          .lte('date', endDateStr);
+        const fetchAllActivities = async (ids: number[]) => {
+          let results: ActivityRow[] = [];
+          let hasMore = true;
+          let offset = 0;
+          const PAGE_SIZE = 1000;
 
-        if (fetchError) throw fetchError;
+          while (hasMore) {
+            const { data, error } = await supabase
+              .from('dailyactivity')
+              .select('staff_id, service_id, date, delivered_count')
+              .in('staff_id', ids)
+              .gte('date', startDateStr)
+              .lte('date', endDateStr)
+              .range(offset, offset + PAGE_SIZE - 1);
 
-        const { data: rankingActivities, error: rankingFetchError } = await supabase
-          .from('dailyactivity')
-          .select('staff_id, service_id, date, delivered_count')
-          .in('staff_id', allVisibleAccountantIds)
-          .gte('date', startDateStr)
-          .lte('date', endDateStr);
+            if (error) throw error;
+            if (data) {
+              results = results.concat(data as ActivityRow[]);
+              if (data.length < PAGE_SIZE) hasMore = false;
+              else offset += PAGE_SIZE;
+            } else {
+              hasMore = false;
+            }
+          }
+          return results;
+        };
 
-        if (rankingFetchError) throw rankingFetchError;
+        const fetchAllTargets = async (ids: number[]) => {
+          let results: TargetRow[] = [];
+          let hasMore = true;
+          let offset = 0;
+          const PAGE_SIZE = 1000;
 
-        const { data: targets, error: targetsError } = await supabase
-          .from('monthlytargets')
-          .select('staff_id, month, year, target_value')
-          .in('staff_id', staffIds)
-          .gte('year', firstMonth.year)
-          .lte('year', lastMonth.year);
+          while (hasMore) {
+            const { data, error } = await supabase
+              .from('monthlytargets')
+              .select('staff_id, month, year, target_value')
+              .in('staff_id', ids)
+              .gte('year', firstMonth.year)
+              .lte('year', lastMonth.year)
+              .range(offset, offset + PAGE_SIZE - 1);
 
-        if (targetsError) throw targetsError;
+            if (error) throw error;
+            if (data) {
+              results = results.concat(data as TargetRow[]);
+              if (data.length < PAGE_SIZE) hasMore = false;
+              else offset += PAGE_SIZE;
+            } else {
+              hasMore = false;
+            }
+          }
+          return results;
+        };
 
-        const { data: allTargets, error: allTargetsError } = await supabase
-          .from('monthlytargets')
-          .select('staff_id, month, year, target_value')
-          .in('staff_id', allVisibleAccountantIds)
-          .gte('year', firstMonth.year)
-          .lte('year', lastMonth.year);
+        const rawRankingActivities = await fetchAllActivities(allVisibleAccountantIds);
+        const rawActivities = isTeamViewMode ? rawRankingActivities : await fetchAllActivities(staffIds);
 
-        if (allTargetsError) throw allTargetsError;
+        const allTargets = await fetchAllTargets(allVisibleAccountantIds);
+        const targets = isTeamViewMode ? allTargets : await fetchAllTargets(staffIds);
 
         const { data: bankHolidays } = await supabase
           .from('bank_holidays')
@@ -227,9 +251,8 @@ export const TeamView: React.FC = () => {
           .gte('date', startDateStr)
           .lte('date', endDateStr);
 
-        let finalActivities: ActivityRow[] = (activities || []) as ActivityRow[];
-        let finalRankingActivities: ActivityRow[] = (rankingActivities || []) as ActivityRow[];
-        const rawRankingActivities: ActivityRow[] = (rankingActivities || []) as ActivityRow[];
+        let finalActivities: ActivityRow[] = [...rawActivities];
+        let finalRankingActivities: ActivityRow[] = [...rawRankingActivities];
         const bagelService = services.find((s) => s.service_name === 'Bagel Days');
 
         const [sYear, sMonth, sDay] = startDateStr.split('-').map(Number);
@@ -264,7 +287,7 @@ export const TeamView: React.FC = () => {
         const monthActuals: Record<string, number> = {};
         const monthTargets: Record<string, number> = {};
 
-        (targets as TargetRow[] | null)?.forEach((target) => {
+        targets.forEach((target) => {
           const key = getMonthKey(target.year, target.month);
           monthTargets[key] = (monthTargets[key] || 0) + (target.target_value || 0);
         });
@@ -432,7 +455,7 @@ export const TeamView: React.FC = () => {
                 (monthlyActualsByServiceId[activity.service_id][monthKey] || 0) + (activity.delivered_count || 0);
             });
 
-            (allTargets as TargetRow[] | null)?.forEach((target) => {
+            allTargets.forEach((target) => {
               if (target.staff_id !== staffMember.staff_id) return;
               const key = getMonthKey(target.year, target.month);
               monthlyTargetsByStaff[key] = (monthlyTargetsByStaff[key] || 0) + (target.target_value || 0);
