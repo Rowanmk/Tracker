@@ -33,8 +33,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
-const PERMANENT_ADMIN_NAME = 'rowan';
-const PERMANENT_ADMIN_EMAIL = 'rowan@thecrew.co.uk';
+const RECOVERY_ADMIN_EMAILS = ['rowan@thecrew.co.uk', 'admin@thecrew.co.uk'];
 
 const normalizeFirstName = (name?: string | null) => (name || '').split(' ')[0]?.trim().toLowerCase() || '';
 const normalizeEmail = (email?: string | null) => (email || '').trim().toLowerCase();
@@ -46,19 +45,19 @@ const isAccountant = (staffMember: Staff) => {
   return role === 'staff' || role === 'admin' || normalizedName.includes('accountant');
 };
 
-const enforcePermanentAdmin = (staffMember: Staff): Staff => {
+const enforceKnownAdminRole = (staffMember: Staff): Staff => {
   const firstName = normalizeFirstName(staffMember.name);
-  const isPermanentAdmin = firstName === PERMANENT_ADMIN_NAME;
+  const normalizedRole = (staffMember.role || '').toLowerCase();
 
-  if (isPermanentAdmin && staffMember.role !== 'admin') {
+  if ((firstName === 'rowan' || firstName === 'admin') && normalizedRole !== 'admin') {
     return { ...staffMember, role: 'admin' };
   }
 
   return staffMember;
 };
 
-const rowanRecoveryMessage =
-  'Rowan admin access is not correctly linked. Run the Rowan recovery SQL, then sign in with rowan@thecrew.co.uk and Rowan123!.';
+const adminRecoveryMessage =
+  'Your sign-in exists but is not correctly linked to a staff admin record. Please relink the admin user in Supabase Auth and public.staff, then try again.';
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [loading, setLoading] = useState<boolean>(true);
@@ -82,7 +81,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       .maybeSingle();
 
     if (linkedStaff) {
-      return enforcePermanentAdmin(linkedStaff);
+      return enforceKnownAdminRole(linkedStaff);
     }
 
     const { data: allStaffRows } = await supabase
@@ -90,29 +89,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       .select('*')
       .order('staff_id');
 
-    const normalizedStaffRows = (allStaffRows || []).map(enforcePermanentAdmin);
+    const normalizedStaffRows = (allStaffRows || []).map(enforceKnownAdminRole);
 
-    const rowanNameMatch = normalizedStaffRows.find(
-      (row) => normalizeFirstName(row.name) === PERMANENT_ADMIN_NAME
-    );
+    const recoverableAdminMatch =
+      (normalizedSessionEmail === 'rowan@thecrew.co.uk' &&
+        normalizedStaffRows.find((row) => normalizeFirstName(row.name) === 'rowan')) ||
+      (normalizedSessionEmail === 'admin@thecrew.co.uk' &&
+        normalizedStaffRows.find((row) => normalizeFirstName(row.name) === 'admin'));
 
-    if (normalizedSessionEmail === PERMANENT_ADMIN_EMAIL && rowanNameMatch) {
+    if (recoverableAdminMatch) {
       await supabase
         .from('staff')
         .update({
           user_id: userId,
           role: 'admin',
           is_hidden: false,
-          home_region: rowanNameMatch.home_region || 'england-and-wales',
+          home_region: recoverableAdminMatch.home_region || 'england-and-wales',
         })
-        .eq('staff_id', rowanNameMatch.staff_id);
+        .eq('staff_id', recoverableAdminMatch.staff_id);
 
       return {
-        ...rowanNameMatch,
+        ...recoverableAdminMatch,
         user_id: userId,
         role: 'admin',
         is_hidden: false,
-        home_region: rowanNameMatch.home_region || 'england-and-wales',
+        home_region: recoverableAdminMatch.home_region || 'england-and-wales',
       } as Staff;
     }
 
@@ -120,7 +121,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const applyAuthenticatedStaff = useCallback((staffMember: Staff) => {
-    const normalized = enforcePermanentAdmin(staffMember);
+    const normalized = enforceKnownAdminRole(staffMember);
     setCurrentStaff(normalized);
     setIsAuthenticated(true);
     const savedTeam = localStorage.getItem('crew_tracker_team_id');
@@ -147,7 +148,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (staffRes.error) throw staffRes.error;
       if (teamsRes.error) throw teamsRes.error;
 
-      const normalizedStaff = (staffRes.data || []).map(enforcePermanentAdmin);
+      const normalizedStaff = (staffRes.data || []).map(enforceKnownAdminRole);
       setAllStaff(normalizedStaff);
       setStaff(normalizedStaff.filter((s) => !s.is_hidden));
       setTeams(teamsRes.data || []);
@@ -165,7 +166,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } else {
           await supabase.auth.signOut();
           clearAuthenticatedStaff();
-          setError(rowanRecoveryMessage);
+          setError(adminRecoveryMessage);
         }
       } else {
         clearAuthenticatedStaff();
@@ -193,7 +194,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } else {
           await supabase.auth.signOut();
           clearAuthenticatedStaff();
-          setError(rowanRecoveryMessage);
+          setError(adminRecoveryMessage);
         }
       } else if (event === 'SIGNED_OUT') {
         clearAuthenticatedStaff();
@@ -212,10 +213,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const normalizedMessage = signInError.message.toLowerCase();
 
       if (
-        normalizedEmail === PERMANENT_ADMIN_EMAIL &&
+        RECOVERY_ADMIN_EMAILS.includes(normalizedEmail) &&
         normalizedMessage.includes('invalid login credentials')
       ) {
-        return { error: rowanRecoveryMessage };
+        return { error: 'Invalid login credentials.' };
       }
 
       return { error: signInError.message };
@@ -227,7 +228,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!matchedStaff) {
         await supabase.auth.signOut();
         return {
-          error: rowanRecoveryMessage,
+          error: adminRecoveryMessage,
         };
       }
 

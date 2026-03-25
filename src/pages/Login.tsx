@@ -2,9 +2,6 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const RECOVERY_ADMIN_EMAIL = 'admin@thecrew.co.uk';
-const RECOVERY_ADMIN_PASSWORD = 'Admin123!';
-
 export const Login: React.FC = () => {
   const { signInWithEmail, staffLoaded } = useAuth();
   const [email, setEmail] = useState('');
@@ -111,12 +108,6 @@ export const Login: React.FC = () => {
             </button>
 
             <div className="flex flex-col space-y-3 text-center mt-4">
-              <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                If you are locked out, run the admin recovery SQL, then sign in with{' '}
-                <span className="font-semibold text-gray-700">{RECOVERY_ADMIN_EMAIL}</span> /{' '}
-                <span className="font-semibold text-gray-700">{RECOVERY_ADMIN_PASSWORD}</span>
-              </div>
-
               <Link
                 to="/forgot-password"
                 className="text-sm text-gray-500 hover:text-[#001B47] hover:underline font-medium"
