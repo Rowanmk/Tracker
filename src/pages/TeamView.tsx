@@ -385,7 +385,7 @@ export const TeamView: React.FC = () => {
           isPercentage: true,
         });
 
-        const activeMetricId =
+        const resolvedActiveMetricId =
           activeServiceId && processedStats.some((stat) => stat.service.service_id === activeServiceId)
             ? activeServiceId
             : processedStats[0]?.service.service_id ?? null;
@@ -405,9 +405,9 @@ export const TeamView: React.FC = () => {
 
         const rankingRows: AccountantRankingRow[] = visibleAccountants
           .map((staffMember) => {
-            const monthlyActualByService: Record<string, number> = {};
             const monthlyAllActuals: Record<string, number> = {};
             const monthlyTargetsByStaff: Record<string, number> = {};
+            const monthlyActualsByServiceId: Record<number, Record<string, number>> = {};
 
             finalRankingActivities.forEach((activity) => {
               if (activity.staff_id !== staffMember.staff_id || !activity.date || activity.service_id == null) {
@@ -415,18 +415,21 @@ export const TeamView: React.FC = () => {
               }
 
               const [yearStr, monthStr] = activity.date.split('-');
-              const key = getMonthKey(parseInt(yearStr, 10), parseInt(monthStr, 10));
+              const monthKey = getMonthKey(parseInt(yearStr, 10), parseInt(monthStr, 10));
               const service = services.find((item) => item.service_id === activity.service_id);
 
-              if (!service) return;
-              if (service.service_name === 'Bagel Days') {
+              if (!service || service.service_name === 'Bagel Days') {
                 return;
               }
 
-              monthlyAllActuals[key] = (monthlyAllActuals[key] || 0) + (activity.delivered_count || 0);
+              monthlyAllActuals[monthKey] = (monthlyAllActuals[monthKey] || 0) + (activity.delivered_count || 0);
 
-              const serviceKey = `${key}-${activity.service_id}`;
-              monthlyActualByService[serviceKey] = (monthlyActualByService[serviceKey] || 0) + (activity.delivered_count || 0);
+              if (!monthlyActualsByServiceId[activity.service_id]) {
+                monthlyActualsByServiceId[activity.service_id] = {};
+              }
+
+              monthlyActualsByServiceId[activity.service_id][monthKey] =
+                (monthlyActualsByServiceId[activity.service_id][monthKey] || 0) + (activity.delivered_count || 0);
             });
 
             (allTargets as TargetRow[] | null)?.forEach((target) => {
@@ -437,10 +440,10 @@ export const TeamView: React.FC = () => {
 
             let rollingAverage = 0;
 
-            if (activeMetricId === -1) {
+            if (resolvedActiveMetricId === -1) {
               rollingAverage = getLastTwelvePercent(all24Months, monthlyAllActuals, monthlyTargetsByStaff);
             } else {
-              const activeService = services.find((service) => service.service_id === activeMetricId);
+              const activeService = services.find((service) => service.service_id === resolvedActiveMetricId);
 
               if (activeService?.service_name === 'Bagel Days') {
                 const bagelTotalsForStaff = perStaffBagelMonthTotals.get(staffMember.staff_id) || {};
@@ -448,11 +451,11 @@ export const TeamView: React.FC = () => {
                   (month) => bagelTotalsForStaff[getMonthKey(month.year, month.month)] || 0
                 );
                 rollingAverage = getLastTwelveAverage(monthlySeries);
-              } else if (activeMetricId != null) {
-                const monthlySeries = all24Months.map((month) => {
-                  const key = `${getMonthKey(month.year, month.month)}-${activeMetricId}`;
-                  return monthlyActualByService[key] || 0;
-                });
+              } else if (resolvedActiveMetricId != null) {
+                const serviceMonthTotals = monthlyActualsByServiceId[resolvedActiveMetricId] || {};
+                const monthlySeries = all24Months.map(
+                  (month) => serviceMonthTotals[getMonthKey(month.year, month.month)] || 0
+                );
                 rollingAverage = getLastTwelveAverage(monthlySeries);
               }
             }
