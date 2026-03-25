@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
@@ -20,6 +20,12 @@ interface ServiceStats {
   isPercentage?: boolean;
 }
 
+interface AccountantRankingRow {
+  staff_id: number;
+  name: string;
+  rollingAverage: number;
+}
+
 const isAccountant = (role: string) => {
   const normalizedRole = (role || '').toLowerCase();
   return normalizedRole === 'staff' || normalizedRole === 'admin';
@@ -31,8 +37,12 @@ export const TeamView: React.FC = () => {
 
   const [statsData, setStatsData] = useState<ServiceStats[]>([]);
   const [activeServiceId, setActiveServiceId] = useState<number | null>(null);
+  const [accountantRankings, setAccountantRankings] = useState<AccountantRankingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const isTeamViewMode = selectedTeamId === 'team-view' || selectedTeamId === 'all' || !selectedTeamId;
+  const selectedStaffId = !isTeamViewMode ? Number(selectedTeamId) : null;
 
   useEffect(() => {
     const fetchStatsData = async () => {
@@ -73,9 +83,11 @@ export const TeamView: React.FC = () => {
             : visibleAccountants.filter(s => String(s.staff_id) === selectedTeamId);
 
         const staffIds = filteredStaff.map(s => s.staff_id);
+        const allVisibleAccountantIds = visibleAccountants.map(s => s.staff_id);
 
         if (staffIds.length === 0) {
           setStatsData([]);
+          setAccountantRankings([]);
           setLoading(false);
           return;
         }
@@ -89,6 +101,15 @@ export const TeamView: React.FC = () => {
 
         if (fetchError) throw fetchError;
 
+        const { data: rankingActivities, error: rankingFetchError } = await supabase
+          .from('dailyactivity')
+          .select('staff_id, service_id, date, delivered_count')
+          .in('staff_id', allVisibleAccountantIds)
+          .gte('date', startDateStr)
+          .lte('date', endDateStr);
+
+        if (rankingFetchError) throw rankingFetchError;
+
         const { data: targets, error: targetsError } = await supabase
           .from('monthlytargets')
           .select('staff_id, month, year, target_value')
@@ -98,6 +119,15 @@ export const TeamView: React.FC = () => {
 
         if (targetsError) throw targetsError;
 
+        const { data: allTargets, error: allTargetsError } = await supabase
+          .from('monthlytargets')
+          .select('staff_id, month, year, target_value')
+          .in('staff_id', allVisibleAccountantIds)
+          .gte('year', firstMonth.year)
+          .lte('year', lastMonth.year);
+
+        if (allTargetsError) throw allTargetsError;
+
         const { data: bankHolidays } = await supabase
           .from('bank_holidays')
           .select('date, region')
@@ -105,6 +135,7 @@ export const TeamView: React.FC = () => {
           .lte('date', endDateStr);
 
         let finalActivities = activities || [];
+        let finalRankingActivities = rankingActivities || [];
         const bagelService = services.find(s => s.service_name === 'Bagel Days');
 
         if (bagelService && bankHolidays) {
@@ -123,6 +154,16 @@ export const TeamView: React.FC = () => {
             localEndDate
           );
           finalActivities = [...finalActivities, ...bagels];
+
+          const rankingBagels = generateBagelDays(
+            finalRankingActivities,
+            bankHolidays,
+            visibleAccountants,
+            bagelService.service_id,
+            localStartDate,
+            localEndDate
+          );
+          finalRankingActivities = [...finalRankingActivities, ...rankingBagels];
         }
 
         const displayServices = services;
@@ -253,7 +294,83 @@ export const TeamView: React.FC = () => {
           isPercentage: true
         });
 
+        const isPercentRanking = activeServiceId === -1 || (!activeServiceId && processedStats[0]?.service.service_id === -1);
+        const rankingServiceId = activeServiceId && activeServiceId !== -1 ? activeServiceId : null;
+
+        const rankingRows: AccountantRankingRow[] = visibleAccountants.map((staffMember) => {
+          const monthlySeries = all24Months.map(({ year, month }) => {
+            const monthKey = `${year}-${month}`;
+
+            if (isPercentRanking) {
+              const monthActual = (finalRankingActivities || [])
+                .filter(activity => {
+                  if (activity.staff_id !== staffMember.staff_id || !activity.date) return false;
+                  const [activityYear, activityMonth] = activity.date.split('-').map(Number);
+                  const service = services.find(s => s.service_id === activity.service_id);
+                  return activityYear === year && activityMonth === month && service?.service_name !== 'Bagel Days';
+                })
+                .reduce((sum, activity) => sum + (activity.delivered_count || 0), 0);
+
+              const monthTarget = (allTargets || [])
+                .filter(target =>
+                  target.staff_id === staffMember.staff_id &&
+                  target.year === year &&
+                  target.month === month
+                )
+                .reduce((sum, target) => sum + (target.target_value || 0), 0);
+
+              return monthTarget > 0 ? (monthActual / monthTarget) * 100 : 0;
+            }
+
+            if (rankingServiceId == null) {
+              return 0;
+            }
+
+            const activeService = services.find(service => service.service_id === rankingServiceId);
+            if (!activeService) {
+              return 0;
+            }
+
+            if (activeService.service_name === 'Bagel Days') {
+              const staffBagelCount = (finalRankingActivities || [])
+                .filter(activity => {
+                  if (activity.staff_id !== staffMember.staff_id || !activity.date || activity.service_id !== rankingServiceId) {
+                    return false;
+                  }
+                  const [activityYear, activityMonth] = activity.date.split('-').map(Number);
+                  return activityYear === year && activityMonth === month;
+                })
+                .reduce((sum, activity) => sum + (activity.delivered_count || 0), 0);
+
+              return staffBagelCount;
+            }
+
+            return (finalRankingActivities || [])
+              .filter(activity => {
+                if (activity.staff_id !== staffMember.staff_id || !activity.date || activity.service_id !== rankingServiceId) {
+                  return false;
+                }
+                const [activityYear, activityMonth] = activity.date.split('-').map(Number);
+                return activityYear === year && activityMonth === month;
+              })
+              .reduce((sum, activity) => sum + (activity.delivered_count || 0), 0);
+          });
+
+          let rollingAverage = 0;
+          for (let i = 12; i < 24; i++) {
+            rollingAverage += monthlySeries[i];
+          }
+          rollingAverage = rollingAverage / 12;
+
+          return {
+            staff_id: staffMember.staff_id,
+            name: staffMember.name,
+            rollingAverage,
+          };
+        }).sort((a, b) => b.rollingAverage - a.rollingAverage);
+
         setStatsData(processedStats);
+        setAccountantRankings(rankingRows);
       } catch {
         setError('Failed to load Stats and Figures');
       } finally {
@@ -262,7 +379,7 @@ export const TeamView: React.FC = () => {
     };
 
     void fetchStatsData();
-  }, [allStaff, services, selectedTeamId, authLoading, servicesLoading]);
+  }, [allStaff, services, selectedTeamId, authLoading, servicesLoading, activeServiceId]);
 
   useEffect(() => {
     if (statsData.length > 0) {
@@ -272,6 +389,11 @@ export const TeamView: React.FC = () => {
     }
   }, [statsData, activeServiceId]);
 
+  const activeStat = useMemo(
+    () => statsData.find(s => s.service.service_id === activeServiceId),
+    [statsData, activeServiceId]
+  );
+
   if (loading || authLoading || servicesLoading) {
     return <div className="py-6 text-center text-gray-500">Loading Stats and Figures…</div>;
   }
@@ -279,8 +401,6 @@ export const TeamView: React.FC = () => {
   if (error) {
     return <div className="p-4 bg-red-50 border border-red-200 text-red-800 rounded-md">{error}</div>;
   }
-
-  const activeStat = statsData.find(s => s.service.service_id === activeServiceId);
 
   return (
     <div className="space-y-6">
@@ -327,38 +447,60 @@ export const TeamView: React.FC = () => {
           </div>
 
           {activeStat && (
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6 transition-all duration-300 animate-fade-in">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-                    {activeStat.service.service_name} Performance
-                  </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    Monthly actuals vs 12-month rolling average
-                  </p>
-                  {activeStat.service.service_name === '% of Target Achieved' && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                      * Monthly bars: (Monthly Deliveries / Monthly Target). Line: (12-Month Deliveries Sum / 12-Month Target Sum).
+            <div className="grid grid-cols-1 xl:grid-cols-[60%_40%] gap-6 items-stretch">
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6 transition-all duration-300 animate-fade-in">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                      {activeStat.service.service_name} Performance
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      Monthly actuals vs 12-month rolling average
                     </p>
-                  )}
-                  {activeStat.service.service_name === 'Bagel Days' && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                      * Bagel Days count working days where no selected user recorded any actuals on that day.
-                    </p>
-                  )}
+                    {activeStat.service.service_name === '% of Target Achieved' && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                        * Monthly bars: (Monthly Deliveries / Monthly Target). Line: (12-Month Deliveries Sum / 12-Month Target Sum).
+                      </p>
+                    )}
+                    {activeStat.service.service_name === 'Bagel Days' && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                        * Bagel Days count working days where no selected user recorded any actuals on that day.
+                      </p>
+                    )}
+                  </div>
+                  <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 rounded-lg border border-gray-100 dark:border-gray-600 text-right">
+                    <div className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider">
+                      Latest Month Actual
+                    </div>
+                    <div className="text-2xl font-bold text-[#001B47] dark:text-blue-400">
+                      {activeStat.data[11].actual}{activeStat.isPercentage ? '%' : ''}
+                    </div>
+                  </div>
                 </div>
-                <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 rounded-lg border border-gray-100 dark:border-gray-600 text-right">
-                  <div className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider">
-                    Latest Month Actual
-                  </div>
-                  <div className="text-2xl font-bold text-[#001B47] dark:text-blue-400">
-                    {activeStat.data[11].actual}{activeStat.isPercentage ? '%' : ''}
-                  </div>
+
+                <div className="w-full h-[400px]">
+                  <ServiceComboChart data={activeStat.data} isPercentage={activeStat.isPercentage} />
                 </div>
               </div>
 
-              <div className="w-full h-[400px]">
-                <ServiceComboChart data={activeStat.data} isPercentage={activeStat.isPercentage} />
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6 transition-all duration-300 animate-fade-in">
+                <div className="mb-6">
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                    Accountant Ranking
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    12-month rolling average at the end of last month
+                  </p>
+                </div>
+
+                <div className="w-full h-[400px]">
+                  <AccountantRankingChart
+                    data={accountantRankings}
+                    isPercentage={activeStat.isPercentage}
+                    selectedStaffId={selectedStaffId}
+                    isTeamViewMode={isTeamViewMode}
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -499,6 +641,128 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[], isPerc
             >
               <title>Rolling Avg: {d.rollingAverage.toFixed(1)}{isPercentage ? '%' : ''}</title>
             </circle>
+          </g>
+        );
+      })}
+    </svg>
+  );
+};
+
+const AccountantRankingChart = ({
+  data,
+  isPercentage,
+  selectedStaffId,
+  isTeamViewMode,
+}: {
+  data: AccountantRankingRow[];
+  isPercentage?: boolean;
+  selectedStaffId: number | null;
+  isTeamViewMode: boolean;
+}) => {
+  const VIEWBOX_WIDTH = 560;
+  const VIEWBOX_HEIGHT = 420;
+  const PADDING_TOP = 20;
+  const PADDING_BOTTOM = 24;
+  const PADDING_LEFT = 150;
+  const PADDING_RIGHT = 60;
+
+  const CHART_WIDTH = VIEWBOX_WIDTH - PADDING_LEFT - PADDING_RIGHT;
+  const CHART_HEIGHT = VIEWBOX_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
+
+  const maxValue = Math.max(...data.map(item => item.rollingAverage), 1) * 1.1;
+  const rowHeight = CHART_HEIGHT / Math.max(data.length, 1);
+  const barHeight = Math.min(26, rowHeight * 0.62);
+
+  const getBarColor = (row: AccountantRankingRow) => {
+    if (isTeamViewMode) {
+      return '#001B47';
+    }
+
+    if (selectedStaffId && row.staff_id === selectedStaffId) {
+      return '#FF8A2A';
+    }
+
+    return '#D1D5DB';
+  };
+
+  const getLabelColor = (row: AccountantRankingRow) => {
+    if (isTeamViewMode) {
+      return 'fill-gray-700 dark:fill-gray-200';
+    }
+
+    if (selectedStaffId && row.staff_id === selectedStaffId) {
+      return 'fill-[#001B47] dark:fill-white';
+    }
+
+    return 'fill-gray-400 dark:fill-gray-500';
+  };
+
+  const formatValue = (value: number) => `${value.toFixed(1)}${isPercentage ? '%' : ''}`;
+
+  return (
+    <svg viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`} className="w-full h-full min-h-[320px]">
+      {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+        const x = PADDING_LEFT + ratio * CHART_WIDTH;
+        const value = maxValue * ratio;
+
+        return (
+          <g key={ratio}>
+            <line
+              x1={x}
+              y1={PADDING_TOP}
+              x2={x}
+              y2={VIEWBOX_HEIGHT - PADDING_BOTTOM}
+              stroke="#E5E7EB"
+              className="dark:stroke-gray-700"
+              strokeDasharray={ratio === 0 ? '' : '4 4'}
+            />
+            <text
+              x={x}
+              y={VIEWBOX_HEIGHT - 8}
+              textAnchor="middle"
+              className="text-[10px] fill-gray-500 dark:fill-gray-400"
+            >
+              {formatValue(value)}
+            </text>
+          </g>
+        );
+      })}
+
+      {data.map((row, index) => {
+        const y = PADDING_TOP + index * rowHeight + rowHeight / 2;
+        const barWidth = (row.rollingAverage / maxValue) * CHART_WIDTH;
+        const isSelected = selectedStaffId === row.staff_id;
+        const showStrongEmphasis = isTeamViewMode || isSelected;
+
+        return (
+          <g key={row.staff_id}>
+            <text
+              x={PADDING_LEFT - 10}
+              y={y + 4}
+              textAnchor="end"
+              className={`text-[12px] font-medium ${getLabelColor(row)}`}
+            >
+              {row.name}
+            </text>
+
+            <rect
+              x={PADDING_LEFT}
+              y={y - barHeight / 2}
+              width={barWidth}
+              height={barHeight}
+              rx={4}
+              fill={getBarColor(row)}
+              opacity={showStrongEmphasis ? 1 : 0.9}
+            />
+
+            <text
+              x={Math.min(PADDING_LEFT + barWidth + 8, VIEWBOX_WIDTH - PADDING_RIGHT + 4)}
+              y={y + 4}
+              textAnchor="start"
+              className={`text-[12px] font-bold ${showStrongEmphasis ? 'fill-gray-800 dark:fill-gray-100' : 'fill-gray-500 dark:fill-gray-400'}`}
+            >
+              {formatValue(row.rollingAverage)}
+            </text>
           </g>
         );
       })}
