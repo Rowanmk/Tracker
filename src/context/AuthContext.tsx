@@ -12,7 +12,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   signOut: () => Promise<void>;
-  signInWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
+  signInWithEmail: (identifier: string, password: string) => Promise<{ error?: string }>;
   signUpWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
   resetPassword: (email: string) => Promise<{ error?: string }>;
   staff: Staff[];
@@ -38,6 +38,7 @@ const RECOVERY_ADMIN_EMAILS = ['rowan@thecrew.co.uk', 'admin@thecrew.co.uk'];
 
 const normalizeFirstName = (name?: string | null) => (name || '').split(' ')[0]?.trim().toLowerCase() || '';
 const normalizeEmail = (email?: string | null) => (email || '').trim().toLowerCase();
+const normalizeIdentifier = (value?: string | null) => (value || '').trim().toLowerCase();
 
 const isAccountant = (staffMember: Staff) => {
   const role = (staffMember.role || '').toLowerCase();
@@ -223,19 +224,43 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => subscription.unsubscribe();
   }, [applyAuthenticatedStaff, clearAuthenticatedStaff, fetchStaff, findMatchingStaffForSession]);
 
-  const signInWithEmail = async (email: string, password: string) => {
+  const signInWithEmail = async (identifier: string, password: string) => {
     setError(null);
 
-    const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    const normalizedIdentifier = normalizeIdentifier(identifier);
+    let resolvedEmail = normalizedIdentifier;
+
+    if (!normalizedIdentifier.includes('@')) {
+      const matchedStaff = allStaff.find(
+        (staffMember) => normalizeFirstName(staffMember.name) === normalizedIdentifier
+      );
+
+      if (!matchedStaff) {
+        return { error: 'Invalid username or password.' };
+      }
+
+      if (normalizedIdentifier === 'rowan') {
+        resolvedEmail = 'rowan@thecrew.co.uk';
+      } else if (normalizeFirstName(matchedStaff.name) === 'admin') {
+        resolvedEmail = 'admin@thecrew.co.uk';
+      } else {
+        return { error: 'This username is not linked to an email login account.' };
+      }
+    }
+
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      email: resolvedEmail,
+      password,
+    });
+
     if (signInError) {
-      const normalizedEmail = normalizeEmail(email);
       const normalizedMessage = signInError.message.toLowerCase();
 
       if (
-        RECOVERY_ADMIN_EMAILS.includes(normalizedEmail) &&
+        RECOVERY_ADMIN_EMAILS.includes(resolvedEmail) &&
         normalizedMessage.includes('invalid login credentials')
       ) {
-        return { error: 'Invalid login credentials.' };
+        return { error: 'Invalid username or password.' };
       }
 
       return { error: signInError.message };
@@ -262,7 +287,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         description: `${matchedStaff.name} signed in`,
         actorStaffId: matchedStaff.staff_id,
         teamId: matchedStaff.team_id,
-        metadata: { email_entered: email },
+        metadata: { username_entered: identifier },
       });
     }
 

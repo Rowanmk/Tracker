@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 
 export const Login: React.FC = () => {
   const { signInWithEmail, staffLoaded, error: authError } = useAuth();
-  const [email, setEmail] = useState('rowan@thecrew.co.uk');
+  const [username, setUsername] = useState('rowan');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -26,14 +26,13 @@ export const Login: React.FC = () => {
       return;
     }
 
-    if (!email.trim() || !password.trim()) {
-      setError('Please enter your email and password.');
+    if (!username.trim() || !password.trim()) {
+      setError('Please enter your username and password.');
       return;
     }
 
     setSubmitting(true);
-    const trimmedEmail = email.trim();
-    const result = await signInWithEmail(trimmedEmail, password.trim());
+    const result = await signInWithEmail(username.trim(), password.trim());
 
     if (result.error) {
       setError(result.error);
@@ -64,15 +63,15 @@ export const Login: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Email Address
+                Username
               </label>
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter your username"
                 required
-                autoComplete="email"
+                autoComplete="username"
                 autoFocus
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#001B47] focus:border-transparent text-gray-900"
               />
