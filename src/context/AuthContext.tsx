@@ -1,3 +1,4 @@
+// Full new code
 import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback, useMemo } from 'react';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
@@ -89,6 +90,34 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setIsAuthenticated(true);
           const savedTeam = localStorage.getItem('crew_tracker_team_id');
           setSelectedTeamId(savedTeam || String(found.staff_id));
+        } else {
+          // Check DB directly just in case
+          const { data: staffData } = await supabase.from('staff').select('*').eq('user_id', session.user.id).maybeSingle();
+          if (staffData) {
+            const normalized = enforcePermanentAdmin(staffData);
+            setCurrentStaff(normalized);
+            setIsAuthenticated(true);
+            const savedTeam = localStorage.getItem('crew_tracker_team_id');
+            setSelectedTeamId(savedTeam || String(normalized.staff_id));
+          } else {
+            // Auto-create staff record if missing
+            const newStaff = {
+              user_id: session.user.id,
+              email: session.user.email,
+              name: session.user.email?.split('@')[0] || 'New User',
+              role: session.user.email === 'rowan@thecrew.co.uk' ? 'admin' : 'user',
+              is_hidden: false
+            };
+            const { data: insertedStaff } = await supabase.from('staff').insert(newStaff).select().single();
+            if (insertedStaff) {
+              const normalized = enforcePermanentAdmin(insertedStaff);
+              setCurrentStaff(normalized);
+              setIsAuthenticated(true);
+              setSelectedTeamId(String(normalized.staff_id));
+            } else {
+              await supabase.auth.signOut();
+            }
+          }
         }
       }
     } catch (err: unknown) {
@@ -104,13 +133,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        const { data: staffData } = await supabase.from('staff').select('*').eq('user_id', session.user.id).single();
+        const { data: staffData } = await supabase.from('staff').select('*').eq('user_id', session.user.id).maybeSingle();
         if (staffData) {
           const normalized = enforcePermanentAdmin(staffData);
           setCurrentStaff(normalized);
           setIsAuthenticated(true);
           const savedTeam = localStorage.getItem('crew_tracker_team_id');
           setSelectedTeamId(savedTeam || String(normalized.staff_id));
+        } else {
+          // Auto-create staff profile if missing
+          const newStaff = {
+            user_id: session.user.id,
+            email: session.user.email,
+            name: session.user.email?.split('@')[0] || 'New User',
+            role: session.user.email === 'rowan@thecrew.co.uk' ? 'admin' : 'user',
+            is_hidden: false
+          };
+          const { data: insertedStaff } = await supabase.from('staff').insert(newStaff).select().single();
+          if (insertedStaff) {
+            const normalized = enforcePermanentAdmin(insertedStaff);
+            setCurrentStaff(normalized);
+            setIsAuthenticated(true);
+            setSelectedTeamId(String(normalized.staff_id));
+          } else {
+            await supabase.auth.signOut();
+          }
         }
       } else if (event === 'SIGNED_OUT') {
         setCurrentStaff(null);
@@ -128,7 +175,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (error) return { error: error.message };
 
     if (data.user) {
-      const { data: staffData } = await supabase.from('staff').select('*').eq('user_id', data.user.id).single();
+      const { data: staffData } = await supabase.from('staff').select('*').eq('user_id', data.user.id).maybeSingle();
       if (staffData) {
         await createAuditLog({
           pagePath: '/login',
@@ -141,6 +188,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           teamId: staffData.team_id,
           metadata: { email_entered: email },
         });
+      } else {
+        // Auto-create staff record if missing
+        const newStaff = {
+          user_id: data.user.id,
+          email: data.user.email,
+          name: data.user.email?.split('@')[0] || 'New User',
+          role: data.user.email === 'rowan@thecrew.co.uk' ? 'admin' : 'user',
+          is_hidden: false
+        };
+        const { data: insertedStaff, error: insertError } = await supabase.from('staff').insert(newStaff).select().single();
+        if (insertError || !insertedStaff) {
+          await supabase.auth.signOut();
+          return { error: "Login successful, but failed to link to a staff profile." };
+        }
       }
     }
 
