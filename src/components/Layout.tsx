@@ -119,16 +119,18 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                         </button>
                       ))}
                     </div>
+
+                    <div className="border-t border-gray-200 bg-gray-50/50">
+                      <button
+                        onClick={handleSignOut}
+                        className="w-full text-left px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-100 transition"
+                      >
+                        Sign Out
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
-
-              <button
-                onClick={handleSignOut}
-                className="bg-white/20 hover:bg-white/30 text-white text-sm font-semibold px-4 py-2 rounded-md transition"
-              >
-                Sign Out
-              </button>
             </div>
           </div>
         </header>
