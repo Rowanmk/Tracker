@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export const Login: React.FC = () => {
-  const { signInWithEmail, staffLoaded, error: authError } = useAuth();
-  const [username, setUsername] = useState('rowan');
+  const { signInWithEmail, staffLoaded, error: authError, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -15,6 +16,12 @@ export const Login: React.FC = () => {
       setError(authError);
     }
   }, [authError]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,7 +58,7 @@ export const Login: React.FC = () => {
             Crew Tracker
           </h1>
           <p className="text-sm text-gray-500">
-            Sign in to your account
+            Sign in with your first name
           </p>
         </div>
 
@@ -69,7 +76,7 @@ export const Login: React.FC = () => {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your username"
+                placeholder="Enter your first name"
                 required
                 autoComplete="username"
                 autoFocus
@@ -85,11 +92,15 @@ export const Login: React.FC = () => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
+                placeholder="Enter the same name again"
                 required
                 autoComplete="current-password"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#001B47] focus:border-transparent text-gray-900"
               />
+            </div>
+
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+              Use your first name for both username and password.
             </div>
 
             {error && (
@@ -111,15 +122,6 @@ export const Login: React.FC = () => {
             >
               {submitting ? 'Signing in…' : 'Sign In'}
             </button>
-
-            <div className="flex flex-col space-y-3 text-center mt-4">
-              <Link
-                to="/forgot-password"
-                className="text-sm text-gray-500 hover:text-[#001B47] hover:underline font-medium"
-              >
-                Forgot Password?
-              </Link>
-            </div>
           </form>
         )}
       </div>

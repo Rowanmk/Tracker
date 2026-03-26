@@ -42,20 +42,6 @@ const isAccountant = (staffMember: Staff) => {
   return role === 'staff' || role === 'admin' || normalizedName.includes('accountant');
 };
 
-const buildFallbackStaff = (): Staff => ({
-  staff_id: 0,
-  created_at: null,
-  home_region: 'england-and-wales',
-  is_hidden: false,
-  name: 'Crew Tracker',
-  password: null,
-  role: 'admin',
-  security_answer: null,
-  security_question: null,
-  team_id: null,
-  user_id: null,
-});
-
 const enforceKnownAdminRole = (staffMember: Staff): Staff => {
   const firstName = normalizeFirstName(staffMember.name);
   const normalizedRole = (staffMember.role || '').toLowerCase();
@@ -67,6 +53,9 @@ const enforceKnownAdminRole = (staffMember: Staff): Staff => {
   return staffMember;
 };
 
+const getStoredStaffId = () => localStorage.getItem('crew_tracker_logged_in_staff_id');
+const getStoredTeamId = () => localStorage.getItem('crew_tracker_team_id');
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -76,19 +65,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [teams, setTeams] = useState<Team[]>([]);
   const [currentStaff, setCurrentStaff] = useState<Staff | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showFallbackWarning, setShowFallbackWarning] = useState<boolean>(false);
 
   const applyCurrentStaff = useCallback((staffMember: Staff | null) => {
-    const fallbackStaff = buildFallbackStaff();
-    const normalized = staffMember ? enforceKnownAdminRole(staffMember) : fallbackStaff;
-    const savedTeam = localStorage.getItem('crew_tracker_team_id');
+    if (!staffMember) {
+      setCurrentStaff(null);
+      setIsAuthenticated(false);
+      setSelectedTeamId(null);
+      localStorage.removeItem('crew_tracker_logged_in_staff_id');
+      return;
+    }
+
+    const normalized = enforceKnownAdminRole(staffMember);
+    const savedTeam = getStoredTeamId();
 
     setCurrentStaff(normalized);
     setIsAuthenticated(true);
-    setSelectedTeamId(savedTeam || (normalized.staff_id > 0 ? String(normalized.staff_id) : 'team-view'));
+    setSelectedTeamId(savedTeam || String(normalized.staff_id));
+    localStorage.setItem('crew_tracker_logged_in_staff_id', String(normalized.staff_id));
   }, []);
 
   const fetchStaff = useCallback(async () => {
@@ -108,6 +105,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const loadedTeams = (teamsRes.data || []) as Team[];
       const loadedPermissions = (permsRes.data || []) as Permission[];
       const sessionUser = sessionRes.data.session?.user ?? null;
+      const storedStaffId = getStoredStaffId();
 
       setUser(sessionUser);
       setAllStaff(normalizedStaff);
@@ -115,15 +113,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setTeams(loadedTeams);
       setPermissions(loadedPermissions);
 
-      const preferredStaff =
-        normalizedStaff.find((staffMember) => staffMember.user_id && sessionUser && staffMember.user_id === sessionUser.id) ||
-        normalizedStaff.find((staffMember) => normalizeFirstName(staffMember.name) === 'rowan') ||
-        normalizedStaff.find((staffMember) => (staffMember.role || '').toLowerCase() === 'admin') ||
-        visibleStaff[0] ||
-        null;
+      const matchedStoredStaff = storedStaffId
+        ? normalizedStaff.find((staffMember) => String(staffMember.staff_id) === storedStaffId) || null
+        : null;
 
-      applyCurrentStaff(preferredStaff);
-      setShowFallbackWarning(preferredStaff === null);
+      if (matchedStoredStaff) {
+        applyCurrentStaff(matchedStoredStaff);
+      } else {
+        applyCurrentStaff(null);
+      }
+
+      setShowFallbackWarning(false);
     } catch {
       setAllStaff([]);
       setStaff([]);
@@ -131,7 +131,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setPermissions([]);
       setUser(null);
       applyCurrentStaff(null);
-      setShowFallbackWarning(true);
+      setShowFallbackWarning(false);
+      setError('Failed to load staff data.');
     } finally {
       setStaffLoaded(true);
       setLoading(false);
@@ -142,8 +143,35 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     void fetchStaff();
   }, [fetchStaff]);
 
-  const signInWithEmail = async () => {
-    return {};
+  const signInWithEmail = async (identifier: string, password: string) => {
+    const normalizedIdentifier = identifier.trim().toLowerCase();
+    const normalizedPassword = password.trim().toLowerCase();
+
+    if (!normalizedIdentifier || !normalizedPassword) {
+      return { error: 'Please enter your username and password.' };
+    }
+
+    try {
+      const matchedStaff = allStaff.find(
+        (staffMember) =>
+          !staffMember.is_hidden &&
+          normalizeFirstName(staffMember.name) === normalizedIdentifier
+      );
+
+      if (!matchedStaff) {
+        return { error: 'User not found.' };
+      }
+
+      if (normalizedPassword !== normalizedIdentifier) {
+        return { error: 'Incorrect password.' };
+      }
+
+      applyCurrentStaff(matchedStaff);
+      setError(null);
+      return {};
+    } catch {
+      return { error: 'Unable to sign in right now.' };
+    }
   };
 
   const signUpWithEmail = async () => {
@@ -151,7 +179,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const signOut = async () => {
-    return;
+    setUser(null);
+    setCurrentStaff(null);
+    setIsAuthenticated(false);
+    setSelectedTeamId(null);
+    localStorage.removeItem('crew_tracker_logged_in_staff_id');
+    localStorage.removeItem('crew_tracker_team_id');
   };
 
   const resetPassword = async () => {
@@ -173,7 +206,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const publicPaths = ['/login', '/forgot-password'];
     if (publicPaths.includes(path)) return true;
 
-    if (!currentStaff) return true;
+    if (!currentStaff) return false;
 
     const roleForPermissions = currentStaff.role === 'user' ? 'staff' : currentStaff.role;
     const perm = permissions.find((p) => p.role === roleForPermissions && p.page_path === path);

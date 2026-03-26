@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { DashboardViewProvider } from "../context/DashboardViewContext";
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
-  const { currentStaff, accountantStaff, onTeamChange, selectedTeamId, hasPermission } = useAuth();
+  const { currentStaff, accountantStaff, onTeamChange, selectedTeamId, hasPermission, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -48,6 +48,12 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     setDropdownOpen(false);
   };
 
+  const handleSignOut = async () => {
+    await signOut();
+    setDropdownOpen(false);
+    navigate('/login', { replace: true });
+  };
+
   const buttonLabel = (() => {
     if (selectedTeamId === "team-view") return "Team View";
     if (currentStaff && selectedTeamId === String(currentStaff.staff_id)) return currentStaff.name;
@@ -69,51 +75,60 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                 </Link>
               ))}
             </nav>
-            <div className="relative" ref={dropdownRef}>
-              <button onClick={() => setDropdownOpen(!dropdownOpen)} className="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white text-sm font-semibold px-4 py-2 rounded-md transition">
-                <span>{buttonLabel}</span>
-                <svg className={`w-4 h-4 transition-transform ${dropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
+            <div className="flex items-center gap-3">
+              <div className="relative" ref={dropdownRef}>
+                <button onClick={() => setDropdownOpen(!dropdownOpen)} className="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white text-sm font-semibold px-4 py-2 rounded-md transition">
+                  <span>{buttonLabel}</span>
+                  <svg className={`w-4 h-4 transition-transform ${dropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {dropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden z-50">
+                    <div className="bg-blue-50/50 border-b border-blue-100">
+                      {currentStaff && (
+                        <button
+                          onClick={() => handleSelectOption(currentStaff.staff_id)}
+                          className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === String(currentStaff.staff_id) ? "bg-blue-100" : ""}`}
+                        >
+                          <span className="truncate">{currentStaff.name}</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => handleSelectOption("team-view")}
+                        className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === "team-view" ? "bg-blue-100" : ""}`}
+                      >
+                        Team View
+                      </button>
+                    </div>
+
+                    <div className="max-h-64 overflow-y-auto">
+                      {accountantOptions.length > 0 && (
+                        <div className="px-4 py-2 bg-gray-50/50 border-b border-gray-100">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Accountants</span>
+                        </div>
+                      )}
+                      {accountantOptions.map((staffMember) => (
+                        <button
+                          key={staffMember.staff_id}
+                          onClick={() => handleSelectOption(staffMember.staff_id)}
+                          className={`w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition ${selectedTeamId === String(staffMember.staff_id) ? "bg-blue-50" : ""}`}
+                        >
+                          {staffMember.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={handleSignOut}
+                className="bg-white/20 hover:bg-white/30 text-white text-sm font-semibold px-4 py-2 rounded-md transition"
+              >
+                Sign Out
               </button>
-              {dropdownOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden z-50">
-                  <div className="bg-blue-50/50 border-b border-blue-100">
-                    {currentStaff && (
-                      <button
-                        onClick={() => handleSelectOption(currentStaff.staff_id)}
-                        className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === String(currentStaff.staff_id) ? "bg-blue-100" : ""}`}
-                      >
-                        <span className="truncate">{currentStaff.name}</span>
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => handleSelectOption("team-view")}
-                      className={`w-full text-left px-4 py-3 text-sm font-bold text-[#001B47] hover:bg-blue-100 transition ${selectedTeamId === "team-view" ? "bg-blue-100" : ""}`}
-                    >
-                      Team View
-                    </button>
-                  </div>
-
-                  <div className="max-h-64 overflow-y-auto">
-                    {accountantOptions.length > 0 && (
-                      <div className="px-4 py-2 bg-gray-50/50 border-b border-gray-100">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Accountants</span>
-                      </div>
-                    )}
-                    {accountantOptions.map((staffMember) => (
-                      <button
-                        key={staffMember.staff_id}
-                        onClick={() => handleSelectOption(staffMember.staff_id)}
-                        className={`w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition ${selectedTeamId === String(staffMember.staff_id) ? "bg-blue-50" : ""}`}
-                      >
-                        {staffMember.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </header>

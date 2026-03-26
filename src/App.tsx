@@ -12,6 +12,7 @@ import { SelfAssessmentProgress } from './pages/SelfAssessmentProgress';
 import { TargetsControl } from './pages/TargetsControl';
 import { Settings } from './pages/Settings';
 import { AuditLog } from './pages/AuditLog';
+import { Login } from './pages/Login';
 
 const getFirstAllowedPath = (hasPermission: (path: string) => boolean) => {
   const protectedPaths = [
@@ -32,7 +33,19 @@ const ProtectedRoute: React.FC<{
   path: string;
   element: React.ReactElement;
 }> = ({ path, element }) => {
-  const { hasPermission } = useAuth();
+  const { hasPermission, isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-gray-500 text-lg">Loading…</div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
 
   if (!hasPermission(path)) {
     const fallback = getFirstAllowedPath(hasPermission);
@@ -53,13 +66,23 @@ const ProtectedRoute: React.FC<{
 };
 
 const AppRoutes: React.FC = () => {
-  const { loading, hasPermission } = useAuth();
+  const { loading, hasPermission, isAuthenticated } = useAuth();
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-gray-500 text-lg">Loading…</div>
       </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
     );
   }
 
