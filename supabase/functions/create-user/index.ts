@@ -48,6 +48,32 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    const {
+      data: serviceRoleHealthUsers,
+      error: serviceRoleHealthError,
+    } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1 });
+
+    if (serviceRoleHealthError) {
+      const normalizedHealthError = serviceRoleHealthError.message.toLowerCase();
+      const isLikelyServiceRoleIssue =
+        normalizedHealthError.includes("not_admin") ||
+        normalizedHealthError.includes("admin") ||
+        normalizedHealthError.includes("jwt") ||
+        normalizedHealthError.includes("invalid signature") ||
+        normalizedHealthError.includes("invalid claim") ||
+        normalizedHealthError.includes("unauthorized") ||
+        normalizedHealthError.includes("forbidden");
+
+      return new Response(JSON.stringify({
+        error: isLikelyServiceRoleIssue
+          ? `Invalid Supabase service role configuration: SUPABASE_SERVICE_ROLE_KEY is present but could not perform admin operations (${serviceRoleHealthError.message}). Update the secret in Supabase Edge Function secrets and redeploy the create-user function.`
+          : `Failed to validate service-role admin access: ${serviceRoleHealthError.message}`,
+      }), {
+        headers: corsHeaders,
+        status: 500,
+      });
+    }
+
     const body = await req.json();
     const { email, password, name, role, home_region, actorStaffId } = body ?? {};
 
@@ -190,18 +216,9 @@ serve(async (req) => {
       });
     }
 
-    const { data: existingUsers, error: listUsersError } = await supabase.auth.admin.listUsers();
+    const existingUsers = serviceRoleHealthUsers.users || [];
 
-    if (listUsersError) {
-      return new Response(JSON.stringify({
-        error: `Failed to list auth users with the service role key: ${listUsersError.message}. Check that SUPABASE_SERVICE_ROLE_KEY is set correctly in Supabase Edge Function secrets and that the create-user function has been redeployed.`,
-      }), {
-        headers: corsHeaders,
-        status: 500,
-      });
-    }
-
-    const emailAlreadyExists = existingUsers.users.some(
+    const emailAlreadyExists = existingUsers.some(
       (user) => (user.email || "").trim().toLowerCase() === normalizedEmail
     );
 
