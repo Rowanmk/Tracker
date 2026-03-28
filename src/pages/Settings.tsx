@@ -258,18 +258,21 @@ export const Settings: React.FC = () => {
       const requestedWorkCategory = newUserWorkCategory;
       const requestedRegion = newUserRegion;
 
-      const { data, error: insertError } = await supabase.functions.invoke('create-user', {
+      const { data, error: functionError } = await supabase.functions.invoke('create-user', {
         body: {
           email: newUserEmail.trim(),
           password: newUserPassword.trim(),
           name: requestedName,
           role: getRoleValueFromAccessLevel(requestedAccessLevel, requestedWorkCategory),
-          home_region: requestedRegion
+          home_region: requestedRegion,
+          actorStaffId: currentStaff.staff_id,
         }
       });
 
-      if (insertError || data?.error) {
-        setTimedFeedback(getErrorMessage('Failed to add user', insertError || new Error(data?.error)));
+      if (functionError) {
+        setTimedFeedback(getErrorMessage('Failed to add user', functionError));
+      } else if (data?.error) {
+        setTimedFeedback(getErrorMessage('Failed to add user', { message: String(data.error) }));
       } else if (data?.user) {
         const normalizedUser = deriveStaffCategories(data.user as Staff);
         setAllUsers(prev =>
@@ -311,8 +314,10 @@ export const Settings: React.FC = () => {
           },
         });
         setTimedFeedback('Successfully added user');
+      } else {
+        setTimedFeedback('Failed to add user: no user was returned by the edge function.');
       }
-    } catch (err) {
+    } catch {
       setTimedFeedback('Failed to connect to database');
     } finally {
       setIsAddingUser(false);
