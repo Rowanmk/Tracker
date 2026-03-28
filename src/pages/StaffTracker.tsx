@@ -30,6 +30,8 @@ export const StaffTracker: React.FC = () => {
 
   const displayServices = useMemo(() => services.filter(s => s.service_name !== 'Bagel Days'), [services]);
 
+  const isTeamView = selectedTeamId === "team-view";
+
   const [dailyEntries, setDailyEntries] = useState<DailyEntry[]>([]);
   const [personalTargets, setPersonalTargets] = useState<Record<string, number>>({});
   const [personalTotals, setPersonalTotals] = useState<Record<string, number>>({});
@@ -44,6 +46,10 @@ export const StaffTracker: React.FC = () => {
   const selectedAccountants = useMemo(() => {
     const visibleAccountants = allStaff.filter((staff) => !staff.is_hidden && isAccountant(staff.role));
 
+    if (isTeamView) {
+      return visibleAccountants;
+    }
+
     if (selectedTeamId === "all" || !selectedTeamId) {
       return visibleAccountants;
     }
@@ -51,20 +57,18 @@ export const StaffTracker: React.FC = () => {
     return visibleAccountants.filter(
       (staff) => String(staff.staff_id) === selectedTeamId
     );
-  }, [allStaff, selectedTeamId]);
+  }, [allStaff, selectedTeamId, isTeamView]);
 
   const editableStaffIds = useMemo(
-    () => selectedAccountants.map((staff) => staff.staff_id),
-    [selectedAccountants]
+    () => (isTeamView ? [] : selectedAccountants.map((staff) => staff.staff_id)),
+    [selectedAccountants, isTeamView]
   );
 
   const tableLabel = useMemo(() => {
-    if (selectedTeamId === "all" || !selectedTeamId) {
-      return "All Accountants";
-    }
-
+    if (isTeamView) return "Team View";
+    if (selectedTeamId === "all" || !selectedTeamId) return "All Accountants";
     return allStaff.find((staff) => String(staff.staff_id) === selectedTeamId)?.name || "Accountant";
-  }, [selectedTeamId, allStaff]);
+  }, [selectedTeamId, allStaff, isTeamView]);
 
   const { staffWorkingDays, workingDaysUpToToday } = useWorkingDays({
     financialYear: selectedFinancialYear,
@@ -98,7 +102,12 @@ export const StaffTracker: React.FC = () => {
 
     const nextLocalValues: Record<string, string> = {};
 
-    if (editableStaffIds.length === 0) {
+    // For team view, aggregate all accountants
+    const staffIdsToFetch = isTeamView
+      ? allStaff.filter((s) => !s.is_hidden && isAccountant(s.role)).map((s) => s.staff_id)
+      : editableStaffIds;
+
+    if (staffIdsToFetch.length === 0) {
       setDailyEntries(entries);
       setPersonalTargets(nextTargets);
       setPersonalTotals(nextTotals);
@@ -108,7 +117,7 @@ export const StaffTracker: React.FC = () => {
     }
 
     let aggregatedTargets: Record<number, number> = {};
-    for (const staffId of editableStaffIds) {
+    for (const staffId of staffIdsToFetch) {
       const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, staffId);
       Object.entries(perService).forEach(([sid, val]) => {
         aggregatedTargets[Number(sid)] = (aggregatedTargets[Number(sid)] || 0) + val;
@@ -120,7 +129,7 @@ export const StaffTracker: React.FC = () => {
       .select("service_id, delivered_count, day, staff_id, date")
       .eq("month", selectedMonth)
       .eq("year", year)
-      .in("staff_id", editableStaffIds);
+      .in("staff_id", staffIdsToFetch);
 
     const finalActivities = activities || [];
 
@@ -157,11 +166,12 @@ export const StaffTracker: React.FC = () => {
 
   useEffect(() => {
     fetchTeamTrackerData(true);
-  }, [selectedMonth, selectedFinancialYear, selectedTeamId, currentStaff?.staff_id, displayServices.length, editableStaffIds.join(",")]);
+  }, [selectedMonth, selectedFinancialYear, selectedTeamId, currentStaff?.staff_id, displayServices.length, editableStaffIds.join(","), isTeamView]);
 
   const getCellKey = (serviceId: number, day: number) => `${serviceId}-${day}`;
 
   const handleInputChange = (serviceId: number, day: number, value: string) => {
+    if (isTeamView) return;
     setLocalValues((prev) => ({
       ...prev,
       [getCellKey(serviceId, day)]: value,
@@ -169,7 +179,7 @@ export const StaffTracker: React.FC = () => {
   };
 
   const handleInputBlur = async (serviceId: number, day: number, value: string) => {
-    if (editableStaffIds.length === 0 || !currentStaff) return;
+    if (isTeamView || editableStaffIds.length === 0 || !currentStaff) return;
 
     const parsedValue = parseInt(value, 10);
     const numValue = Number.isNaN(parsedValue) ? 0 : Math.max(parsedValue, 0);
@@ -253,6 +263,8 @@ export const StaffTracker: React.FC = () => {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, serviceId: number, day: number) => {
+    if (isTeamView) return;
+
     const isTab = e.key === "Tab";
     const isArrow = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key);
 
@@ -332,7 +344,14 @@ export const StaffTracker: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="page-header">
-        <h2 className="page-title">{tableLabel} Tracker</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="page-title">{tableLabel} Tracker</h2>
+          {isTeamView && (
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+              Read Only — Sum of All Accountants
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="mb-6">
@@ -348,8 +367,13 @@ export const StaffTracker: React.FC = () => {
       />
 
       <div className="border rounded-xl overflow-hidden shadow-sm bg-white dark:bg-gray-800">
-        <div className="bg-[#001B47] text-white px-4 py-2 font-semibold">
-          Daily Activity Entry
+        <div className="bg-[#001B47] text-white px-4 py-2 font-semibold flex items-center justify-between">
+          <span>Daily Activity {isTeamView ? "Summary" : "Entry"}</span>
+          {isTeamView && (
+            <span className="text-xs font-normal text-white/70 italic">
+              Read only — editing disabled in Team View
+            </span>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse table-fixed">
@@ -388,6 +412,30 @@ export const StaffTracker: React.FC = () => {
                     {dailyEntries.map((entry) => {
                       const cellKey = getCellKey(service.service_id, entry.day);
                       const highlight = isWeekend(entry.date) || isPublicHoliday(entry.date);
+                      const cellValue = localValues[cellKey] || "0";
+
+                      if (isTeamView) {
+                        const numVal = parseInt(cellValue, 10) || 0;
+                        return (
+                          <td
+                            key={entry.day}
+                            className={`p-0 border-b border-r last:border-r-0 dark:border-gray-600 text-center transition-colors ${
+                              highlight ? "bg-red-50/50 dark:bg-red-900/10" : ""
+                            }`}
+                          >
+                            <div
+                              className={`w-full h-10 flex items-center justify-center text-xs font-medium select-none ${
+                                highlight
+                                  ? "bg-red-50/80 dark:bg-red-900/20 text-red-900 dark:text-red-100"
+                                  : "bg-gray-50/50 dark:bg-gray-700/30 text-gray-700 dark:text-gray-300"
+                              }`}
+                            >
+                              {numVal > 0 ? numVal : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                            </div>
+                          </td>
+                        );
+                      }
+
                       return (
                         <td
                           key={entry.day}
@@ -401,7 +449,7 @@ export const StaffTracker: React.FC = () => {
                               else inputRefs.current.delete(cellKey);
                             }}
                             type="number"
-                            value={localValues[cellKey] || "0"}
+                            value={cellValue}
                             onFocus={(ev) => ev.target.select()}
                             onChange={(ev) => handleInputChange(service.service_id, entry.day, ev.target.value)}
                             onBlur={(ev) => handleInputBlur(service.service_id, entry.day, ev.target.value)}
@@ -439,7 +487,7 @@ export const StaffTracker: React.FC = () => {
                           : "text-gray-900 dark:text-white"
                       }`}
                     >
-                      {dayTotal}
+                      {dayTotal > 0 ? dayTotal : isTeamView ? <span className="text-gray-300 dark:text-gray-600">—</span> : dayTotal}
                     </td>
                   );
                 })}
