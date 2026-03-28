@@ -28,8 +28,19 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-    if (!supabaseUrl || !supabaseServiceKey) {
-      return new Response(JSON.stringify({ error: "Missing Supabase environment configuration" }), {
+    if (!supabaseUrl) {
+      return new Response(JSON.stringify({
+        error: "Missing Supabase environment configuration: SUPABASE_URL is not set for the edge function deployment",
+      }), {
+        headers: corsHeaders,
+        status: 500,
+      });
+    }
+
+    if (!supabaseServiceKey) {
+      return new Response(JSON.stringify({
+        error: "Missing Supabase service role configuration: SUPABASE_SERVICE_ROLE_KEY is not set in this edge function deployment. Add it in Supabase project secrets, then redeploy the create-user function.",
+      }), {
         headers: corsHeaders,
         status: 500,
       });
@@ -155,7 +166,9 @@ serve(async (req) => {
     const { data: existingUsers, error: listUsersError } = await supabase.auth.admin.listUsers();
 
     if (listUsersError) {
-      return new Response(JSON.stringify({ error: listUsersError.message }), {
+      return new Response(JSON.stringify({
+        error: `Failed to list auth users: ${listUsersError.message}. This usually means the service role key is missing, invalid, or the function deployment is stale.`,
+      }), {
         headers: corsHeaders,
         status: 500,
       });
@@ -180,7 +193,9 @@ serve(async (req) => {
     });
 
     if (createAuthError || !authData.user) {
-      return new Response(JSON.stringify({ error: createAuthError?.message || "Failed to create auth user" }), {
+      return new Response(JSON.stringify({
+        error: createAuthError?.message || "Failed to create auth user. Check the service role key configuration and function deployment.",
+      }), {
         headers: corsHeaders,
         status: 400,
       });

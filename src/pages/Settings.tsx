@@ -177,7 +177,7 @@ export const Settings: React.FC = () => {
         : '';
 
     if (errorMessage.includes('non-2xx')) {
-      return `${fallbackMessage}: the edge function returned an error response. Check the function deployment and service role configuration.`;
+      return `${fallbackMessage}: the edge function returned an error response. Check the function deployment and service role configuration in Supabase Edge Function secrets.`;
     }
 
     if (errorMessage.trim()) {
