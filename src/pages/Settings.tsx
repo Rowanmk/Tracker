@@ -152,6 +152,41 @@ export const Settings: React.FC = () => {
     return `${fallbackMessage}: ${message}`;
   };
 
+  const extractInvokeErrorMessage = (fallbackMessage: string, functionError: unknown, functionData: unknown) => {
+    const dataObject =
+      functionData && typeof functionData === 'object' && !Array.isArray(functionData)
+        ? (functionData as Record<string, unknown>)
+        : null;
+
+    const nestedMessage =
+      typeof dataObject?.error === 'string'
+        ? dataObject.error
+        : typeof dataObject?.message === 'string'
+        ? dataObject.message
+        : dataObject?.details && typeof dataObject.details === 'string'
+        ? dataObject.details
+        : null;
+
+    if (nestedMessage) {
+      return `${fallbackMessage}: ${nestedMessage}`;
+    }
+
+    const errorMessage =
+      functionError && typeof functionError === 'object' && 'message' in functionError
+        ? String((functionError as { message?: string }).message || '')
+        : '';
+
+    if (errorMessage.includes('non-2xx')) {
+      return `${fallbackMessage}: the edge function returned an error response. Check the function deployment and service role configuration.`;
+    }
+
+    if (errorMessage.trim()) {
+      return `${fallbackMessage}: ${errorMessage.trim()}`;
+    }
+
+    return fallbackMessage;
+  };
+
   const fetchSettingsData = async () => {
     setLoading(true);
     setFeedback(null);
@@ -270,11 +305,12 @@ export const Settings: React.FC = () => {
       });
 
       if (functionError) {
-        setTimedFeedback(getErrorMessage('Failed to add user', functionError));
-      } else if (data?.error) {
-        setTimedFeedback(getErrorMessage('Failed to add user', { message: String(data.error) }));
-      } else if (data?.user) {
-        const normalizedUser = deriveStaffCategories(data.user as Staff);
+        setTimedFeedback(extractInvokeErrorMessage('Failed to add user', functionError, data));
+      } else if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
+        setTimedFeedback(getErrorMessage('Failed to add user', { message: data.error }));
+      } else if (data && typeof data === 'object' && 'user' in data && data.user) {
+        const returnedUser = data.user as Staff;
+        const normalizedUser = deriveStaffCategories(returnedUser);
         setAllUsers(prev =>
           [...prev, normalizedUser].sort((a, b) => a.name.localeCompare(b.name))
         );
@@ -290,24 +326,23 @@ export const Settings: React.FC = () => {
           pageLabel: 'Settings',
           actionType: 'create',
           entityType: 'user',
-          description: `${currentStaff.name} created user ${data.user.name}`,
+          description: `${currentStaff.name} created user ${returnedUser.name}`,
           actorStaffId: currentStaff.staff_id,
           actorName: currentStaff.name,
           affectedStaff: [
             {
-              staff_id: data.user.staff_id,
-              name: data.user.name,
-              team_id: data.user.team_id,
+              staff_id: returnedUser.staff_id,
+              name: returnedUser.name,
+              team_id: returnedUser.team_id,
             },
           ],
           metadata: {
-            exact_change: `Created user ${data.user.name}`,
+            exact_change: `Created user ${returnedUser.name}`,
             previous: null,
             current: {
-              name: data.user.name,
-              email: data.user.email,
-              role: data.user.role,
-              home_region: data.user.home_region,
+              name: returnedUser.name,
+              role: returnedUser.role,
+              home_region: returnedUser.home_region,
               access_level: requestedAccessLevel,
               work_category: requestedWorkCategory,
             },
@@ -811,7 +846,7 @@ export const Settings: React.FC = () => {
                         .map(user => (
                           <tr key={user.staff_id}>
                             <td className="px-6 py-4 text-sm font-medium text-gray-900">{user.name}</td>
-                            <td className="px-6 py-4 text-sm text-gray-500">{user.email || '—'}</td>
+                            <td className="px-6 py-4 text-sm text-gray-500">{'email' in user && typeof (user as { email?: string | null }).email === 'string' ? (user as { email?: string | null }).email || '—' : '—'}</td>
                             <td className="px-6 py-4 text-sm text-gray-500">
                               {accessLevelLabels[user.accessLevel]}
                             </td>

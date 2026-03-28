@@ -38,7 +38,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { email, password, name, role, home_region, actorStaffId } = body;
+    const { email, password, name, role, home_region, actorStaffId } = body ?? {};
 
     if (!email || !password || !name || !role) {
       return new Response(JSON.stringify({ error: "Missing required user fields" }), {
@@ -52,41 +52,52 @@ serve(async (req) => {
 
     const authHeader = req.headers.get("Authorization");
 
-    if (authHeader) {
-      const token = authHeader.replace("Bearer ", "");
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser(token);
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.replace("Bearer ", "").trim();
 
-      if (!authError && user) {
-        callerAuthUserId = user.id;
+      if (token) {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser(token);
 
-        const { data: callerStaff } = await supabase
-          .from("staff")
-          .select("role, name")
-          .eq("user_id", user.id)
-          .maybeSingle();
+        if (!authError && user) {
+          callerAuthUserId = user.id;
 
-        if (
-          callerStaff?.role === "admin" ||
-          normalizeFirstName(callerStaff?.name) === "rowan" ||
-          normalizeFirstName(callerStaff?.name) === "admin"
-        ) {
-          callerIsAdmin = true;
+          const { data: callerStaff } = await supabase
+            .from("staff")
+            .select("role, name")
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+          if (
+            callerStaff?.role === "admin" ||
+            normalizeFirstName(callerStaff?.name) === "rowan" ||
+            normalizeFirstName(callerStaff?.name) === "admin"
+          ) {
+            callerIsAdmin = true;
+          }
         }
       }
     }
 
     if (!callerIsAdmin && typeof actorStaffId === "number") {
-      const { data: fallbackCallerStaff } = await supabase
+      const { data: fallbackCallerStaff, error: fallbackCallerError } = await supabase
         .from("staff")
-        .select("staff_id, role, name")
+        .select("staff_id, role, name, is_hidden")
         .eq("staff_id", actorStaffId)
         .maybeSingle();
 
+      if (fallbackCallerError) {
+        return new Response(JSON.stringify({ error: fallbackCallerError.message }), {
+          headers: corsHeaders,
+          status: 400,
+        });
+      }
+
       if (
         fallbackCallerStaff &&
+        fallbackCallerStaff.is_hidden !== true &&
         (
           fallbackCallerStaff.role === "admin" ||
           normalizeFirstName(fallbackCallerStaff.name) === "rowan" ||
@@ -106,15 +117,36 @@ serve(async (req) => {
 
     const normalizedEmail = String(email).trim().toLowerCase();
     const trimmedName = String(name).trim();
+    const trimmedPassword = String(password);
+    const normalizedRole = String(role).trim();
 
-    const { data: existingStaff } = await supabase
+    const { data: existingStaffByName, error: existingStaffByNameError } = await supabase
       .from("staff")
       .select("staff_id")
       .eq("name", trimmedName)
       .maybeSingle();
 
-    if (existingStaff) {
+    if (existingStaffByNameError) {
+      return new Response(JSON.stringify({ error: existingStaffByNameError.message }), {
+        headers: corsHeaders,
+        status: 400,
+      });
+    }
+
+    if (existingStaffByName) {
       return new Response(JSON.stringify({ error: "A staff record with this name already exists" }), {
+        headers: corsHeaders,
+        status: 400,
+      });
+    }
+
+    const { data: staffRowsByUserId, error: duplicateUserIdCheckError } = await supabase
+      .from("staff")
+      .select("staff_id, user_id")
+      .not("user_id", "is", null);
+
+    if (duplicateUserIdCheckError) {
+      return new Response(JSON.stringify({ error: duplicateUserIdCheckError.message }), {
         headers: corsHeaders,
         status: 400,
       });
@@ -142,7 +174,7 @@ serve(async (req) => {
 
     const { data: authData, error: createAuthError } = await supabase.auth.admin.createUser({
       email: normalizedEmail,
-      password: String(password),
+      password: trimmedPassword,
       email_confirm: true,
       user_metadata: { name: trimmedName, created_by: callerAuthUserId || actorStaffId || null },
     });
@@ -154,12 +186,25 @@ serve(async (req) => {
       });
     }
 
+    const existingLinkedUserId = (staffRowsByUserId || []).some(
+      (row) => row.user_id === authData.user.id
+    );
+
+    if (existingLinkedUserId) {
+      await supabase.auth.admin.deleteUser(authData.user.id);
+
+      return new Response(JSON.stringify({ error: "The new auth user was created but is already linked to an existing staff record" }), {
+        headers: corsHeaders,
+        status: 400,
+      });
+    }
+
     const { data: staffData, error: staffError } = await supabase
       .from("staff")
       .insert({
         user_id: authData.user.id,
         name: trimmedName,
-        role: String(role),
+        role: normalizedRole,
         home_region: home_region || "england-and-wales",
         is_hidden: false,
       })
