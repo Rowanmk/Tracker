@@ -30,7 +30,7 @@ serve(async (req) => {
 
     if (!supabaseUrl) {
       return new Response(JSON.stringify({
-        error: "Missing Supabase environment configuration: SUPABASE_URL is not set for the edge function deployment",
+        error: "Missing Supabase environment configuration: SUPABASE_URL is not set for the edge function deployment.",
       }), {
         headers: corsHeaders,
         status: 500,
@@ -39,7 +39,7 @@ serve(async (req) => {
 
     if (!supabaseServiceKey) {
       return new Response(JSON.stringify({
-        error: "Missing Supabase service role configuration: SUPABASE_SERVICE_ROLE_KEY is not set in this edge function deployment. Add it in Supabase project secrets, then redeploy the create-user function.",
+        error: "Missing Supabase service role configuration: SUPABASE_SERVICE_ROLE_KEY is not set in this edge function deployment. Add it in Supabase Edge Function secrets, then redeploy the create-user function.",
       }), {
         headers: corsHeaders,
         status: 500,
@@ -52,7 +52,9 @@ serve(async (req) => {
     const { email, password, name, role, home_region, actorStaffId } = body ?? {};
 
     if (!email || !password || !name || !role) {
-      return new Response(JSON.stringify({ error: "Missing required user fields" }), {
+      return new Response(JSON.stringify({
+        error: "Missing required user fields: email, password, name and role are all required.",
+      }), {
         headers: corsHeaders,
         status: 400,
       });
@@ -60,7 +62,6 @@ serve(async (req) => {
 
     let callerIsAdmin = false;
     let callerAuthUserId: string | null = null;
-
     const authHeader = req.headers.get("Authorization");
 
     if (authHeader?.startsWith("Bearer ")) {
@@ -72,14 +73,32 @@ serve(async (req) => {
           error: authError,
         } = await supabase.auth.getUser(token);
 
-        if (!authError && user) {
+        if (authError) {
+          return new Response(JSON.stringify({
+            error: `Failed to validate caller session: ${authError.message}`,
+          }), {
+            headers: corsHeaders,
+            status: 401,
+          });
+        }
+
+        if (user) {
           callerAuthUserId = user.id;
 
-          const { data: callerStaff } = await supabase
+          const { data: callerStaff, error: callerStaffError } = await supabase
             .from("staff")
             .select("role, name")
             .eq("user_id", user.id)
             .maybeSingle();
+
+          if (callerStaffError) {
+            return new Response(JSON.stringify({
+              error: `Failed to look up caller staff record: ${callerStaffError.message}`,
+            }), {
+              headers: corsHeaders,
+              status: 400,
+            });
+          }
 
           if (
             callerStaff?.role === "admin" ||
@@ -100,7 +119,9 @@ serve(async (req) => {
         .maybeSingle();
 
       if (fallbackCallerError) {
-        return new Response(JSON.stringify({ error: fallbackCallerError.message }), {
+        return new Response(JSON.stringify({
+          error: `Failed to validate fallback admin staff record: ${fallbackCallerError.message}`,
+        }), {
           headers: corsHeaders,
           status: 400,
         });
@@ -120,7 +141,9 @@ serve(async (req) => {
     }
 
     if (!callerIsAdmin) {
-      return new Response(JSON.stringify({ error: "Forbidden: Admins only" }), {
+      return new Response(JSON.stringify({
+        error: "Forbidden: Admins only. The create-user function could not validate the caller as an admin.",
+      }), {
         headers: corsHeaders,
         status: 403,
       });
@@ -138,14 +161,16 @@ serve(async (req) => {
       .maybeSingle();
 
     if (existingStaffByNameError) {
-      return new Response(JSON.stringify({ error: existingStaffByNameError.message }), {
+      return new Response(JSON.stringify({
+        error: `Failed to check for existing staff name: ${existingStaffByNameError.message}`,
+      }), {
         headers: corsHeaders,
         status: 400,
       });
     }
 
     if (existingStaffByName) {
-      return new Response(JSON.stringify({ error: "A staff record with this name already exists" }), {
+      return new Response(JSON.stringify({ error: "A staff record with this name already exists." }), {
         headers: corsHeaders,
         status: 400,
       });
@@ -157,7 +182,9 @@ serve(async (req) => {
       .not("user_id", "is", null);
 
     if (duplicateUserIdCheckError) {
-      return new Response(JSON.stringify({ error: duplicateUserIdCheckError.message }), {
+      return new Response(JSON.stringify({
+        error: `Failed to inspect existing staff auth links: ${duplicateUserIdCheckError.message}`,
+      }), {
         headers: corsHeaders,
         status: 400,
       });
@@ -167,7 +194,7 @@ serve(async (req) => {
 
     if (listUsersError) {
       return new Response(JSON.stringify({
-        error: `Failed to list auth users: ${listUsersError.message}. This usually means the service role key is missing, invalid, or the function deployment is stale.`,
+        error: `Failed to list auth users with the service role key: ${listUsersError.message}. Check that SUPABASE_SERVICE_ROLE_KEY is set correctly in Supabase Edge Function secrets and that the create-user function has been redeployed.`,
       }), {
         headers: corsHeaders,
         status: 500,
@@ -179,7 +206,7 @@ serve(async (req) => {
     );
 
     if (emailAlreadyExists) {
-      return new Response(JSON.stringify({ error: "A user with this email already exists" }), {
+      return new Response(JSON.stringify({ error: "A user with this email already exists." }), {
         headers: corsHeaders,
         status: 400,
       });
@@ -194,7 +221,7 @@ serve(async (req) => {
 
     if (createAuthError || !authData.user) {
       return new Response(JSON.stringify({
-        error: createAuthError?.message || "Failed to create auth user. Check the service role key configuration and function deployment.",
+        error: `Failed to create auth user: ${createAuthError?.message || "unknown auth admin error"}. Check the service role key configuration and function deployment.`,
       }), {
         headers: corsHeaders,
         status: 400,
@@ -208,7 +235,9 @@ serve(async (req) => {
     if (existingLinkedUserId) {
       await supabase.auth.admin.deleteUser(authData.user.id);
 
-      return new Response(JSON.stringify({ error: "The new auth user was created but is already linked to an existing staff record" }), {
+      return new Response(JSON.stringify({
+        error: "The new auth user was created but is already linked to an existing staff record.",
+      }), {
         headers: corsHeaders,
         status: 400,
       });
@@ -229,7 +258,9 @@ serve(async (req) => {
     if (staffError) {
       await supabase.auth.admin.deleteUser(authData.user.id);
 
-      return new Response(JSON.stringify({ error: staffError.message }), {
+      return new Response(JSON.stringify({
+        error: `Auth user was created but staff insert failed: ${staffError.message}`,
+      }), {
         headers: corsHeaders,
         status: 400,
       });

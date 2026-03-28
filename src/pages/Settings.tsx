@@ -152,6 +152,16 @@ export const Settings: React.FC = () => {
     return `${fallbackMessage}: ${message}`;
   };
 
+  const stringifyFunctionData = (functionData: unknown) => {
+    try {
+      if (typeof functionData === 'string') return functionData;
+      if (functionData == null) return '';
+      return JSON.stringify(functionData);
+    } catch {
+      return '';
+    }
+  };
+
   const extractInvokeErrorMessage = (fallbackMessage: string, functionError: unknown, functionData: unknown) => {
     const dataObject =
       functionData && typeof functionData === 'object' && !Array.isArray(functionData)
@@ -163,8 +173,10 @@ export const Settings: React.FC = () => {
         ? dataObject.error
         : typeof dataObject?.message === 'string'
         ? dataObject.message
-        : dataObject?.details && typeof dataObject.details === 'string'
+        : typeof dataObject?.details === 'string'
         ? dataObject.details
+        : typeof dataObject?.hint === 'string'
+        ? dataObject.hint
         : null;
 
     if (nestedMessage) {
@@ -176,12 +188,22 @@ export const Settings: React.FC = () => {
         ? String((functionError as { message?: string }).message || '')
         : '';
 
+    const serializedData = stringifyFunctionData(functionData);
+
     if (errorMessage.includes('non-2xx')) {
+      if (serializedData) {
+        return `${fallbackMessage}: ${serializedData}`;
+      }
+
       return `${fallbackMessage}: the edge function returned an error response. Check the function deployment and service role configuration in Supabase Edge Function secrets.`;
     }
 
     if (errorMessage.trim()) {
       return `${fallbackMessage}: ${errorMessage.trim()}`;
+    }
+
+    if (serializedData) {
+      return `${fallbackMessage}: ${serializedData}`;
     }
 
     return fallbackMessage;
