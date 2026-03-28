@@ -49,8 +49,6 @@ export const Settings: React.FC = () => {
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const [newUserName, setNewUserName] = useState('');
-  const [newUserEmail, setNewUserEmail] = useState('');
-  const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserAccessLevel, setNewUserAccessLevel] = useState<AccessLevel>('user');
   const [newUserWorkCategory, setNewUserWorkCategory] = useState<WorkCategory>('assistant');
   const [newUserRegion, setNewUserRegion] = useState<
@@ -142,71 +140,16 @@ export const Settings: React.FC = () => {
 
   const getErrorMessage = (fallbackMessage: string, error: { message?: string } | null | undefined) => {
     const message = error?.message?.trim();
-
     if (!message) return fallbackMessage;
-
     if (message.toLowerCase().includes('row-level security policy')) {
       return `${fallbackMessage}: you do not have permission to write to this table. Please check database policies.`;
     }
-
     return `${fallbackMessage}: ${message}`;
   };
 
-  const stringifyFunctionData = (functionData: unknown) => {
-    try {
-      if (typeof functionData === 'string') return functionData;
-      if (functionData == null) return '';
-      return JSON.stringify(functionData);
-    } catch {
-      return '';
-    }
-  };
-
-  const extractInvokeErrorMessage = (fallbackMessage: string, functionError: unknown, functionData: unknown) => {
-    const dataObject =
-      functionData && typeof functionData === 'object' && !Array.isArray(functionData)
-        ? (functionData as Record<string, unknown>)
-        : null;
-
-    const nestedMessage =
-      typeof dataObject?.error === 'string'
-        ? dataObject.error
-        : typeof dataObject?.message === 'string'
-        ? dataObject.message
-        : typeof dataObject?.details === 'string'
-        ? dataObject.details
-        : typeof dataObject?.hint === 'string'
-        ? dataObject.hint
-        : null;
-
-    if (nestedMessage) {
-      return `${fallbackMessage}: ${nestedMessage}`;
-    }
-
-    const errorMessage =
-      functionError && typeof functionError === 'object' && 'message' in functionError
-        ? String((functionError as { message?: string }).message || '')
-        : '';
-
-    const serializedData = stringifyFunctionData(functionData);
-
-    if (errorMessage.includes('non-2xx')) {
-      if (serializedData) {
-        return `${fallbackMessage}: ${serializedData}`;
-      }
-
-      return `${fallbackMessage}: the edge function returned an error response. Check the function deployment and service role configuration in Supabase Edge Function secrets.`;
-    }
-
-    if (errorMessage.trim()) {
-      return `${fallbackMessage}: ${errorMessage.trim()}`;
-    }
-
-    if (serializedData) {
-      return `${fallbackMessage}: ${serializedData}`;
-    }
-
-    return fallbackMessage;
+  const getRoleValueFromAccessLevel = (accessLevel: AccessLevel, workCategory: WorkCategory) => {
+    if (accessLevel === 'admin') return 'admin';
+    return workCategory === 'accountant' ? 'staff' : 'user';
   };
 
   const fetchSettingsData = async () => {
@@ -215,10 +158,7 @@ export const Settings: React.FC = () => {
 
     try {
       const [usersResult, permsResult, teamsResult] = await Promise.all([
-        supabase
-          .from('staff')
-          .select('*')
-          .order('name'),
+        supabase.from('staff').select('*').order('name'),
         supabase.from('role_permissions').select('*'),
         supabase.from('teams').select('*').order('name'),
       ]);
@@ -297,14 +237,9 @@ export const Settings: React.FC = () => {
     }
   };
 
-  const getRoleValueFromAccessLevel = (accessLevel: AccessLevel, workCategory: WorkCategory) => {
-    if (accessLevel === 'admin') return 'admin';
-    return workCategory === 'accountant' ? 'staff' : 'user';
-  };
-
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword.trim() || !currentStaff) return;
+    if (!newUserName.trim() || !currentStaff) return;
 
     setIsAddingUser(true);
     setFeedback(null);
@@ -314,66 +249,76 @@ export const Settings: React.FC = () => {
       const requestedAccessLevel = newUserAccessLevel;
       const requestedWorkCategory = newUserWorkCategory;
       const requestedRegion = newUserRegion;
+      const roleValue = getRoleValueFromAccessLevel(requestedAccessLevel, requestedWorkCategory);
 
-      const { data, error: functionError } = await supabase.functions.invoke('create-user', {
-        body: {
-          email: newUserEmail.trim(),
-          password: newUserPassword.trim(),
+      const { data: existingByName } = await supabase
+        .from('staff')
+        .select('staff_id')
+        .eq('name', requestedName)
+        .maybeSingle();
+
+      if (existingByName) {
+        setTimedFeedback('Failed to add user: a staff record with this name already exists.');
+        return;
+      }
+
+      const { data: insertedStaff, error: insertError } = await supabase
+        .from('staff')
+        .insert({
           name: requestedName,
-          role: getRoleValueFromAccessLevel(requestedAccessLevel, requestedWorkCategory),
+          role: roleValue,
           home_region: requestedRegion,
-          actorStaffId: currentStaff.staff_id,
-        }
+          is_hidden: false,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        setTimedFeedback(getErrorMessage('Failed to add user', insertError));
+        return;
+      }
+
+      const returnedUser = insertedStaff as Staff;
+      const normalizedUser = deriveStaffCategories(returnedUser);
+
+      setAllUsers(prev =>
+        [...prev, normalizedUser].sort((a, b) => a.name.localeCompare(b.name))
+      );
+      setNewUserName('');
+      setNewUserAccessLevel('user');
+      setNewUserWorkCategory('assistant');
+      setNewUserRegion('england-and-wales');
+
+      await refreshStaff();
+      await logStaffBatchChange({
+        pagePath: '/settings',
+        pageLabel: 'Settings',
+        actionType: 'create',
+        entityType: 'user',
+        description: `${currentStaff.name} created user ${returnedUser.name}`,
+        actorStaffId: currentStaff.staff_id,
+        actorName: currentStaff.name,
+        affectedStaff: [
+          {
+            staff_id: returnedUser.staff_id,
+            name: returnedUser.name,
+            team_id: returnedUser.team_id,
+          },
+        ],
+        metadata: {
+          exact_change: `Created user ${returnedUser.name}`,
+          previous: null,
+          current: {
+            name: returnedUser.name,
+            role: returnedUser.role,
+            home_region: returnedUser.home_region,
+            access_level: requestedAccessLevel,
+            work_category: requestedWorkCategory,
+          },
+        },
       });
 
-      if (functionError) {
-        setTimedFeedback(extractInvokeErrorMessage('Failed to add user', functionError, data));
-      } else if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
-        setTimedFeedback(getErrorMessage('Failed to add user', { message: data.error }));
-      } else if (data && typeof data === 'object' && 'user' in data && data.user) {
-        const returnedUser = data.user as Staff;
-        const normalizedUser = deriveStaffCategories(returnedUser);
-        setAllUsers(prev =>
-          [...prev, normalizedUser].sort((a, b) => a.name.localeCompare(b.name))
-        );
-        setNewUserName('');
-        setNewUserEmail('');
-        setNewUserPassword('');
-        setNewUserAccessLevel('user');
-        setNewUserWorkCategory('assistant');
-        setNewUserRegion('england-and-wales');
-        await refreshStaff();
-        await logStaffBatchChange({
-          pagePath: '/settings',
-          pageLabel: 'Settings',
-          actionType: 'create',
-          entityType: 'user',
-          description: `${currentStaff.name} created user ${returnedUser.name}`,
-          actorStaffId: currentStaff.staff_id,
-          actorName: currentStaff.name,
-          affectedStaff: [
-            {
-              staff_id: returnedUser.staff_id,
-              name: returnedUser.name,
-              team_id: returnedUser.team_id,
-            },
-          ],
-          metadata: {
-            exact_change: `Created user ${returnedUser.name}`,
-            previous: null,
-            current: {
-              name: returnedUser.name,
-              role: returnedUser.role,
-              home_region: returnedUser.home_region,
-              access_level: requestedAccessLevel,
-              work_category: requestedWorkCategory,
-            },
-          },
-        });
-        setTimedFeedback('Successfully added user');
-      } else {
-        setTimedFeedback('Failed to add user: no user was returned by the edge function.');
-      }
+      setTimedFeedback('Successfully added user');
     } catch {
       setTimedFeedback('Failed to connect to database');
     } finally {
@@ -532,8 +477,8 @@ export const Settings: React.FC = () => {
         });
         setTimedFeedback('Successfully updated account settings');
       }
-    } catch (err: any) {
-      setTimedFeedback(getErrorMessage('Failed to update account', err));
+    } catch (err: unknown) {
+      setTimedFeedback(getErrorMessage('Failed to update account', err as { message?: string }));
     } finally {
       setIsSavingAccount(false);
     }
@@ -582,7 +527,6 @@ export const Settings: React.FC = () => {
             permission.role === afterPermission.role &&
             permission.page_path === afterPermission.page_path
         );
-
         return (beforePermission?.is_visible ?? true) !== (afterPermission.is_visible ?? true);
       });
 
@@ -783,30 +727,17 @@ export const Settings: React.FC = () => {
         {isAdmin && activeTab === 'users' && (
           <div className="mt-6 space-y-6">
             <div className="bg-white shadow rounded-lg p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Add New User</h3>
-              <form onSubmit={handleAddUser} className="grid grid-cols-1 md:grid-cols-7 gap-4">
+              <h3 className="text-lg font-medium text-gray-900 mb-1">Add New User</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Creates a staff record directly. The user can log in using their first name as both username and password.
+              </p>
+              <form onSubmit={handleAddUser} className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <input
                   type="text"
                   value={newUserName}
                   onChange={e => setNewUserName(e.target.value)}
                   className="px-3 py-2 border rounded-md"
-                  placeholder="Name"
-                  required
-                />
-                <input
-                  type="email"
-                  value={newUserEmail}
-                  onChange={e => setNewUserEmail(e.target.value)}
-                  className="px-3 py-2 border rounded-md"
-                  placeholder="Email"
-                  required
-                />
-                <input
-                  type="password"
-                  value={newUserPassword}
-                  onChange={e => setNewUserPassword(e.target.value)}
-                  className="px-3 py-2 border rounded-md"
-                  placeholder="Password"
+                  placeholder="Full Name"
                   required
                 />
                 <select
@@ -855,7 +786,6 @@ export const Settings: React.FC = () => {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Access</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Work Category</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Region</th>
@@ -868,7 +798,6 @@ export const Settings: React.FC = () => {
                         .map(user => (
                           <tr key={user.staff_id}>
                             <td className="px-6 py-4 text-sm font-medium text-gray-900">{user.name}</td>
-                            <td className="px-6 py-4 text-sm text-gray-500">{'email' in user && typeof (user as { email?: string | null }).email === 'string' ? (user as { email?: string | null }).email || '—' : '—'}</td>
                             <td className="px-6 py-4 text-sm text-gray-500">
                               {accessLevelLabels[user.accessLevel]}
                             </td>
@@ -876,7 +805,7 @@ export const Settings: React.FC = () => {
                               {workCategoryLabels[user.workCategory]}
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-500">
-                              {regionLabels[user.home_region as keyof typeof regionLabels]}
+                              {regionLabels[user.home_region as keyof typeof regionLabels] || user.home_region || '—'}
                             </td>
                             <td className="px-6 py-4 text-sm font-medium">
                               <button
@@ -937,8 +866,8 @@ export const Settings: React.FC = () => {
                     <p>Users can also be categorised independently as Accountant or Assistant.</p>
                   </div>
                   <div className="border border-gray-200 rounded-lg p-4">
-                    <div className="font-semibold text-gray-900 mb-1">Reporting Basis</div>
-                    <p>All reporting, targets, trackers and figures now run directly by accountant user records.</p>
+                    <div className="font-semibold text-gray-900 mb-1">Login</div>
+                    <p>Users log in with their first name as both username and password.</p>
                   </div>
                 </div>
               </div>
