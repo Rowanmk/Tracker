@@ -180,7 +180,13 @@ export const SelfAssessmentProgress: React.FC = () => {
 
         (activities || []).forEach((a) => {
           if (a.staff_id != null && breakdown[a.staff_id]) {
-            const m = new Date(a.date).getMonth() + 1;
+            const dateObj = new Date(a.date);
+            const m = dateObj.getMonth() + 1;
+            const y = dateObj.getFullYear();
+            // Only count if it's in the SA window
+            const expectedYear = m >= 4 ? deliveryStartYear : deliveryEndYear;
+            if (y !== expectedYear) return;
+
             if (!breakdown[a.staff_id][m]) {
               breakdown[a.staff_id][m] = { submitted: 0, target: 0 };
             }
@@ -188,17 +194,37 @@ export const SelfAssessmentProgress: React.FC = () => {
           }
         });
 
+        const dbTargets: Record<number, Record<number, number>> = {};
         (targets || []).forEach((t) => {
-          if (t.staff_id != null && breakdown[t.staff_id]) {
+          if (t.staff_id != null) {
             // Strictly filter targets to the exact year for the SA window month
             const expectedYear = t.month >= 4 ? deliveryStartYear : deliveryEndYear;
             if (t.year !== expectedYear) return;
 
-            if (!breakdown[t.staff_id][t.month]) {
-              breakdown[t.staff_id][t.month] = { submitted: 0, target: 0 };
-            }
-            breakdown[t.staff_id][t.month].target += t.target_value || 0;
+            if (!dbTargets[t.staff_id]) dbTargets[t.staff_id] = {};
+            dbTargets[t.staff_id][t.month] = (dbTargets[t.staff_id][t.month] || 0) + (t.target_value || 0);
           }
+        });
+
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth() + 1;
+
+        teamProgress.forEach((staffEntry) => {
+          const staffId = staffEntry.team_id;
+          getFinancialYearMonths().forEach((m) => {
+            const monthNum = m.number;
+            const yearNum = monthNum >= 4 ? deliveryStartYear : deliveryEndYear;
+            const isPastMonth = yearNum < currentYear || (yearNum === currentYear && monthNum < currentMonth);
+
+            if (isPastMonth) {
+              // For past months, the target is the actual submitted amount
+              breakdown[staffId][monthNum].target = breakdown[staffId][monthNum].submitted;
+            } else {
+              // For current and future months, use the DB target
+              breakdown[staffId][monthNum].target = dbTargets[staffId]?.[monthNum] || 0;
+            }
+          });
         });
 
         setMonthlyData(breakdown);

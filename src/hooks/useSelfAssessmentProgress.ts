@@ -112,6 +112,32 @@ export const useSelfAssessmentProgress = (
 
         const safeTargets: MonthlyTarget[] = (targets ?? []) as MonthlyTarget[];
 
+        // Pre-calculate actuals and targets per staff per month
+        const actualsByStaffAndMonth: Record<number, Record<string, number>> = {};
+        safeActivities.forEach((a) => {
+          if (a.staff_id == null || !a.date) return;
+          const dateObj = new Date(a.date);
+          const m = dateObj.getMonth() + 1;
+          const y = dateObj.getFullYear();
+          const expectedYear = m >= 4 ? deliveryStartYear : deliveryEndYear;
+          if (y !== expectedYear) return; // Only count activities in the correct FY year for that month
+
+          const key = `${y}-${m}`;
+          if (!actualsByStaffAndMonth[a.staff_id]) actualsByStaffAndMonth[a.staff_id] = {};
+          actualsByStaffAndMonth[a.staff_id][key] = (actualsByStaffAndMonth[a.staff_id][key] || 0) + (a.delivered_count || 0);
+        });
+
+        const targetsByStaffAndMonth: Record<number, Record<string, number>> = {};
+        safeTargets.forEach((t) => {
+          if (t.staff_id == null) return;
+          const expectedYear = t.month >= 4 ? deliveryStartYear : deliveryEndYear;
+          if (t.year !== expectedYear) return;
+
+          const key = `${t.year}-${t.month}`;
+          if (!targetsByStaffAndMonth[t.staff_id]) targetsByStaffAndMonth[t.staff_id] = {};
+          targetsByStaffAndMonth[t.staff_id][key] = (targetsByStaffAndMonth[t.staff_id][key] || 0) + (t.target_value || 0);
+        });
+
         // Determine which accountants have any data (activities or targets)
         const staffWithData = new Set<number>();
 
@@ -123,6 +149,10 @@ export const useSelfAssessmentProgress = (
           if (t.staff_id != null) staffWithData.add(t.staff_id);
         });
 
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth() + 1;
+
         // Build per-staff results (each accountant is their own "row")
         const results: TeamProgressData[] = [];
 
@@ -131,19 +161,32 @@ export const useSelfAssessmentProgress = (
           if (!staffMember) return;
 
           const submitted = safeActivities
-            .filter((a: DailyActivity) => a.staff_id === staffId)
+            .filter((a: DailyActivity) => {
+              if (a.staff_id !== staffId || !a.date) return false;
+              const dateObj = new Date(a.date);
+              const m = dateObj.getMonth() + 1;
+              const y = dateObj.getFullYear();
+              const expectedYear = m >= 4 ? deliveryStartYear : deliveryEndYear;
+              return y === expectedYear;
+            })
             .reduce((sum: number, a: DailyActivity) => sum + (a.delivered_count ?? 0), 0);
 
-          const fullYearTarget = safeTargets
-            .filter((t: MonthlyTarget) => {
-              if (t.staff_id !== staffId) return false;
-              const tDate = new Date(t.year, t.month - 1, 1);
-              return (
-                tDate >= deliveryStartDate &&
-                tDate <= deliveryEndDate
-              );
-            })
-            .reduce((sum: number, t: MonthlyTarget) => sum + (t.target_value ?? 0), 0);
+          let fullYearTarget = 0;
+          const SA_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1];
+
+          SA_MONTHS.forEach(m => {
+            const y = m >= 4 ? deliveryStartYear : deliveryEndYear;
+            const isPastMonth = y < currentYear || (y === currentYear && m < currentMonth);
+            const key = `${y}-${m}`;
+
+            if (isPastMonth) {
+              // Use actuals for past months
+              fullYearTarget += (actualsByStaffAndMonth[staffId]?.[key] || 0);
+            } else {
+              // Use targets for current and future months
+              fullYearTarget += (targetsByStaffAndMonth[staffId]?.[key] || 0);
+            }
+          });
 
           const leftToDo = Math.max(0, fullYearTarget - submitted);
 
