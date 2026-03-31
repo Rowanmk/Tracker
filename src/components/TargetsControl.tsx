@@ -42,6 +42,15 @@ const isAccountant = (staffMember: Staff) => {
   return role === 'staff' || role === 'admin';
 };
 
+/**
+ * Returns the correct calendar year for a given month within a financial year.
+ * Months April (4) through December (12) belong to fy.start year.
+ * Months January (1) through March (3) belong to fy.end year.
+ */
+const getYearForMonth = (month: number, fy: FinancialYear): number => {
+  return month >= 4 ? fy.start : fy.end;
+};
+
 export const TargetsControl: React.FC = () => {
   const navigate = useNavigate();
   const {
@@ -110,6 +119,8 @@ export const TargetsControl: React.FC = () => {
 
       const data = await Promise.all(
         activeAccountants.map(async (staffMember) => {
+          // Fetch targets for both years that this financial year spans.
+          // fy.start covers April–December, fy.end covers January–March.
           const { data: dbTargets } = await supabase
             .from('monthlytargets')
             .select('month, service_id, target_value, year')
@@ -123,6 +134,9 @@ export const TargetsControl: React.FC = () => {
           });
 
           dbTargets?.forEach((t) => {
+            // Only include this target row if it belongs to this financial year.
+            // This prevents Jan/Feb/Mar of fy.start from being loaded when they
+            // actually belong to the previous financial year (fy.start - 1 / fy.start).
             if (!isTargetInFinancialYear(t.month, t.year, fy)) {
               return;
             }
@@ -297,11 +311,35 @@ export const TargetsControl: React.FC = () => {
     try {
       await Promise.all(
         targetData.map(async (staffMember) => {
-          await supabase
-            .from('monthlytargets')
-            .delete()
-            .eq('staff_id', staffMember.staff_id)
-            .in('year', [selectedFinancialYear.start, selectedFinancialYear.end]);
+          // Build the exact set of (month, year) pairs that belong to this financial year.
+          // We must delete only the rows that belong to THIS financial year, not all rows
+          // for fy.start or fy.end years, because those years are shared with adjacent FYs.
+          //
+          // Financial year months and their correct calendar years:
+          //   Apr–Dec → fy.start year
+          //   Jan–Mar → fy.end year
+          //
+          // We delete month-by-month to avoid wiping adjacent FY data.
+          const monthData = getFinancialYearMonths();
+
+          // Group months by their calendar year to batch deletes efficiently.
+          const monthsByYear: Record<number, number[]> = {};
+          monthData.forEach((m) => {
+            const calYear = getYearForMonth(m.number, selectedFinancialYear);
+            if (!monthsByYear[calYear]) monthsByYear[calYear] = [];
+            monthsByYear[calYear].push(m.number);
+          });
+
+          // Delete only the specific month+year combinations that belong to this FY.
+          for (const [calYearStr, months] of Object.entries(monthsByYear)) {
+            const calYear = Number(calYearStr);
+            await supabase
+              .from('monthlytargets')
+              .delete()
+              .eq('staff_id', staffMember.staff_id)
+              .eq('year', calYear)
+              .in('month', months);
+          }
 
           const inserts: Array<{
             staff_id: number;
@@ -313,7 +351,8 @@ export const TargetsControl: React.FC = () => {
 
           Object.entries(staffMember.targets).forEach(([monthStr, monthTargets]) => {
             const month = Number(monthStr);
-            const year = month >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
+            // Use the correct calendar year for this month within the financial year.
+            const year = getYearForMonth(month, selectedFinancialYear);
 
             Object.entries(monthTargets).forEach(([serviceName, value]) => {
               const service = targetableServices.find((s) => s.service_name === serviceName);
@@ -404,7 +443,7 @@ export const TargetsControl: React.FC = () => {
     targetData.forEach((staffMember) => {
       Object.entries(staffMember.targets).forEach(([monthStr, monthTargets]) => {
         const month = Number(monthStr);
-        const year = month >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
+        const year = getYearForMonth(month, selectedFinancialYear);
 
         Object.entries(monthTargets).forEach(([serviceName, value]) => {
           const service = targetableServices.find((s) => s.service_name === serviceName);
@@ -687,13 +726,19 @@ export const TargetsControl: React.FC = () => {
                 </div>
 
                 <div className="flex flex-1 w-full">
-                  {monthData.map((m) => (
-                    <div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600">
-                      <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
-                        {m.name}
-                      </span>
-                    </div>
-                  ))}
+                  {monthData.map((m) => {
+                    const calYear = getYearForMonth(m.number, selectedFinancialYear);
+                    return (
+                      <div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600">
+                        <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
+                          {m.name}
+                        </span>
+                        <span className="text-[9px] text-gray-400 dark:text-gray-500 block">
+                          {calYear}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 <div className="w-20 flex-shrink-0 px-2 py-1.5 text-center border-l border-gray-200 dark:border-gray-600">
@@ -844,13 +889,19 @@ export const TargetsControl: React.FC = () => {
             </div>
 
             <div className="flex flex-1 w-full">
-              {monthData.map((m) => (
-                <div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600">
-                  <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
-                    {m.name}
-                  </span>
-                </div>
-              ))}
+              {monthData.map((m) => {
+                const calYear = getYearForMonth(m.number, selectedFinancialYear);
+                return (
+                  <div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600">
+                    <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
+                      {m.name}
+                    </span>
+                    <span className="text-[9px] text-gray-400 dark:text-gray-500 block">
+                      {calYear}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="w-20 flex-shrink-0 px-2 py-1.5 text-center border-l border-gray-200 dark:border-gray-600">
