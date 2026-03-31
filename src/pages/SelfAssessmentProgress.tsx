@@ -190,6 +190,10 @@ export const SelfAssessmentProgress: React.FC = () => {
 
         (targets || []).forEach((t) => {
           if (t.staff_id != null && breakdown[t.staff_id]) {
+            // Strictly filter targets to the exact year for the SA window month
+            const expectedYear = t.month >= 4 ? deliveryStartYear : deliveryEndYear;
+            if (t.year !== expectedYear) return;
+
             if (!breakdown[t.staff_id][t.month]) {
               breakdown[t.staff_id][t.month] = { submitted: 0, target: 0 };
             }
