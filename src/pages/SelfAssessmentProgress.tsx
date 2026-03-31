@@ -17,6 +17,51 @@ const isAccountant = (staffMember: Staff) => {
   return role === 'staff' || role === 'admin';
 };
 
+/**
+ * Calculates the expected number of SA submissions by today's date,
+ * based on the delivery window (Apr FY.end → Jan FY.end+1) and the full-year target.
+ *
+ * The delivery window runs from 6 April of financialYear.end to 31 January of financialYear.end+1.
+ * We calculate what fraction of that window has elapsed as of today, then multiply by the target.
+ * 100% run rate = actual submissions match the expected submissions at today's date.
+ */
+function calcRunRatePercent(
+  submitted: number,
+  fullYearTarget: number,
+  financialYear: FinancialYear
+): number | null {
+  if (fullYearTarget <= 0) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Delivery window: 6 April of FY.end → 31 January of FY.end+1
+  const windowStart = new Date(financialYear.end, 3, 6); // 6 April
+  const windowEnd = new Date(financialYear.end + 1, 0, 31); // 31 January
+
+  // If today is before the window starts, expected = 0 → run rate is undefined
+  if (today < windowStart) return null;
+
+  // If today is after the window ends, expected = full target
+  const effectiveToday = today > windowEnd ? windowEnd : today;
+
+  const totalWindowMs = windowEnd.getTime() - windowStart.getTime();
+  const elapsedMs = effectiveToday.getTime() - windowStart.getTime();
+
+  const fractionElapsed = Math.min(1, Math.max(0, elapsedMs / totalWindowMs));
+  const expectedByToday = fullYearTarget * fractionElapsed;
+
+  if (expectedByToday <= 0) return null;
+
+  return (submitted / expectedByToday) * 100;
+}
+
+function getRunRateColor(pct: number): string {
+  if (pct >= 95) return 'text-green-700 bg-green-50';
+  if (pct >= 75) return 'text-orange-700 bg-orange-50';
+  return 'text-red-700 bg-red-50';
+}
+
 export const SelfAssessmentProgress: React.FC = () => {
   const { selectedFinancialYear } = useDate();
   const { allStaff, teams, loading: authLoading } = useAuth();
@@ -72,7 +117,6 @@ export const SelfAssessmentProgress: React.FC = () => {
           .toISOString()
           .slice(0, 10);
 
-        // teamProgress now uses staff_id as team_id, so fetch by staff_id
         const staffIds = teamProgress.map((t) => t.team_id);
 
         const { data: activities } = await supabase
@@ -159,6 +203,12 @@ export const SelfAssessmentProgress: React.FC = () => {
       ? (totals.submitted / totals.fullYearTarget) * 100
       : 0;
 
+  const totalRunRatePct = calcRunRatePercent(
+    totals.submitted,
+    totals.fullYearTarget,
+    localFinancialYear
+  );
+
   if (loading || authLoading || servicesLoading) {
     return <div className="py-6 text-center text-gray-500">Loading…</div>;
   }
@@ -207,7 +257,13 @@ export const SelfAssessmentProgress: React.FC = () => {
                     Submitted
                   </th>
                   <th className="px-4 py-3 text-center text-xs font-bold uppercase">
-                    %
+                    Total % Completed
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase leading-tight">
+                    Run Rate %
+                    <div className="text-[9px] font-normal text-gray-400 normal-case tracking-normal mt-0.5">
+                      vs today's expected
+                    </div>
                   </th>
                 </tr>
               </thead>
@@ -218,6 +274,12 @@ export const SelfAssessmentProgress: React.FC = () => {
                     entry.fullYearTarget > 0
                       ? (entry.submitted / entry.fullYearTarget) * 100
                       : 0;
+
+                  const runRatePct = calcRunRatePercent(
+                    entry.submitted,
+                    entry.fullYearTarget,
+                    localFinancialYear
+                  );
 
                   const isActive = activeTeamId === entry.team_id;
 
@@ -240,6 +302,17 @@ export const SelfAssessmentProgress: React.FC = () => {
                       <td className="px-4 py-3 text-center font-semibold">
                         {pct.toFixed(1)}%
                       </td>
+                      <td className="px-4 py-3 text-center">
+                        {runRatePct === null ? (
+                          <span className="text-xs text-gray-400">—</span>
+                        ) : (
+                          <span
+                            className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-bold ${getRunRateColor(runRatePct)}`}
+                          >
+                            {Math.round(runRatePct)}%
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -253,9 +326,37 @@ export const SelfAssessmentProgress: React.FC = () => {
                   <td className="px-4 py-3 text-center">
                     {totalPercentAchieved.toFixed(1)}%
                   </td>
+                  <td className="px-4 py-3 text-center">
+                    {totalRunRatePct === null ? (
+                      <span className="text-xs text-gray-400">—</span>
+                    ) : (
+                      <span
+                        className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-bold ${getRunRateColor(totalRunRatePct)}`}
+                      >
+                        {Math.round(totalRunRatePct)}%
+                      </span>
+                    )}
+                  </td>
                 </tr>
               </tfoot>
             </table>
+          </div>
+
+          {/* Legend */}
+          <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 flex flex-wrap gap-3 text-xs text-gray-500">
+            <span className="font-semibold text-gray-600">Run Rate % key:</span>
+            <span className="inline-flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span>
+              ≥95% — on or ahead of run rate
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block"></span>
+              75–94% — slightly behind
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span>
+              &lt;75% — significantly behind
+            </span>
           </div>
         </div>
 
