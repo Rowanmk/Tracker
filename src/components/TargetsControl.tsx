@@ -539,7 +539,14 @@ export const TargetsControl: React.FC = () => {
           return;
         }
 
-        const result = parse<Record<string, string>>(text, {
+        let textToParse = text;
+        const lines = textToParse.split(/\r?\n/);
+        const headerIndex = lines.findIndex(line => line.includes('service_name') && line.includes('accountant_name'));
+        if (headerIndex > 0) {
+          textToParse = lines.slice(headerIndex).join('\n');
+        }
+
+        const result = parse<Record<string, string>>(textToParse, {
           header: true,
           skipEmptyLines: true,
         });

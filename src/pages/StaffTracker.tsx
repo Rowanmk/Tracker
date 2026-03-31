@@ -392,12 +392,23 @@ export const StaffTracker: React.FC = () => {
         ...monthCols.map(c => c.key),
       ];
 
-      const csv = unparse({ fields, data: rows });
+      const baseCsv = unparse({ fields, data: rows });
+      
+      const now = new Date();
+      const formattedDateTime = now.toLocaleString('en-GB', { 
+        day: '2-digit', month: 'short', year: 'numeric', 
+        hour: '2-digit', minute: '2-digit', second: '2-digit' 
+      });
+      const fileDateTime = now.toISOString().replace(/T/, '_').replace(/:/g, '-').split('.')[0];
+
+      const customHeaders = `"Crew Tracker Actual Data"\n"${formattedDateTime}"\n`;
+      const csv = customHeaders + baseCsv;
+
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `actuals_template_${selectedFinancialYear.label.replace('/', '-')}.csv`;
+      a.download = `actuals_template_${selectedFinancialYear.label.replace('/', '-')}_${fileDateTime}.csv`;
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
