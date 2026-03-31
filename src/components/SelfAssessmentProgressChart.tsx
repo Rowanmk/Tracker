@@ -33,6 +33,34 @@ const PADDING_BOTTOM = 70;
 const CHART_WIDTH = VIEWBOX_WIDTH - PADDING_LEFT - PADDING_RIGHT;
 const CHART_HEIGHT = VIEWBOX_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
 
+// SA delivery window months in order: Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec, Jan
+// Apr = index 0 (financialYear.end, month 4)
+// Jan = index 9 (financialYear.end+1, month 1)
+const SA_MONTHS = [
+  { number: 4 },
+  { number: 5 },
+  { number: 6 },
+  { number: 7 },
+  { number: 8 },
+  { number: 9 },
+  { number: 10 },
+  { number: 11 },
+  { number: 12 },
+  { number: 1 },
+];
+
+function getMonthDate(monthNumber: number, financialYear: FinancialYear): Date {
+  // Apr–Dec belong to financialYear.end; Jan belongs to financialYear.end + 1
+  const year = monthNumber >= 4 ? financialYear.end : financialYear.end + 1;
+  // Use the last day of the month for "end of month" comparison
+  return new Date(year, monthNumber, 0); // day 0 = last day of previous month = last day of monthNumber
+}
+
+function getMonthStartDate(monthNumber: number, financialYear: FinancialYear): Date {
+  const year = monthNumber >= 4 ? financialYear.end : financialYear.end + 1;
+  return new Date(year, monthNumber - 1, 1);
+}
+
 export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartProps> = ({
   teamProgress,
   financialYear,
@@ -40,9 +68,10 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   activeTeamId,
   onActiveTeamChange,
 }) => {
-  const months = getFinancialYearMonths().filter(
-    m => m.number >= 4 || m.number <= 1
-  );
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const months = SA_MONTHS;
 
   const visibleTeams = teamProgress.filter(t => t.fullYearTarget > 0);
 
@@ -55,19 +84,33 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
     '#008A00',
   ];
 
+  // Build the target line: evenly distributed from 0% at Apr start to 100% at Jan end
+  // This is a straight line from point 0 to point 9 (10 points total)
+  const targetLinePoints = months.map((_, i) => {
+    const percent = (i / (months.length - 1)) * 100;
+    return percent;
+  });
+
+  // For each team, build actual cumulative points — only up to today's month
   const chartData = React.useMemo(() => {
     return visibleTeams.map((team, idx) => {
       let cumulative = 0;
 
-      const points: MonthlyPoint[] = months.map(m => {
-        cumulative += monthlyData[team.team_id]?.[m.number]?.submitted ?? 0;
+      const points: (MonthlyPoint & { isVisible: boolean })[] = months.map(m => {
+        const monthStartDate = getMonthStartDate(m.number, financialYear);
+        // A month's data is visible if the month has started (i.e. today >= first day of that month)
+        const isVisible = today >= monthStartDate;
+
+        if (isVisible) {
+          cumulative += monthlyData[team.team_id]?.[m.number]?.submitted ?? 0;
+        }
 
         return {
           month: m.number,
-          percent: Math.min(
-            (cumulative / team.fullYearTarget) * 100,
-            100
-          ),
+          percent: isVisible
+            ? Math.min((cumulative / team.fullYearTarget) * 100, 100)
+            : 0,
+          isVisible,
         };
       });
 
@@ -78,7 +121,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
         points,
       };
     });
-  }, [visibleTeams, months, monthlyData]);
+  }, [visibleTeams, months, monthlyData, financialYear, today]);
 
   const getX = (i: number) =>
     PADDING_LEFT + (CHART_WIDTH / (months.length - 1)) * i;
@@ -86,29 +129,18 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   const getY = (p: number) =>
     VIEWBOX_HEIGHT - PADDING_BOTTOM - (p / 100) * CHART_HEIGHT;
 
+  // Build target polyline points (full line Apr → Jan)
+  const targetPolylinePoints = targetLinePoints
+    .map((p, i) => `${getX(i)},${getY(p)}`)
+    .join(' ');
+
   return (
     <div className="flex flex-col h-full">
       <svg
         viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
         className="w-full flex-1"
       >
-        <rect
-          x={getX(0)}
-          y={PADDING_TOP}
-          width={getX(3) - getX(0)}
-          height={CHART_HEIGHT}
-          fill="#E0E7FF"
-          opacity="0.4"
-        />
-        <rect
-          x={getX(6)}
-          y={PADDING_TOP}
-          width={getX(months.length - 1) - getX(6)}
-          height={CHART_HEIGHT}
-          fill="#E0E7FF"
-          opacity="0.4"
-        />
-
+        {/* Axes */}
         <line
           x1={PADDING_LEFT}
           y1={PADDING_TOP}
@@ -124,6 +156,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           stroke="#6B7280"
         />
 
+        {/* Y-axis grid lines */}
         {[0, 25, 50, 75, 100].map(p => (
           <g key={p}>
             <text
@@ -147,69 +180,118 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           </g>
         ))}
 
-        {months.map((m, i) => (
-          <text
-            key={m.number}
-            x={getX(i)}
-            y={VIEWBOX_HEIGHT - PADDING_BOTTOM + 22}
-            textAnchor="middle"
-            className="text-xs fill-gray-600"
-          >
-            {m.number === 1
-              ? `${m.name} ${financialYear.end}`
-              : m.number === 4
-              ? `${m.name} ${financialYear.start}`
-              : m.name}
-          </text>
-        ))}
+        {/* X-axis month labels */}
+        {months.map((m, i) => {
+          const year = m.number >= 4 ? financialYear.end : financialYear.end + 1;
+          const monthName = getFinancialYearMonths().find(fm => fm.number === m.number)?.name ?? String(m.number);
+          return (
+            <text
+              key={m.number}
+              x={getX(i)}
+              y={VIEWBOX_HEIGHT - PADDING_BOTTOM + 22}
+              textAnchor="middle"
+              className="text-xs fill-gray-600"
+            >
+              {m.number === 1
+                ? `${monthName} ${financialYear.end + 1}`
+                : m.number === 4
+                ? `${monthName} ${financialYear.end}`
+                : monthName}
+            </text>
+          );
+        })}
 
-        {chartData.map(team => (
-          <path
-            key={team.team_id}
-            d={team.points
-              .map((p, i) => `${i ? 'L' : 'M'} ${getX(i)} ${getY(p.percent)}`)
-              .join(' ')}
-            fill="none"
-            stroke={
-              activeTeamId && activeTeamId !== team.team_id
-                ? '#9CA3AF'
-                : team.color
-            }
-            strokeWidth={activeTeamId === team.team_id ? 4.5 : 3}
-            opacity={activeTeamId && activeTeamId !== team.team_id ? 0.6 : 1}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ))}
+        {/* Target line — dotted grey, runs full Apr → Jan */}
+        <polyline
+          points={targetPolylinePoints}
+          fill="none"
+          stroke="#9CA3AF"
+          strokeWidth="2.5"
+          strokeDasharray="6 4"
+          strokeLinecap="round"
+          opacity="0.85"
+        />
 
+        {/* Target line label at end */}
+        <text
+          x={getX(months.length - 1) + 8}
+          y={getY(100) + 4}
+          className="text-xs fill-gray-400"
+          fontSize="11"
+        >
+          Target
+        </text>
+
+        {/* Actual lines — only plot points up to today */}
+        {chartData.map(team => {
+          // Build path only for visible months
+          const visiblePoints = team.points
+            .map((p, i) => ({ ...p, i }))
+            .filter(p => p.isVisible);
+
+          if (visiblePoints.length === 0) return null;
+
+          const pathD = visiblePoints
+            .map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${getX(p.i)} ${getY(p.percent)}`)
+            .join(' ');
+
+          return (
+            <path
+              key={team.team_id}
+              d={pathD}
+              fill="none"
+              stroke={
+                activeTeamId && activeTeamId !== team.team_id
+                  ? '#9CA3AF'
+                  : team.color
+              }
+              strokeWidth={activeTeamId === team.team_id ? 4.5 : 3}
+              opacity={activeTeamId && activeTeamId !== team.team_id ? 0.5 : 1}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          );
+        })}
+
+        {/* Value labels for active team — only visible months */}
         {activeTeamId &&
           chartData
             .filter(team => team.team_id === activeTeamId)
             .map(team =>
-              team.points.map((p, i) => (
-                <text
-                  key={`label-${team.team_id}-${i}`}
-                  x={getX(i)}
-                  y={getY(p.percent) - 10}
-                  textAnchor="middle"
-                  className="text-xs font-semibold fill-gray-800"
-                >
-                  {Math.round(p.percent)}%
-                </text>
-              ))
+              team.points
+                .filter(p => p.isVisible)
+                .map((p, i) => {
+                  const actualIndex = team.points.findIndex(pt => pt.month === p.month);
+                  return (
+                    <text
+                      key={`label-${team.team_id}-${p.month}`}
+                      x={getX(actualIndex)}
+                      y={getY(p.percent) - 10}
+                      textAnchor="middle"
+                      className="text-xs font-semibold fill-gray-800"
+                    >
+                      {Math.round(p.percent)}%
+                    </text>
+                  );
+                })
             )}
 
+        {/* End-of-line name labels when no team is active — only for visible data */}
         {!activeTeamId &&
           chartData.map(team => {
-            const lastPoint = team.points[team.points.length - 1];
-            const lastX = getX(team.points.length - 1);
-            const lastY = getY(lastPoint.percent);
+            const lastVisible = [...team.points]
+              .reverse()
+              .find(p => p.isVisible);
+
+            if (!lastVisible) return null;
+
+            const lastVisibleIndex = team.points.findIndex(p => p.month === lastVisible.month);
 
             return (
               <g key={`end-label-${team.team_id}`}>
                 <text
-                  x={lastX + 8}
-                  y={lastY + 4}
+                  x={getX(lastVisibleIndex) + 8}
+                  y={getY(lastVisible.percent) + 4}
                   className="text-xs font-semibold fill-gray-800"
                 >
                   {team.name}
@@ -219,7 +301,16 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           })}
       </svg>
 
+      {/* Legend */}
       <div className="mt-3 flex justify-center gap-3 flex-wrap">
+        {/* Target line legend item */}
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-500">
+          <svg width="24" height="10">
+            <line x1="0" y1="5" x2="24" y2="5" stroke="#9CA3AF" strokeWidth="2" strokeDasharray="5 3" />
+          </svg>
+          <span>Target</span>
+        </div>
+
         {chartData.map(team => (
           <button
             key={team.team_id}
