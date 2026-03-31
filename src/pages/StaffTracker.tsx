@@ -10,6 +10,8 @@ import { useStaffPerformance } from "../hooks/useStaffPerformance";
 import { supabase } from "../supabase/client";
 import { loadTargets } from "../utils/loadTargets";
 import { logTrackerSheetUpdate } from "../utils/auditLog";
+import { unparse } from "papaparse";
+import { getFinancialYearMonths } from "../utils/financialYear";
 
 interface DailyEntry {
   date: string;
@@ -24,7 +26,7 @@ const isAccountant = (role: string) => {
 
 export const StaffTracker: React.FC = () => {
   const { selectedMonth, selectedFinancialYear } = useDate();
-  const { currentStaff, selectedTeamId, allStaff } = useAuth();
+  const { currentStaff, selectedTeamId, allStaff, isAdmin } = useAuth();
   const { services } = useServices();
   const { staffPerformance, teamTarget } = useStaffPerformance("desc");
 
@@ -36,6 +38,7 @@ export const StaffTracker: React.FC = () => {
   const [personalTargets, setPersonalTargets] = useState<Record<string, number>>({});
   const [personalTotals, setPersonalTotals] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
 
   const [localValues, setLocalValues] = useState<Record<string, string>>({});
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
@@ -329,6 +332,81 @@ export const StaffTracker: React.FC = () => {
     }
   };
 
+  const handleExportTemplate = async () => {
+    if (!isAdmin || !isTeamView) return;
+    setIsExporting(true);
+
+    try {
+      const targetableServices = services.filter(s => s.service_name !== 'Bagel Days');
+      const accountants = allStaff.filter(s => !s.is_hidden && isAccountant(s.role));
+      const staffIds = accountants.map(a => a.staff_id);
+
+      const { data: activities, error } = await supabase
+        .from('dailyactivity')
+        .select('staff_id, service_id, month, year, delivered_count')
+        .in('staff_id', staffIds)
+        .in('year', [selectedFinancialYear.start, selectedFinancialYear.end]);
+
+      if (error) throw error;
+
+      const aggregated: Record<string, number> = {};
+      (activities || []).forEach(a => {
+        const expectedYear = a.month >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
+        if (a.year === expectedYear) {
+          const key = `${a.staff_id}-${a.service_id}-${a.month}-${a.year}`;
+          aggregated[key] = (aggregated[key] || 0) + (a.delivered_count || 0);
+        }
+      });
+
+      const monthData = getFinancialYearMonths();
+      const monthCols = monthData.map(m => {
+        const year = m.number >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
+        return { key: `${m.name}_${year}`, month: m.number, year };
+      });
+
+      const rows: Record<string, string | number>[] = [];
+
+      targetableServices.forEach(service => {
+        accountants.forEach(staff => {
+          const row: Record<string, string | number> = {
+            service_name: service.service_name,
+            accountant_name: staff.name,
+            staff_id: staff.staff_id,
+            service_id: service.service_id,
+          };
+
+          monthCols.forEach(mc => {
+            const key = `${staff.staff_id}-${service.service_id}-${mc.month}-${mc.year}`;
+            row[mc.key] = aggregated[key] || 0;
+          });
+
+          rows.push(row);
+        });
+      });
+
+      const fields = [
+        'service_name',
+        'accountant_name',
+        'staff_id',
+        'service_id',
+        ...monthCols.map(c => c.key),
+      ];
+
+      const csv = unparse({ fields, data: rows });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `actuals_template_${selectedFinancialYear.label.replace('/', '-')}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export template', err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const isWeekend = (dateStr: string) => {
     const d = new Date(dateStr);
     const day = d.getDay();
@@ -343,7 +421,7 @@ export const StaffTracker: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="page-header">
+      <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <h2 className="page-title">{tableLabel} Tracker</h2>
           {isTeamView && (
@@ -352,6 +430,15 @@ export const StaffTracker: React.FC = () => {
             </span>
           )}
         </div>
+        {isAdmin && isTeamView && (
+          <button
+            onClick={handleExportTemplate}
+            disabled={isExporting}
+            className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium disabled:opacity-50"
+          >
+            {isExporting ? '⏳ Exporting...' : '📥 Export Actuals Template'}
+          </button>
+        )}
       </div>
 
       <div className="mb-6">
