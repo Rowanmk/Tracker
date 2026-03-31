@@ -19,16 +19,15 @@ const isAccountant = (staffMember: Staff) => {
 
 /**
  * Calculates the expected number of SA submissions by today's date,
- * based on the delivery window (Apr FY.end → Jan FY.end+1) and the full-year target.
- *
- * The delivery window runs from 6 April of financialYear.end to 31 January of financialYear.end+1.
- * We calculate what fraction of that window has elapsed as of today, then multiply by the target.
- * 100% run rate = actual submissions match the expected submissions at today's date.
+ * based on the delivery window (Apr FY.end → Jan FY.end+1) and the non-linear
+ * monthly targets set in the Targets Control sheet.
  */
 function calcRunRatePercent(
   submitted: number,
   fullYearTarget: number,
-  financialYear: FinancialYear
+  financialYear: FinancialYear,
+  teamId: number | 'total',
+  monthlyData: Record<number, Record<number, { submitted: number; target: number }>>
 ): number | null {
   if (fullYearTarget <= 0) return null;
 
@@ -43,13 +42,46 @@ function calcRunRatePercent(
   if (today < windowStart) return null;
 
   // If today is after the window ends, expected = full target
-  const effectiveToday = today > windowEnd ? windowEnd : today;
+  if (today > windowEnd) {
+    return (submitted / fullYearTarget) * 100;
+  }
 
-  const totalWindowMs = windowEnd.getTime() - windowStart.getTime();
-  const elapsedMs = effectiveToday.getTime() - windowStart.getTime();
+  // Calculate expected target up to today based on monthly targets
+  let expectedByToday = 0;
+  const SA_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1];
+  
+  for (const monthNum of SA_MONTHS) {
+    const year = monthNum >= 4 ? financialYear.end : financialYear.end + 1;
+    const monthStart = new Date(year, monthNum - 1, 1);
+    const monthEnd = new Date(year, monthNum, 0);
+    
+    // Special case for April: starts on 6th
+    const effectiveMonthStart = monthNum === 4 ? new Date(year, 3, 6) : monthStart;
+    
+    // Get the target for this month
+    let monthTarget = 0;
+    if (teamId === 'total') {
+      // Sum across all teams
+      monthTarget = Object.values(monthlyData).reduce((sum, teamData) => sum + (teamData[monthNum]?.target || 0), 0);
+    } else {
+      monthTarget = monthlyData[teamId]?.[monthNum]?.target || 0;
+    }
 
-  const fractionElapsed = Math.min(1, Math.max(0, elapsedMs / totalWindowMs));
-  const expectedByToday = fullYearTarget * fractionElapsed;
+    if (today > monthEnd) {
+      // Full month has passed
+      expectedByToday += monthTarget;
+    } else if (today >= effectiveMonthStart && today <= monthEnd) {
+      // We are in this month, calculate partial target
+      const totalDaysInMonth = monthEnd.getDate() - effectiveMonthStart.getDate() + 1;
+      const daysElapsed = today.getDate() - effectiveMonthStart.getDate() + 1;
+      const fraction = Math.max(0, Math.min(1, daysElapsed / totalDaysInMonth));
+      expectedByToday += monthTarget * fraction;
+      break; // Future months will be 0
+    } else {
+      // Future month
+      break;
+    }
+  }
 
   if (expectedByToday <= 0) return null;
 
@@ -206,7 +238,9 @@ export const SelfAssessmentProgress: React.FC = () => {
   const totalRunRatePct = calcRunRatePercent(
     totals.submitted,
     totals.fullYearTarget,
-    localFinancialYear
+    localFinancialYear,
+    'total',
+    monthlyData
   );
 
   if (loading || authLoading || servicesLoading) {
@@ -278,7 +312,9 @@ export const SelfAssessmentProgress: React.FC = () => {
                   const runRatePct = calcRunRatePercent(
                     entry.submitted,
                     entry.fullYearTarget,
-                    localFinancialYear
+                    localFinancialYear,
+                    entry.team_id,
+                    monthlyData
                   );
 
                   const isActive = activeTeamId === entry.team_id;

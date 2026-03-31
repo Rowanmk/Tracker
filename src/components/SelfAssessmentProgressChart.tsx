@@ -79,13 +79,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   // For each month in the SA window, sum the targets across all visible teams,
   // then compute a cumulative % of the total full-year target.
   const targetLinePoints = React.useMemo(() => {
-    const totalFullYearTarget = visibleTeams.reduce((sum, t) => sum + t.fullYearTarget, 0);
-
-    if (totalFullYearTarget <= 0) {
-      // Fallback: straight line from 0% to 100%
-      return months.map((_, i) => (i / (months.length - 1)) * 100);
-    }
-
     // Sum monthly targets across all visible teams for each SA month
     const monthlyTargetTotals = months.map(m => {
       return visibleTeams.reduce((sum, team) => {
@@ -93,27 +86,30 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
       }, 0);
     });
 
-    // Build cumulative target percentages
-    let cumulative = 0;
-    const cumulativePercents = monthlyTargetTotals.map(monthTarget => {
-      cumulative += monthTarget;
-      return (cumulative / totalFullYearTarget) * 100;
-    });
+    // Calculate the true total of all targets for the SA window
+    const trueTotalTarget = monthlyTargetTotals.reduce((a, b) => a + b, 0);
 
-    // If the cumulative total from monthly targets doesn't reach 100%
-    // (e.g. targets are only partially entered), scale to 100% at the last point
-    const finalCumulative = cumulativePercents[cumulativePercents.length - 1];
-    if (finalCumulative > 0 && Math.abs(finalCumulative - 100) > 1) {
-      return cumulativePercents.map(p => (p / finalCumulative) * 100);
+    if (trueTotalTarget <= 0) {
+      // Fallback: straight line from 0% to 100%
+      return months.map((_, i) => (i / (months.length - 1)) * 100);
     }
 
-    return cumulativePercents;
+    // Build cumulative target percentages
+    let cumulative = 0;
+    return monthlyTargetTotals.map(monthTarget => {
+      cumulative += monthTarget;
+      return (cumulative / trueTotalTarget) * 100;
+    });
   }, [visibleTeams, monthlyData, months]);
 
   // For each team, build actual cumulative points — only up to today's month
   const chartData = React.useMemo(() => {
     return visibleTeams.map((team, idx) => {
       let cumulative = 0;
+
+      // Use the true total target for this team as the denominator
+      const teamTotalTarget = months.reduce((sum, m) => sum + (monthlyData[team.team_id]?.[m.number]?.target ?? 0), 0);
+      const denominator = teamTotalTarget > 0 ? teamTotalTarget : team.fullYearTarget;
 
       const points: (MonthlyPoint & { isVisible: boolean })[] = months.map(m => {
         const monthStartDate = getMonthStartDate(m.number, financialYear);
@@ -125,8 +121,8 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
         return {
           month: m.number,
-          percent: isVisible
-            ? Math.min((cumulative / team.fullYearTarget) * 100, 100)
+          percent: isVisible && denominator > 0
+            ? Math.min((cumulative / denominator) * 100, 100)
             : 0,
           isVisible,
         };

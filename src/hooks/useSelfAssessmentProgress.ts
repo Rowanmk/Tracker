@@ -64,28 +64,6 @@ export const useSelfAssessmentProgress = (
         const deliveryStartIso = deliveryStartDate.toISOString().slice(0, 10);
         const deliveryEndIso = deliveryEndDate.toISOString().slice(0, 10);
 
-        const today = new Date();
-        let lastCompletedIso: string | null = null;
-
-        if (today > deliveryStartDate) {
-          const endOfPreviousMonth = new Date(
-            today.getFullYear(),
-            today.getMonth(),
-            0
-          );
-
-          const clipped =
-            endOfPreviousMonth < deliveryStartDate
-              ? null
-              : endOfPreviousMonth > deliveryEndDate
-              ? deliveryEndDate
-              : endOfPreviousMonth;
-
-          lastCompletedIso = clipped
-            ? clipped.toISOString().slice(0, 10)
-            : null;
-        }
-
         // Fetch all accountant staff
         const accountantStaff = allStaff.filter(
           (s) => !s.is_hidden && isAccountant(s)
@@ -156,39 +134,18 @@ export const useSelfAssessmentProgress = (
             .filter((a: DailyActivity) => a.staff_id === staffId)
             .reduce((sum: number, a: DailyActivity) => sum + (a.delivered_count ?? 0), 0);
 
-          const actualsToLastMonth =
-            lastCompletedIso === null
-              ? 0
-              : safeActivities
-                  .filter(
-                    (a: DailyActivity) =>
-                      a.staff_id === staffId && a.date <= lastCompletedIso
-                  )
-                  .reduce((sum: number, a: DailyActivity) => sum + (a.delivered_count ?? 0), 0);
-
-          const targetStartDate = new Date(
-            today.getFullYear(),
-            today.getMonth(),
-            1
-          );
-
-          const futureTargets = safeTargets
+          const fullYearTarget = safeTargets
             .filter((t: MonthlyTarget) => {
               if (t.staff_id !== staffId) return false;
               const tDate = new Date(t.year, t.month - 1, 1);
               return (
-                tDate >= targetStartDate &&
                 tDate >= deliveryStartDate &&
                 tDate <= deliveryEndDate
               );
             })
             .reduce((sum: number, t: MonthlyTarget) => sum + (t.target_value ?? 0), 0);
 
-          const fullYearTarget = actualsToLastMonth + futureTargets;
           const leftToDo = Math.max(0, fullYearTarget - submitted);
-
-          // Use team_id from staff record for chart grouping, fall back to staff_id as synthetic id
-          const displayId = staffMember.team_id ?? staffId;
 
           results.push({
             team_id: staffId, // use staff_id as the unique identifier for chart lines
