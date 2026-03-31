@@ -8,6 +8,14 @@ import { FinancialYearSelector } from '../components/FinancialYearSelector';
 import { getFinancialYears, getFinancialYearMonths } from '../utils/financialYear';
 import { supabase } from '../supabase/client';
 import type { FinancialYear } from '../utils/financialYear';
+import type { Database } from '../supabase/types';
+
+type Staff = Database['public']['Tables']['staff']['Row'];
+
+const isAccountant = (staffMember: Staff) => {
+  const role = (staffMember.role || '').toLowerCase();
+  return role === 'staff' || role === 'admin';
+};
 
 export const SelfAssessmentProgress: React.FC = () => {
   const { selectedFinancialYear } = useDate();
@@ -40,7 +48,7 @@ export const SelfAssessmentProgress: React.FC = () => {
 
   React.useEffect(() => {
     const fetchMonthlyData = async () => {
-      if (services.length === 0) return;
+      if (services.length === 0 || teamProgress.length === 0) return;
 
       setLoadingMonthly(true);
 
@@ -64,48 +72,52 @@ export const SelfAssessmentProgress: React.FC = () => {
           .toISOString()
           .slice(0, 10);
 
+        // teamProgress now uses staff_id as team_id, so fetch by staff_id
+        const staffIds = teamProgress.map((t) => t.team_id);
+
         const { data: activities } = await supabase
           .from('dailyactivity')
           .select('staff_id, delivered_count, date')
           .eq('service_id', saService.service_id)
           .gte('date', deliveryStartIso)
-          .lte('date', deliveryEndIso);
+          .lte('date', deliveryEndIso)
+          .in('staff_id', staffIds);
 
         const { data: targets } = await supabase
           .from('monthlytargets')
-          .select('team_id, month, year, target_value')
+          .select('staff_id, month, year, target_value')
           .eq('service_id', saService.service_id)
-          .in('year', [deliveryStartYear, deliveryEndYear]);
+          .in('year', [deliveryStartYear, deliveryEndYear])
+          .in('staff_id', staffIds);
 
         const breakdown: Record<
           number,
           Record<number, { submitted: number; target: number }>
         > = {};
 
-        teamProgress.forEach((team) => {
-          breakdown[team.team_id] = {};
+        teamProgress.forEach((staffEntry) => {
+          breakdown[staffEntry.team_id] = {};
           getFinancialYearMonths().forEach((m) => {
-            breakdown[team.team_id][m.number] = { submitted: 0, target: 0 };
+            breakdown[staffEntry.team_id][m.number] = { submitted: 0, target: 0 };
           });
         });
 
         (activities || []).forEach((a) => {
-          const staff = allStaff.find(s => s.staff_id === a.staff_id);
-          if (staff && staff.team_id && breakdown[staff.team_id]) {
+          if (a.staff_id != null && breakdown[a.staff_id]) {
             const m = new Date(a.date).getMonth() + 1;
-            if (!breakdown[staff.team_id][m]) {
-              breakdown[staff.team_id][m] = { submitted: 0, target: 0 };
+            if (!breakdown[a.staff_id][m]) {
+              breakdown[a.staff_id][m] = { submitted: 0, target: 0 };
             }
-            breakdown[staff.team_id][m].submitted += a.delivered_count || 0;
+            breakdown[a.staff_id][m].submitted += a.delivered_count || 0;
           }
         });
 
         (targets || []).forEach((t) => {
-          if (t.team_id != null && breakdown[t.team_id]) {
-            if (!breakdown[t.team_id][t.month]) {
-              breakdown[t.team_id][t.month] = { submitted: 0, target: 0 };
+          if (t.staff_id != null && breakdown[t.staff_id]) {
+            if (!breakdown[t.staff_id][t.month]) {
+              breakdown[t.staff_id][t.month] = { submitted: 0, target: 0 };
             }
-            breakdown[t.team_id][t.month].target += t.target_value || 0;
+            breakdown[t.staff_id][t.month].target += t.target_value || 0;
           }
         });
 
@@ -118,7 +130,7 @@ export const SelfAssessmentProgress: React.FC = () => {
     };
 
     fetchMonthlyData();
-  }, [localFinancialYear, services, teamProgress, allStaff]);
+  }, [localFinancialYear, services, teamProgress]);
 
   const visibleTeams = teamProgress.filter(
     (t) => t.fullYearTarget > 0 || t.submitted > 0
@@ -201,29 +213,29 @@ export const SelfAssessmentProgress: React.FC = () => {
               </thead>
 
               <tbody>
-                {sortedVisibleTeams.map((team) => {
+                {sortedVisibleTeams.map((entry) => {
                   const pct =
-                    team.fullYearTarget > 0
-                      ? (team.submitted / team.fullYearTarget) * 100
+                    entry.fullYearTarget > 0
+                      ? (entry.submitted / entry.fullYearTarget) * 100
                       : 0;
 
-                  const isActive = activeTeamId === team.team_id;
+                  const isActive = activeTeamId === entry.team_id;
 
                   return (
                     <tr
-                      key={team.team_id}
+                      key={entry.team_id}
                       className={`transition-colors ${
                         isActive
                           ? 'bg-blue-50 ring-1 ring-blue-300'
                           : 'hover:bg-gray-50'
                       }`}
                     >
-                      <td className="px-4 py-3 font-medium">{team.name}</td>
+                      <td className="px-4 py-3 font-medium">{entry.name}</td>
                       <td className="px-4 py-3 text-center font-semibold">
-                        {team.fullYearTarget}
+                        {entry.fullYearTarget}
                       </td>
                       <td className="px-4 py-3 text-center font-semibold">
-                        {team.submitted}
+                        {entry.submitted}
                       </td>
                       <td className="px-4 py-3 text-center font-semibold">
                         {pct.toFixed(1)}%

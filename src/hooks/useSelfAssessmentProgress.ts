@@ -17,6 +17,11 @@ export interface TeamProgressData {
   leftToDo: number;
 }
 
+const isAccountant = (staffMember: Staff) => {
+  const role = (staffMember.role || '').toLowerCase();
+  return role === 'staff' || role === 'admin';
+};
+
 export const useSelfAssessmentProgress = (
   financialYear: FinancialYear,
   allStaff: Staff[],
@@ -29,7 +34,7 @@ export const useSelfAssessmentProgress = (
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!financialYear || allStaff.length === 0 || teams.length === 0 || services.length === 0) {
+      if (!financialYear || allStaff.length === 0 || services.length === 0) {
         setTeamProgress([]);
         setLoading(false);
         return;
@@ -81,12 +86,27 @@ export const useSelfAssessmentProgress = (
             : null;
         }
 
+        // Fetch all accountant staff
+        const accountantStaff = allStaff.filter(
+          (s) => !s.is_hidden && isAccountant(s)
+        );
+
+        if (accountantStaff.length === 0) {
+          setTeamProgress([]);
+          setLoading(false);
+          return;
+        }
+
+        const accountantStaffIds = accountantStaff.map((s) => s.staff_id);
+
+        // Fetch activities for all accountants
         const { data: activities, error: activitiesError } = await supabase
           .from('dailyactivity')
           .select('staff_id, delivered_count, date')
           .eq('service_id', saService.service_id)
           .gte('date', deliveryStartIso)
-          .lte('date', deliveryEndIso);
+          .lte('date', deliveryEndIso)
+          .in('staff_id', accountantStaffIds);
 
         if (activitiesError) {
           setError('Failed to load activity data');
@@ -97,11 +117,13 @@ export const useSelfAssessmentProgress = (
 
         const safeActivities: DailyActivity[] = (activities ?? []) as DailyActivity[];
 
+        // Fetch targets by staff_id (not team_id) for all accountants
         const { data: targets, error: targetsError } = await supabase
           .from('monthlytargets')
-          .select('team_id, month, year, target_value')
+          .select('staff_id, team_id, month, year, target_value')
           .eq('service_id', saService.service_id)
-          .in('year', [deliveryStartYear, deliveryEndYear]);
+          .in('year', [deliveryStartYear, deliveryEndYear])
+          .in('staff_id', accountantStaffIds);
 
         if (targetsError) {
           setError('Failed to load target data');
@@ -112,32 +134,27 @@ export const useSelfAssessmentProgress = (
 
         const safeTargets: MonthlyTarget[] = (targets ?? []) as MonthlyTarget[];
 
-        const teamWithData = new Set<number>();
+        // Determine which accountants have any data (activities or targets)
+        const staffWithData = new Set<number>();
 
         safeActivities.forEach((a: DailyActivity) => {
-          const staff = allStaff.find(s => s.staff_id === a.staff_id);
-          if (staff && staff.team_id) teamWithData.add(staff.team_id);
+          if (a.staff_id != null) staffWithData.add(a.staff_id);
         });
 
         safeTargets.forEach((t: MonthlyTarget) => {
-          if (t.team_id != null) teamWithData.add(t.team_id);
+          if (t.staff_id != null) staffWithData.add(t.staff_id);
         });
 
+        // Build per-staff results (each accountant is their own "row")
         const results: TeamProgressData[] = [];
 
-        teamWithData.forEach((teamId: number) => {
-          const team = teams.find(t => t.id === teamId);
-          if (!team) return;
-
-          const teamStaffIds = allStaff.filter(s => s.team_id === teamId).map(s => s.staff_id);
+        staffWithData.forEach((staffId: number) => {
+          const staffMember = accountantStaff.find((s) => s.staff_id === staffId);
+          if (!staffMember) return;
 
           const submitted = safeActivities
-            .filter((a: DailyActivity) => a.staff_id && teamStaffIds.includes(a.staff_id))
-            .reduce(
-              (sum: number, a: DailyActivity) =>
-                sum + (a.delivered_count ?? 0),
-              0
-            );
+            .filter((a: DailyActivity) => a.staff_id === staffId)
+            .reduce((sum: number, a: DailyActivity) => sum + (a.delivered_count ?? 0), 0);
 
           const actualsToLastMonth =
             lastCompletedIso === null
@@ -145,14 +162,9 @@ export const useSelfAssessmentProgress = (
               : safeActivities
                   .filter(
                     (a: DailyActivity) =>
-                      a.staff_id && teamStaffIds.includes(a.staff_id) &&
-                      a.date <= lastCompletedIso
+                      a.staff_id === staffId && a.date <= lastCompletedIso
                   )
-                  .reduce(
-                    (sum: number, a: DailyActivity) =>
-                      sum + (a.delivered_count ?? 0),
-                    0
-                  );
+                  .reduce((sum: number, a: DailyActivity) => sum + (a.delivered_count ?? 0), 0);
 
           const targetStartDate = new Date(
             today.getFullYear(),
@@ -162,7 +174,7 @@ export const useSelfAssessmentProgress = (
 
           const futureTargets = safeTargets
             .filter((t: MonthlyTarget) => {
-              if (t.team_id !== teamId) return false;
+              if (t.staff_id !== staffId) return false;
               const tDate = new Date(t.year, t.month - 1, 1);
               return (
                 tDate >= targetStartDate &&
@@ -170,18 +182,17 @@ export const useSelfAssessmentProgress = (
                 tDate <= deliveryEndDate
               );
             })
-            .reduce(
-              (sum: number, t: MonthlyTarget) =>
-                sum + (t.target_value ?? 0),
-              0
-            );
+            .reduce((sum: number, t: MonthlyTarget) => sum + (t.target_value ?? 0), 0);
 
           const fullYearTarget = actualsToLastMonth + futureTargets;
           const leftToDo = Math.max(0, fullYearTarget - submitted);
 
+          // Use team_id from staff record for chart grouping, fall back to staff_id as synthetic id
+          const displayId = staffMember.team_id ?? staffId;
+
           results.push({
-            team_id: teamId,
-            name: team.name,
+            team_id: staffId, // use staff_id as the unique identifier for chart lines
+            name: staffMember.name,
             fullYearTarget,
             submitted,
             leftToDo,
