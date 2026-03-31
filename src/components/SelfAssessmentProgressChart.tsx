@@ -34,8 +34,6 @@ const CHART_WIDTH = VIEWBOX_WIDTH - PADDING_LEFT - PADDING_RIGHT;
 const CHART_HEIGHT = VIEWBOX_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
 
 // SA delivery window months in order: Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec, Jan
-// Apr = index 0 (financialYear.end, month 4)
-// Jan = index 9 (financialYear.end+1, month 1)
 const SA_MONTHS = [
   { number: 4 },
   { number: 5 },
@@ -48,13 +46,6 @@ const SA_MONTHS = [
   { number: 12 },
   { number: 1 },
 ];
-
-function getMonthDate(monthNumber: number, financialYear: FinancialYear): Date {
-  // Apr–Dec belong to financialYear.end; Jan belongs to financialYear.end + 1
-  const year = monthNumber >= 4 ? financialYear.end : financialYear.end + 1;
-  // Use the last day of the month for "end of month" comparison
-  return new Date(year, monthNumber, 0); // day 0 = last day of previous month = last day of monthNumber
-}
 
 function getMonthStartDate(monthNumber: number, financialYear: FinancialYear): Date {
   const year = monthNumber >= 4 ? financialYear.end : financialYear.end + 1;
@@ -84,12 +75,40 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
     '#008A00',
   ];
 
-  // Build the target line: evenly distributed from 0% at Apr start to 100% at Jan end
-  // This is a straight line from point 0 to point 9 (10 points total)
-  const targetLinePoints = months.map((_, i) => {
-    const percent = (i / (months.length - 1)) * 100;
-    return percent;
-  });
+  // Build the target line from actual monthly target data.
+  // For each month in the SA window, sum the targets across all visible teams,
+  // then compute a cumulative % of the total full-year target.
+  const targetLinePoints = React.useMemo(() => {
+    const totalFullYearTarget = visibleTeams.reduce((sum, t) => sum + t.fullYearTarget, 0);
+
+    if (totalFullYearTarget <= 0) {
+      // Fallback: straight line from 0% to 100%
+      return months.map((_, i) => (i / (months.length - 1)) * 100);
+    }
+
+    // Sum monthly targets across all visible teams for each SA month
+    const monthlyTargetTotals = months.map(m => {
+      return visibleTeams.reduce((sum, team) => {
+        return sum + (monthlyData[team.team_id]?.[m.number]?.target ?? 0);
+      }, 0);
+    });
+
+    // Build cumulative target percentages
+    let cumulative = 0;
+    const cumulativePercents = monthlyTargetTotals.map(monthTarget => {
+      cumulative += monthTarget;
+      return (cumulative / totalFullYearTarget) * 100;
+    });
+
+    // If the cumulative total from monthly targets doesn't reach 100%
+    // (e.g. targets are only partially entered), scale to 100% at the last point
+    const finalCumulative = cumulativePercents[cumulativePercents.length - 1];
+    if (finalCumulative > 0 && Math.abs(finalCumulative - 100) > 1) {
+      return cumulativePercents.map(p => (p / finalCumulative) * 100);
+    }
+
+    return cumulativePercents;
+  }, [visibleTeams, monthlyData, months]);
 
   // For each team, build actual cumulative points — only up to today's month
   const chartData = React.useMemo(() => {
@@ -98,7 +117,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
       const points: (MonthlyPoint & { isVisible: boolean })[] = months.map(m => {
         const monthStartDate = getMonthStartDate(m.number, financialYear);
-        // A month's data is visible if the month has started (i.e. today >= first day of that month)
         const isVisible = today >= monthStartDate;
 
         if (isVisible) {
@@ -129,7 +147,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   const getY = (p: number) =>
     VIEWBOX_HEIGHT - PADDING_BOTTOM - (p / 100) * CHART_HEIGHT;
 
-  // Build target polyline points (full line Apr → Jan)
+  // Build target polyline points from the target-sheet-derived data
   const targetPolylinePoints = targetLinePoints
     .map((p, i) => `${getX(i)},${getY(p)}`)
     .join(' ');
@@ -182,7 +200,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
         {/* X-axis month labels */}
         {months.map((m, i) => {
-          const year = m.number >= 4 ? financialYear.end : financialYear.end + 1;
           const monthName = getFinancialYearMonths().find(fm => fm.number === m.number)?.name ?? String(m.number);
           return (
             <text
@@ -201,7 +218,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           );
         })}
 
-        {/* Target line — dotted grey, runs full Apr → Jan */}
+        {/* Target line — dotted grey, derived from target sheet monthly values */}
         <polyline
           points={targetPolylinePoints}
           fill="none"
@@ -215,7 +232,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
         {/* Target line label at end */}
         <text
           x={getX(months.length - 1) + 8}
-          y={getY(100) + 4}
+          y={getY(targetLinePoints[targetLinePoints.length - 1] ?? 100) + 4}
           className="text-xs fill-gray-400"
           fontSize="11"
         >
@@ -224,7 +241,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
         {/* Actual lines — only plot points up to today */}
         {chartData.map(team => {
-          // Build path only for visible months
           const visiblePoints = team.points
             .map((p, i) => ({ ...p, i }))
             .filter(p => p.isVisible);
@@ -260,7 +276,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
             .map(team =>
               team.points
                 .filter(p => p.isVisible)
-                .map((p, i) => {
+                .map((p) => {
                   const actualIndex = team.points.findIndex(pt => pt.month === p.month);
                   return (
                     <text
