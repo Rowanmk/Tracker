@@ -23,14 +23,13 @@ interface TargetData {
   };
 }
 
-interface CSVRow {
-  staff_id: number;
-  staff_name: string;
-  service_id: number;
+// New wide-format CSV row: one row per service+accountant, months as columns
+interface WideCSVRow {
   service_name: string;
-  month: number;
-  year: number;
-  target_value: number;
+  accountant_name: string;
+  staff_id: number;
+  service_id: number;
+  [monthCol: string]: string | number; // e.g. "Apr_2025", "May_2025", ...
 }
 
 interface LocalInputState {
@@ -49,10 +48,20 @@ interface ImportDiffRow {
   changed: boolean;
 }
 
+interface ParsedImportCell {
+  staff_id: number;
+  staff_name: string;
+  service_id: number;
+  service_name: string;
+  month: number;
+  year: number;
+  target_value: number;
+}
+
 interface ImportState {
   step: 'idle' | 'select-fy' | 'preview' | 'importing' | 'done';
   selectedFY: FinancialYear | null;
-  parsedRows: CSVRow[];
+  parsedRows: ParsedImportCell[];
   diffRows: ImportDiffRow[];
   error: string | null;
 }
@@ -65,6 +74,9 @@ const isAccountant = (staffMember: Staff) => {
 const getYearForMonth = (month: number, fy: FinancialYear): number => {
   return month >= 4 ? fy.start : fy.end;
 };
+
+// Build column key for a month in the wide CSV format: e.g. "Apr_2025"
+const buildMonthColKey = (monthName: string, year: number) => `${monthName}_${year}`;
 
 export const TargetsControl: React.FC = () => {
   const navigate = useNavigate();
@@ -446,32 +458,45 @@ export const TargetsControl: React.FC = () => {
     }
   };
 
+  // ── Export: wide format (Service | Accountant | Apr_YYYY | May_YYYY | ... | Mar_YYYY) ──
   const handleExportCSV = () => {
-    const rows: CSVRow[] = [];
+    const monthData = getFinancialYearMonths();
 
-    targetData.forEach((staffMember) => {
-      Object.entries(staffMember.targets).forEach(([monthStr, monthTargets]) => {
-        const month = Number(monthStr);
-        const year = getYearForMonth(month, selectedFinancialYear);
+    // Build column headers for months
+    const monthCols = monthData.map((m) => {
+      const year = getYearForMonth(m.number, selectedFinancialYear);
+      return { key: buildMonthColKey(m.name, year), month: m, year };
+    });
 
-        Object.entries(monthTargets).forEach(([serviceName, value]) => {
-          const service = targetableServices.find((s) => s.service_name === serviceName);
-          if (service) {
-            rows.push({
-              staff_id: staffMember.staff_id,
-              staff_name: staffMember.name,
-              service_id: service.service_id,
-              service_name: serviceName,
-              month,
-              year,
-              target_value: value ?? 0,
-            });
-          }
+    const rows: Record<string, string | number>[] = [];
+
+    targetableServices.forEach((service) => {
+      targetData.forEach((staffMember) => {
+        const row: Record<string, string | number> = {
+          service_name: service.service_name,
+          accountant_name: staffMember.name,
+          staff_id: staffMember.staff_id,
+          service_id: service.service_id,
+        };
+
+        monthCols.forEach(({ key, month, year }) => {
+          row[key] = staffMember.targets[month.number]?.[service.service_name] ?? 0;
         });
+
+        rows.push(row);
       });
     });
 
-    const csv = unparse(rows);
+    // Define column order explicitly
+    const fields = [
+      'service_name',
+      'accountant_name',
+      'staff_id',
+      'service_id',
+      ...monthCols.map((c) => c.key),
+    ];
+
+    const csv = unparse({ fields, data: rows });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -527,52 +552,76 @@ export const TargetsControl: React.FC = () => {
           return;
         }
 
-        const requiredColumns = ['staff_id', 'staff_name', 'service_id', 'service_name', 'month', 'year', 'target_value'];
         const headers = result.meta.fields || [];
-        const missingColumns = requiredColumns.filter(col => !headers.includes(col));
 
-        if (missingColumns.length > 0) {
+        // Validate required base columns
+        const requiredBase = ['service_name', 'accountant_name', 'staff_id', 'service_id'];
+        const missingBase = requiredBase.filter(col => !headers.includes(col));
+        if (missingBase.length > 0) {
           setImportState(prev => ({
             ...prev,
-            error: `CSV is missing required columns: ${missingColumns.join(', ')}. Please export a fresh CSV and re-edit it.`,
+            error: `CSV is missing required columns: ${missingBase.join(', ')}. Please export a fresh CSV and re-edit it.`,
           }));
           return;
         }
 
         const fy = importState.selectedFY!;
-        const parsedRows: CSVRow[] = [];
+        const monthData = getFinancialYearMonths();
+
+        // Build expected month column keys for this FY
+        const expectedMonthCols = monthData.map((m) => {
+          const year = getYearForMonth(m.number, fy);
+          return { key: buildMonthColKey(m.name, year), month: m.number, year };
+        });
+
+        // Check at least some month columns exist
+        const foundMonthCols = expectedMonthCols.filter(mc => headers.includes(mc.key));
+        if (foundMonthCols.length === 0) {
+          setImportState(prev => ({
+            ...prev,
+            error: `No month columns found for FY ${fy.label}. Expected columns like "${expectedMonthCols[0].key}". Please export a fresh CSV for this financial year.`,
+          }));
+          return;
+        }
+
+        const parsedRows: ParsedImportCell[] = [];
         const parseErrors: string[] = [];
 
         result.data.forEach((row, idx) => {
           const staffId = parseInt(row.staff_id, 10);
           const serviceId = parseInt(row.service_id, 10);
-          const month = parseInt(row.month, 10);
-          const year = parseInt(row.year, 10);
-          const targetValue = parseInt(row.target_value, 10);
+          const staffName = row.accountant_name || '';
+          const serviceName = row.service_name || '';
 
-          if (isNaN(staffId) || isNaN(serviceId) || isNaN(month) || isNaN(year) || isNaN(targetValue)) {
-            parseErrors.push(`Row ${idx + 2}: invalid numeric values.`);
+          if (isNaN(staffId) || isNaN(serviceId)) {
+            parseErrors.push(`Row ${idx + 2}: invalid staff_id or service_id.`);
             return;
           }
 
-          if (month < 1 || month > 12) {
-            parseErrors.push(`Row ${idx + 2}: month ${month} is out of range.`);
-            return;
-          }
+          // For each month column, emit one ParsedImportCell
+          foundMonthCols.forEach(({ key, month, year }) => {
+            const rawVal = row[key];
+            const targetValue = rawVal !== undefined && rawVal !== '' ? parseInt(rawVal, 10) : 0;
 
-          if (!isTargetInFinancialYear(month, year, fy)) {
-            parseErrors.push(`Row ${idx + 2}: month ${month} / year ${year} does not belong to FY ${fy.label}.`);
-            return;
-          }
+            if (isNaN(targetValue)) {
+              parseErrors.push(`Row ${idx + 2}, column "${key}": invalid numeric value "${rawVal}".`);
+              return;
+            }
 
-          parsedRows.push({
-            staff_id: staffId,
-            staff_name: row.staff_name || '',
-            service_id: serviceId,
-            service_name: row.service_name || '',
-            month,
-            year,
-            target_value: Math.max(0, targetValue),
+            if (!isTargetInFinancialYear(month, year, fy)) {
+              parseErrors.push(`Row ${idx + 2}: month ${month} / year ${year} does not belong to FY ${fy.label}.`);
+              return;
+            }
+
+            parsedRows.push({
+              staff_id: staffId,
+              staff_name: staffName,
+              service_id: serviceId,
+              service_name: serviceName,
+              month,
+              year,
+              target_value: Math.max(0, targetValue),
+            });
           });
         });
 
@@ -585,7 +634,6 @@ export const TargetsControl: React.FC = () => {
         }
 
         // Build diff against current targetData
-        const monthData = getFinancialYearMonths();
         const monthLabelMap: Record<number, string> = {};
         monthData.forEach(m => { monthLabelMap[m.number] = m.name; });
 
@@ -609,9 +657,10 @@ export const TargetsControl: React.FC = () => {
           });
         });
 
+        // Sort: service → accountant → month
         diffRows.sort((a, b) => {
-          if (a.staff_name !== b.staff_name) return a.staff_name.localeCompare(b.staff_name);
           if (a.service_name !== b.service_name) return a.service_name.localeCompare(b.service_name);
+          if (a.staff_name !== b.staff_name) return a.staff_name.localeCompare(b.staff_name);
           return a.month - b.month;
         });
 
@@ -637,7 +686,6 @@ export const TargetsControl: React.FC = () => {
     try {
       const fy = importState.selectedFY;
 
-      // Build new targetData from parsed rows
       const newTargetData: TargetData[] = targetData.map(staffMember => {
         const monthData = getFinancialYearMonths();
         const newTargets: TargetData['targets'] = {};
@@ -657,7 +705,6 @@ export const TargetsControl: React.FC = () => {
         return { ...staffMember, targets: newTargets };
       });
 
-      // Save to DB
       await Promise.all(
         newTargetData.map(async (staffMember) => {
           const monthData = getFinancialYearMonths();
@@ -847,6 +894,9 @@ export const TargetsControl: React.FC = () => {
 
   const changedCount = importState.diffRows.filter(r => r.changed).length;
 
+  // Build month columns for the diff preview table (grouped by service → accountant)
+  const diffMonthData = getFinancialYearMonths();
+
   return (
     <div className="space-y-4">
       {/* Hidden file input */}
@@ -936,7 +986,7 @@ export const TargetsControl: React.FC = () => {
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm mx-4 w-full animate-slide-up">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Import Targets</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Select the financial year you are importing targets for. Only rows matching this financial year will be accepted.
+              Select the financial year you are importing targets for. Only month columns matching this financial year will be accepted.
             </p>
             <div className="mb-5">
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Financial Year</label>
@@ -979,17 +1029,17 @@ export const TargetsControl: React.FC = () => {
         </div>
       )}
 
-      {/* Import — Preview / diff modal */}
+      {/* Import — Preview / diff modal (wide format: months across top) */}
       {(importState.step === 'preview' || importState.step === 'importing') && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-slide-up">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col animate-slide-up">
             <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
               <div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white">
                   Import Preview — FY {importState.selectedFY?.label}
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                  {importState.parsedRows.length} row(s) in file •{' '}
+                  {importState.parsedRows.length} cell(s) in file •{' '}
                   <span className={changedCount > 0 ? 'text-amber-600 font-semibold' : 'text-green-600 font-semibold'}>
                     {changedCount} change(s)
                   </span>
@@ -1012,55 +1062,96 @@ export const TargetsControl: React.FC = () => {
               </div>
             )}
 
+            {/* Wide-format diff table: Service | Accountant | Apr | May | ... | Mar */}
             <div className="flex-1 overflow-auto">
-              <table className="w-full text-sm border-collapse">
-                <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 z-10">
-                  <tr>
-                    <th className="px-4 py-2.5 text-left text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600">Staff</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600">Service</th>
-                    <th className="px-4 py-2.5 text-center text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600">Month</th>
-                    <th className="px-4 py-2.5 text-center text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600">Year</th>
-                    <th className="px-4 py-2.5 text-center text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600">Current</th>
-                    <th className="px-4 py-2.5 text-center text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600">Import Value</th>
-                    <th className="px-4 py-2.5 text-center text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {importState.diffRows.map((row, idx) => (
-                    <tr
-                      key={`${row.staff_id}-${row.service_name}-${row.month}`}
-                      className={`${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/50 dark:bg-gray-700/30'} ${row.changed ? 'ring-1 ring-inset ring-amber-300 dark:ring-amber-700' : ''}`}
-                    >
-                      <td className="px-4 py-2 text-gray-900 dark:text-white font-medium">{row.staff_name}</td>
-                      <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{row.service_name}</td>
-                      <td className="px-4 py-2 text-center text-gray-700 dark:text-gray-300">{row.month_label}</td>
-                      <td className="px-4 py-2 text-center text-gray-500 dark:text-gray-400">{row.year}</td>
-                      <td className="px-4 py-2 text-center font-mono text-gray-700 dark:text-gray-300">{row.current_value}</td>
-                      <td className={`px-4 py-2 text-center font-mono font-bold ${row.changed ? 'text-amber-700 dark:text-amber-400' : 'text-gray-700 dark:text-gray-300'}`}>
-                        {row.import_value}
-                      </td>
-                      <td className="px-4 py-2 text-center">
-                        {row.changed ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
-                            Changed
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
-                            Same
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {(() => {
+                // Group diffRows by service+accountant, then pivot months as columns
+                const fy = importState.selectedFY;
+                if (!fy) return null;
+
+                const monthCols = diffMonthData.map((m) => {
+                  const year = getYearForMonth(m.number, fy);
+                  return { month: m.number, name: m.name, year };
+                });
+
+                // Build a map: service → accountant → month → diffRow
+                type DiffKey = string; // `${service_name}||${staff_name}||${staff_id}`
+                const grouped = new Map<DiffKey, Map<number, ImportDiffRow>>();
+
+                importState.diffRows.forEach(row => {
+                  const key: DiffKey = `${row.service_name}||${row.staff_name}||${row.staff_id}`;
+                  if (!grouped.has(key)) grouped.set(key, new Map());
+                  grouped.get(key)!.set(row.month, row);
+                });
+
+                // Sort keys: service first, then accountant
+                const sortedKeys = Array.from(grouped.keys()).sort((a, b) => {
+                  const [sA, nA] = a.split('||');
+                  const [sB, nB] = b.split('||');
+                  if (sA !== sB) return sA.localeCompare(sB);
+                  return nA.localeCompare(nB);
+                });
+
+                return (
+                  <table className="w-full text-sm border-collapse" style={{ minWidth: '900px' }}>
+                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 z-10">
+                      <tr>
+                        <th className="px-3 py-2.5 text-left text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap">Service</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap">Accountant</th>
+                        {monthCols.map(mc => (
+                          <th key={`${mc.month}-${mc.year}`} className="px-2 py-2.5 text-center text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap">
+                            <div>{mc.name}</div>
+                            <div className="text-[9px] font-normal text-gray-400">{mc.year}</div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedKeys.map((key, idx) => {
+                        const monthMap = grouped.get(key)!;
+                        const [serviceName, staffName] = key.split('||');
+                        const rowHasChange = monthCols.some(mc => monthMap.get(mc.month)?.changed);
+
+                        return (
+                          <tr
+                            key={key}
+                            className={`${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/50 dark:bg-gray-700/30'} ${rowHasChange ? 'ring-1 ring-inset ring-amber-200 dark:ring-amber-700' : ''}`}
+                          >
+                            <td className="px-3 py-2 text-gray-900 dark:text-white font-semibold whitespace-nowrap">{serviceName}</td>
+                            <td className="px-3 py-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">{staffName}</td>
+                            {monthCols.map(mc => {
+                              const cell = monthMap.get(mc.month);
+                              const changed = cell?.changed ?? false;
+                              const currentVal = cell?.current_value ?? 0;
+                              const importVal = cell?.import_value ?? 0;
+
+                              return (
+                                <td key={`${mc.month}-${mc.year}`} className={`px-2 py-2 text-center ${changed ? 'bg-amber-50 dark:bg-amber-900/20' : ''}`}>
+                                  {changed ? (
+                                    <div className="flex flex-col items-center gap-0.5">
+                                      <span className="text-xs text-gray-400 line-through">{currentVal}</span>
+                                      <span className="text-xs font-bold text-amber-700 dark:text-amber-400">{importVal}</span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{importVal}</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                );
+              })()}
             </div>
 
             <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0 bg-white dark:bg-gray-800">
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 {changedCount === 0
                   ? 'No changes detected. The imported file matches the current data.'
-                  : `Confirming will overwrite ${changedCount} value(s) in the database for FY ${importState.selectedFY?.label}.`}
+                  : `Confirming will overwrite ${changedCount} value(s) in the database for FY ${importState.selectedFY?.label}. Changed cells show old → new.`}
               </p>
               <div className="flex gap-3">
                 <button
