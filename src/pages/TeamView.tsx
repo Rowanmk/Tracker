@@ -157,23 +157,20 @@ export const TeamView: React.FC = () => {
       try {
         const today = new Date();
         
-        // We need 24 months ending in LAST month for the rolling average.
-        // AND we need the CURRENT month for the heatmap.
-        // So we fetch 25 months ending in the CURRENT month.
-        const all25Months: Array<{ year: number; month: number }> = [];
-        const startMonth = new Date(today.getFullYear(), today.getMonth() - 24, 1);
+        // We need 24 months ending in the CURRENT month for the rolling average and charts.
+        const all24Months: Array<{ year: number; month: number }> = [];
+        const startMonth = new Date(today.getFullYear(), today.getMonth() - 23, 1);
 
         const curr = new Date(startMonth);
-        for (let i = 0; i < 25; i++) {
-          all25Months.push({ year: curr.getFullYear(), month: curr.getMonth() + 1 });
+        for (let i = 0; i < 24; i++) {
+          all24Months.push({ year: curr.getFullYear(), month: curr.getMonth() + 1 });
           curr.setMonth(curr.getMonth() + 1);
         }
 
-        const all24Months = all25Months.slice(0, 24); // 24 months ending in last month
-        const heatmapMonthsList = all25Months.slice(13, 25); // 12 months ending in current month
+        const heatmapMonthsList = all24Months.slice(12, 24); // 12 months ending in current month
 
-        const firstMonth = all25Months[0];
-        const lastMonth = all25Months[24];
+        const firstMonth = all24Months[0];
+        const lastMonth = all24Months[23];
 
         const startDateStr = `${firstMonth.year}-${String(firstMonth.month).padStart(2, '0')}-01`;
         const lastDayOfEndMonth = new Date(lastMonth.year, lastMonth.month, 0).getDate();
@@ -626,7 +623,7 @@ export const TeamView: React.FC = () => {
                   </div>
                   <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 rounded-lg border border-gray-100 dark:border-gray-600 text-right">
                     <div className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider">
-                      Latest Month Actual
+                      Current Month Actual
                     </div>
                     <div className="text-2xl font-bold text-[#001B47] dark:text-blue-400">
                       {activeStat.data[11].actual.toFixed(1).replace(/\.0$/, '')}{activeStat.isPercentage ? '%' : ''}
@@ -645,7 +642,7 @@ export const TeamView: React.FC = () => {
                     Accountant Ranking
                   </h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    12-month rolling average at the end of last month
+                    12-month rolling average ending this month
                   </p>
                 </div>
 
