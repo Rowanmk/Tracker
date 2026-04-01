@@ -59,19 +59,28 @@ export const useWorkingDays = (params: Params): Result => {
         const year = month >= 4 ? financialYear.start : financialYear.end;
 
         const daysInMonth = new Date(year, month, 0).getDate();
-        const todayIso = iso(new Date());
+
+        // Use local date to avoid timezone issues with ISO string comparison
+        const now = new Date();
+        const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
         const startIso = startOfMonthISO(year, month);
         const endIso = endOfMonthISO(year, month);
 
+        // Determine the relationship between selected month and current month
+        const selectedMonthStart = new Date(year, month - 1, 1);
+        const nowMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        const isCurrentMonth = selectedMonthStart.getTime() === nowMonthStart.getTime();
+        const isPastMonth = selectedMonthStart.getTime() < nowMonthStart.getTime();
+        const isFutureMonth = selectedMonthStart.getTime() > nowMonthStart.getTime();
+
         let baseWorking = 0;
-        let baseWorkingToToday = 0;
 
         for (let day = 1; day <= daysInMonth; day++) {
           const d = new Date(year, month - 1, day);
           if (!isWeekend(d)) {
             baseWorking++;
-            if (iso(d) <= todayIso) baseWorkingToToday++;
           }
         }
 
@@ -92,24 +101,38 @@ export const useWorkingDays = (params: Params): Result => {
         });
 
         let teamWorking = baseWorking;
-        let teamWorkingToToday = baseWorkingToToday;
 
         teamHolidayDates.forEach((dateStr) => {
-          const d = new Date(dateStr);
+          const d = new Date(dateStr + 'T00:00:00');
           if (!isWeekend(d)) {
             teamWorking--;
-            if (dateStr <= todayIso) teamWorkingToToday--;
           }
         });
 
-        const selectedMonthStart = new Date(year, month - 1, 1);
-        const now = new Date();
-        const nowMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        // Calculate working days elapsed up to and including today
+        // For future months: 0
+        // For past months: full working days in month
+        // For current month: count working days from start of month up to and including today
+        let teamWorkingToToday = 0;
 
-        if (selectedMonthStart > nowMonthStart) {
+        if (isFutureMonth) {
           teamWorkingToToday = 0;
-        } else if (selectedMonthStart < nowMonthStart) {
+        } else if (isPastMonth) {
           teamWorkingToToday = teamWorking;
+        } else {
+          // Current month: count non-weekend, non-holiday days from 1st up to and including today
+          for (let day = 1; day <= daysInMonth; day++) {
+            const d = new Date(year, month - 1, day);
+            const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+            if (isWeekend(d)) continue;
+            if (teamHolidayDates.has(dateStr)) continue;
+
+            // Include today itself — run rate is based on days elapsed including today
+            if (dateStr <= todayIso) {
+              teamWorkingToToday++;
+            }
+          }
         }
 
         let staffWorkingCalc = teamWorking;
@@ -147,7 +170,7 @@ export const useWorkingDays = (params: Params): Result => {
           });
 
           staffHolidayDates.forEach((dateStr) => {
-            const d = new Date(dateStr);
+            const d = new Date(dateStr + 'T00:00:00');
             if (!isWeekend(d)) staffWorkingCalc--;
           });
 
