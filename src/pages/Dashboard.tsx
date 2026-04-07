@@ -11,6 +11,7 @@ import { useWorkingDays } from "../hooks/useWorkingDays";
 import { useDashboardView } from "../context/DashboardViewContext";
 import { useStaffPerformance } from "../hooks/useStaffPerformance";
 import { usePerformanceSummary } from "../hooks/usePerformanceSummary";
+import { supabase } from "../supabase/client";
 
 const DAY_TRANSITION_DURATION_MS = 800;
 const DAY_STEP_PAUSE_MS = 150;
@@ -27,32 +28,12 @@ const easeInOut = (t: number) => 0.5 - Math.cos(Math.PI * t) / 2;
 
 const getRunRateStatusColor = (achievedPercent: number, elapsedWorkingDayPercent: number) => {
   if (elapsedWorkingDayPercent <= 0) {
-    return {
-      bar: "#008A00",
-      text: "text-green-700",
-    };
+    return { bar: "#008A00", text: "text-green-700" };
   }
-
   const paceRatio = (achievedPercent / elapsedWorkingDayPercent) * 100;
-
-  if (paceRatio >= 100) {
-    return {
-      bar: "#008A00",
-      text: "text-green-700",
-    };
-  }
-
-  if (paceRatio >= 80) {
-    return {
-      bar: "#FF8A2A",
-      text: "text-orange-700",
-    };
-  }
-
-  return {
-    bar: "#FF3B30",
-    text: "text-red-700",
-  };
+  if (paceRatio >= 100) return { bar: "#008A00", text: "text-green-700" };
+  if (paceRatio >= 80) return { bar: "#FF8A2A", text: "text-orange-700" };
+  return { bar: "#FF3B30", text: "text-red-700" };
 };
 
 export const Dashboard: React.FC = () => {
@@ -63,15 +44,39 @@ export const Dashboard: React.FC = () => {
   const { services } = useServices();
   const { staffPerformance, dailyActivities, teamTarget, loading } = useStaffPerformance("desc");
 
-  const displayServices = useMemo(() => services.filter((s) => s.service_name !== "Bagel Days"), [services]);
+  // Bank holidays for the selected month — used to exclude them from working-day counts
+  const [bankHolidayDates, setBankHolidayDates] = useState<Set<string>>(new Set());
+
+  const yearForMonth = selectedMonth >= 4 ? financialYear.start : financialYear.end;
+  const daysInMonth = new Date(yearForMonth, selectedMonth, 0).getDate();
+
+  const startIso = `${yearForMonth}-${String(selectedMonth).padStart(2, "0")}-01`;
+  const endIso = `${yearForMonth}-${String(selectedMonth).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+
+  useEffect(() => {
+    const fetchHolidays = async () => {
+      const { data } = await supabase
+        .from("bank_holidays")
+        .select("date")
+        .eq("region", "england-and-wales")
+        .gte("date", startIso)
+        .lte("date", endIso);
+
+      const dates = new Set<string>((data || []).map((h) => h.date));
+      setBankHolidayDates(dates);
+    };
+    void fetchHolidays();
+  }, [startIso, endIso]);
+
+  const displayServices = useMemo(
+    () => services.filter((s) => s.service_name !== "Bagel Days"),
+    [services]
+  );
 
   const isTeamView = selectedTeamId === "team-view";
   const selectedAccountant = useMemo(() => {
-    if (!selectedTeamId || isTeamView) {
-      return null;
-    }
-
-    return accountantStaff.find((staff) => String(staff.staff_id) === selectedTeamId) || null;
+    if (!selectedTeamId || isTeamView) return null;
+    return accountantStaff.find((s) => String(s.staff_id) === selectedTeamId) || null;
   }, [accountantStaff, isTeamView, selectedTeamId]);
 
   const dashboardTitle = isTeamView
@@ -82,9 +87,6 @@ export const Dashboard: React.FC = () => {
     financialYear,
     month: selectedMonth,
   });
-
-  const yearForMonth = selectedMonth >= 4 ? financialYear.start : financialYear.end;
-  const daysInMonth = new Date(yearForMonth, selectedMonth, 0).getDate();
 
   const today = new Date();
   const isCurrentMonth =
@@ -120,7 +122,6 @@ export const Dashboard: React.FC = () => {
       window.cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-
     if (pauseTimeoutRef.current !== null) {
       window.clearTimeout(pauseTimeoutRef.current);
       pauseTimeoutRef.current = null;
@@ -142,10 +143,7 @@ export const Dashboard: React.FC = () => {
     stopPlaybackLoop();
     sequenceRef.current += 1;
     setIdleAtDay(initialPlaybackDay);
-
-    return () => {
-      stopPlaybackLoop();
-    };
+    return () => { stopPlaybackLoop(); };
   }, [selectedMonth, selectedYear, selectedTeamId, initialPlaybackDay]);
 
   const startPlaybackSequence = (startDay: number, targetDay: number) => {
@@ -155,12 +153,8 @@ export const Dashboard: React.FC = () => {
     const safeTarget = clampDay(targetDay);
 
     const animateDayStep = (fromDay: number) => {
-      if (localSequence !== sequenceRef.current) {
-        return;
-      }
-
+      if (localSequence !== sequenceRef.current) return;
       const safeFromDay = clampDay(fromDay);
-
       if (safeFromDay >= safeTarget) {
         setPlaybackController({
           currentDayIndex: safeTarget,
@@ -176,10 +170,7 @@ export const Dashboard: React.FC = () => {
       const stepStartedAt = performance.now();
 
       const tick = (timestamp: number) => {
-        if (localSequence !== sequenceRef.current) {
-          return;
-        }
-
+        if (localSequence !== sequenceRef.current) return;
         const elapsed = timestamp - stepStartedAt;
         const linearProgress = Math.min(elapsed / DAY_TRANSITION_DURATION_MS, 1);
         const easedProgress = easeInOut(linearProgress);
@@ -239,38 +230,28 @@ export const Dashboard: React.FC = () => {
 
   const filteredActivities = useMemo(() => {
     const safeProgress = Math.max(1, Math.min(daysInMonth, playbackController.animationProgress));
-
     return dailyActivities
       .map((activity) => {
         const visibleFraction = Math.max(0, Math.min(1, safeProgress - (activity.day - 1)));
-
-        if (visibleFraction <= 0) {
-          return null;
-        }
-
-        return {
-          ...activity,
-          delivered_count: activity.delivered_count * visibleFraction,
-        };
+        if (visibleFraction <= 0) return null;
+        return { ...activity, delivered_count: activity.delivered_count * visibleFraction };
       })
-      .filter((activity): activity is NonNullable<typeof activity> => activity !== null);
+      .filter((a): a is NonNullable<typeof a> => a !== null);
   }, [dailyActivities, daysInMonth, playbackController.animationProgress]);
 
   const historicalStaffPerformance = useMemo(() => {
     const activityTotalsByStaff = new Map<number, number>();
     const serviceTotalsByStaff = new Map<number, Record<string, number>>();
-    const staffById = new Map(staffPerformance.map((staff) => [staff.staff_id, staff]));
-    const servicesById = new Map(services.map((service) => [service.service_id, service]));
+    const staffById = new Map(staffPerformance.map((s) => [s.staff_id, s]));
+    const servicesById = new Map(services.map((s) => [s.service_id, s]));
 
     filteredActivities.forEach((activity) => {
       const staffId = activity.staff_id;
       const serviceId = activity.service_id;
-
       if (staffId == null || serviceId == null) return;
 
       const matchedStaff = staffById.get(staffId);
       const matchedService = servicesById.get(serviceId);
-
       if (!matchedStaff || !matchedService) return;
 
       if (matchedService.service_name !== "Bagel Days") {
@@ -294,7 +275,6 @@ export const Dashboard: React.FC = () => {
       }, {});
 
       const total = activityTotalsByStaff.get(staff.staff_id) || 0;
-
       return {
         ...staff,
         total,
@@ -304,18 +284,23 @@ export const Dashboard: React.FC = () => {
     });
   }, [filteredActivities, services, staffPerformance]);
 
+  /**
+   * Working days elapsed up to the playback day, correctly excluding weekends and
+   * public holidays. Uses a fractional approach so the animated progress bar is smooth.
+   */
   const workingDaysElapsedToPlayback = useMemo(() => {
     const safeProgress = Math.max(1, Math.min(daysInMonth, playbackController.animationProgress));
     let count = 0;
 
     for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${yearForMonth}-${String(selectedMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       const currentDate = new Date(yearForMonth, selectedMonth - 1, day);
       const dayOfWeek = currentDate.getDay();
-      const isWorkingDay = dayOfWeek !== 0 && dayOfWeek !== 6;
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      const isHoliday = bankHolidayDates.has(dateStr);
 
-      if (!isWorkingDay) {
-        continue;
-      }
+      // Only count working days (not weekends, not bank holidays)
+      if (isWeekend || isHoliday) continue;
 
       const visibleFraction = Math.max(0, Math.min(1, safeProgress - (day - 1)));
       count += visibleFraction;
@@ -328,6 +313,7 @@ export const Dashboard: React.FC = () => {
     yearForMonth,
     daysInMonth,
     teamWorkingDays,
+    bankHolidayDates,
   ]);
 
   const performanceSummary = usePerformanceSummary({
@@ -367,7 +353,11 @@ export const Dashboard: React.FC = () => {
     const isResume = playbackController.isPaused;
     const startDay = isResume
       ? clampDay(playbackController.animationProgress)
-      : clampDay(playbackController.animationProgress >= maxActualDay ? 1 : playbackController.animationProgress);
+      : clampDay(
+          playbackController.animationProgress >= maxActualDay
+            ? 1
+            : playbackController.animationProgress
+        );
 
     startPlaybackSequence(startDay, maxActualDay);
   };
@@ -458,10 +448,7 @@ export const Dashboard: React.FC = () => {
         <div className="relative w-full h-6 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner">
           <div
             className="h-6 rounded-full transition-[width] duration-[800ms] ease-in-out"
-            style={{
-              width: `${deliveredPercent}%`,
-              backgroundColor: globalProgressStatus.bar,
-            }}
+            style={{ width: `${deliveredPercent}%`, backgroundColor: globalProgressStatus.bar }}
           />
           <div
             className="absolute top-0 h-6 w-0.5 bg-[#001B47] transition-[left] duration-[800ms] ease-in-out"
