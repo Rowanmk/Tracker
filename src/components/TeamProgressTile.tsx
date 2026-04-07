@@ -36,7 +36,6 @@ const getRunRateBarColor = (achievedPercent: number, elapsedWorkingDayPercent: n
 };
 
 export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
-  services,
   staffPerformance,
   workingDays,
   workingDaysUpToToday,
@@ -44,43 +43,37 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
   financialYear,
 }) => {
   const { selectedTeamId } = useAuth();
-  const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
+  const [selectedTarget, setSelectedTarget] = useState(0);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const fetchServiceTargets = async () => {
+    const fetchSelectedTarget = async () => {
       setLoading(true);
       try {
-        const targetMap: Record<number, number> = {};
+        let totalTarget = 0;
 
         if (selectedTeamId === 'team-view' || selectedTeamId === 'all' || !selectedTeamId) {
           for (const staffMember of staffPerformance) {
-            const { perService } = await loadTargets(month, financialYear, staffMember.staff_id);
-            Object.entries(perService).forEach(([serviceId, value]) => {
-              const sid = parseInt(serviceId, 10);
-              targetMap[sid] = (targetMap[sid] || 0) + value;
-            });
+            const { totalTarget: staffTarget } = await loadTargets(month, financialYear, staffMember.staff_id);
+            totalTarget += staffTarget;
           }
         } else {
           const selectedStaffId = Number(selectedTeamId);
           if (!Number.isNaN(selectedStaffId)) {
-            const { perService } = await loadTargets(month, financialYear, selectedStaffId);
-            Object.entries(perService).forEach(([serviceId, value]) => {
-              const sid = parseInt(serviceId, 10);
-              targetMap[sid] = value;
-            });
+            const { totalTarget: staffTarget } = await loadTargets(month, financialYear, selectedStaffId);
+            totalTarget = staffTarget;
           }
         }
 
-        setServiceTargets(targetMap);
+        setSelectedTarget(totalTarget);
       } catch {
-        setServiceTargets({});
+        setSelectedTarget(0);
       } finally {
         setLoading(false);
       }
     };
 
-    void fetchServiceTargets();
+    void fetchSelectedTarget();
   }, [month, financialYear, selectedTeamId, staffPerformance]);
 
   const todayExpectedPercentage = useMemo(
@@ -88,25 +81,22 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     [workingDays, workingDaysUpToToday]
   );
 
-  const rows = useMemo(() => {
-    return services.map((service) => {
-      const delivered = staffPerformance.reduce((sum, staff) => sum + (staff.services[service.service_name] || 0), 0);
-      const target = serviceTargets[service.service_id] || 0;
-      const achievedPercent = target > 0 ? (delivered / target) * 100 : 0;
-      const barColor = getRunRateBarColor(achievedPercent, todayExpectedPercentage);
-      const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
-      const difference = delivered - expectedSoFar;
+  const summaryRow = useMemo(() => {
+    const delivered = staffPerformance.reduce((sum, staff) => sum + staff.total, 0);
+    const target = selectedTarget;
+    const achievedPercent = target > 0 ? (delivered / target) * 100 : 0;
+    const barColor = getRunRateBarColor(achievedPercent, todayExpectedPercentage);
+    const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
+    const difference = delivered - expectedSoFar;
 
-      return {
-        ...service,
-        delivered,
-        target,
-        achievedPercent,
-        barColor,
-        difference,
-      };
-    });
-  }, [services, staffPerformance, serviceTargets, todayExpectedPercentage, workingDays, workingDaysUpToToday]);
+    return {
+      delivered,
+      target,
+      achievedPercent,
+      barColor,
+      difference,
+    };
+  }, [staffPerformance, selectedTarget, todayExpectedPercentage, workingDays, workingDaysUpToToday]);
 
   if (loading) {
     return (
@@ -119,70 +109,66 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     );
   }
 
+  const roundedDifference = Math.round(summaryRow.difference * 10) / 10;
+  const formattedDifference =
+    roundedDifference > 0 ? `+${roundedDifference}` : `${roundedDifference}`;
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[418px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
       <div className="tile-header px-4 py-1.5">
         Accountant Progress
       </div>
 
-      <div className="flex-1 flex flex-col justify-end p-3 pb-2">
-        <div className="space-y-4 flex-1 flex flex-col justify-center">
-          {rows.map((row) => {
-            const roundedDifference = Math.round(row.difference);
+      <div className="flex-1 flex flex-col justify-center p-6">
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <span className="font-bold text-gray-900 dark:text-white">Accounts</span>
+            <div className="flex items-center space-x-2">
+              <span className="font-bold text-gray-900 dark:text-white">
+                {Math.round(summaryRow.delivered * 10) / 10} / {Math.round(summaryRow.target * 10) / 10}
+              </span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                ({Math.round(summaryRow.achievedPercent)}%)
+              </span>
+            </div>
+          </div>
 
-            return (
-              <div key={row.service_id} className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-gray-900 dark:text-white">{row.service_name}</span>
-                  <div className="flex items-center space-x-2">
-                    <span className="font-bold text-gray-900 dark:text-white">
-                      {Math.round(row.delivered)} / {Math.round(row.target)}
-                    </span>
-                    <span className="text-sm text-gray-600 dark:text-gray-400">
-                      ({Math.round(row.achievedPercent)}%)
-                    </span>
-                  </div>
-                </div>
-
-                <div className="relative flex items-center">
-                  <div className="flex-1 relative">
-                    <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-8 overflow-hidden shadow-inner">
-                      <div
-                        className="h-8 rounded-full shadow-sm transition-[width] duration-[800ms] ease-in-out"
-                        style={{
-                          width: `${Math.min(row.achievedPercent, 100)}%`,
-                          backgroundColor: row.barColor,
-                        }}
-                        title={`${row.service_name}: ${Math.round(row.delivered)}/${Math.round(row.target)} (${Math.round(row.achievedPercent)}%)`}
-                      />
-                      {row.target > 0 && (
-                        <div
-                          className="absolute top-0 h-8 w-0.5 bg-[#001B47] transition-[left] duration-[800ms] ease-in-out"
-                          style={{ left: `${Math.min(todayExpectedPercentage, 100)}%` }}
-                          title={`Expected by today: ${Math.round(todayExpectedPercentage)}%`}
-                        />
-                      )}
-                    </div>
-                  </div>
-                  <div className="ml-3 flex items-center" style={{ minWidth: '40px' }}>
-                    <span
-                      className="inline-flex items-center px-2 py-1 rounded text-sm font-bold"
-                      style={{
-                        color:
-                          roundedDifference > 0
-                            ? '#008A00'
-                            : roundedDifference < 0
-                            ? '#FF3B30'
-                            : '#6B7280',
-                      }}
-                    >
-                      {roundedDifference > 0 ? `+${roundedDifference}` : roundedDifference}
-                    </span>
-                  </div>
-                </div>
+          <div className="relative flex items-center">
+            <div className="flex-1 relative">
+              <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-8 overflow-hidden shadow-inner">
+                <div
+                  className="h-8 rounded-full shadow-sm transition-[width] duration-[800ms] ease-in-out"
+                  style={{
+                    width: `${Math.min(summaryRow.achievedPercent, 100)}%`,
+                    backgroundColor: summaryRow.barColor,
+                  }}
+                  title={`Accounts: ${Math.round(summaryRow.delivered * 10) / 10}/${Math.round(summaryRow.target * 10) / 10} (${Math.round(summaryRow.achievedPercent)}%)`}
+                />
+                {summaryRow.target > 0 && (
+                  <div
+                    className="absolute top-0 h-8 w-0.5 bg-[#001B47] transition-[left] duration-[800ms] ease-in-out"
+                    style={{ left: `${Math.min(todayExpectedPercentage, 100)}%` }}
+                    title={`Expected by today: ${Math.round(((summaryRow.target / Math.max(workingDays, 1)) * workingDaysUpToToday) * 10) / 10}`}
+                  />
+                )}
               </div>
-            );
-          })}
+            </div>
+            <div className="ml-3 flex items-center" style={{ minWidth: '52px' }}>
+              <span
+                className="inline-flex items-center px-2 py-1 rounded text-sm font-bold"
+                style={{
+                  color:
+                    roundedDifference > 0
+                      ? '#008A00'
+                      : roundedDifference < 0
+                      ? '#FF3B30'
+                      : '#6B7280',
+                }}
+              >
+                {formattedDifference}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
