@@ -412,9 +412,13 @@ export const Dashboard: React.FC = () => {
       </div>
 
       <div className="mb-6">
+        {/* Pass the bank-holiday-aware working day values so the bar uses the
+            same denominator as all other tiles on the dashboard. */}
         <StaffPerformanceBar
           staffPerformance={historicalStaffPerformance}
           teamTarget={performanceSummary.target}
+          workingDaysUpToToday={workingDaysElapsedToPlayback}
+          workingDays={teamWorkingDays}
         />
       </div>
 

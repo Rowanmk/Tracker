@@ -13,6 +13,10 @@ interface StaffPerformance {
 interface Props {
   staffPerformance: StaffPerformance[];
   teamTarget?: number;
+  /** If provided, overrides the hook-derived workingDaysUpToToday (e.g. from playback) */
+  workingDaysUpToToday?: number;
+  /** If provided, overrides the hook-derived teamWorkingDays */
+  workingDays?: number;
 }
 
 const MONTHS = [
@@ -20,7 +24,12 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance, teamTarget }) => {
+export const StaffPerformanceBar: React.FC<Props> = ({
+  staffPerformance,
+  teamTarget,
+  workingDaysUpToToday: externalWorkingDaysUpToToday,
+  workingDays: externalWorkingDays,
+}) => {
   const {
     selectedMonth,
     selectedYear,
@@ -59,13 +68,19 @@ export const StaffPerformanceBar: React.FC<Props> = ({ staffPerformance, teamTar
   const today = new Date();
   const todayValue = `${today.getMonth() + 1}-${today.getFullYear()}`;
 
-  const { teamWorkingDays, workingDaysUpToToday } =
+  // Always call the hook so we have a fallback value
+  const { teamWorkingDays: hookWorkingDays, workingDaysUpToToday: hookWorkingDaysUpToToday } =
     useWorkingDays({
       financialYear: selectedFinancialYear,
       month: selectedMonth,
     });
 
-  const workingDays = teamWorkingDays;
+  // Use externally-provided values if available (these come from the dashboard's
+  // bank-holiday-aware playback calculation), otherwise fall back to the hook values.
+  const workingDays = externalWorkingDays !== undefined ? externalWorkingDays : hookWorkingDays;
+  const workingDaysUpToToday = externalWorkingDaysUpToToday !== undefined
+    ? externalWorkingDaysUpToToday
+    : hookWorkingDaysUpToToday;
 
   const { actualTotal, targetTotal } = useMemo(() => {
     const actual = staffPerformance.reduce((sum, s) => sum + (s.total || 0), 0);
