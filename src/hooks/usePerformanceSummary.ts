@@ -34,22 +34,23 @@ export const usePerformanceSummary = ({
 
     const target = teamTarget !== undefined ? teamTarget : 0;
 
-    // Always use the passed workingDays and workingDaysUpToToday directly.
-    // These already account for bank holidays, weekends, playback position,
-    // and whether the month is current/past/future — computed in Dashboard.tsx.
-    let expected = 0;
+    let expectedRaw = 0;
     if (target > 0 && workingDays > 0) {
-      expected = (target / workingDays) * Math.min(workingDaysUpToToday, workingDays);
+      expectedRaw = (target / workingDays) * Math.min(workingDaysUpToToday, workingDays);
     }
 
-    const variance = delivered - expected;
+    const varianceRaw = delivered - expectedRaw;
+    const expected = Math.round(expectedRaw);
+    const variance = Math.round(varianceRaw);
 
     return {
       delivered,
       target,
-      expected: Math.round(expected),
-      variance: Math.round(variance),
-      statusText: target > 0 ? (variance >= 0 ? `Ahead by ${Math.round(variance)}` : `Behind by ${Math.abs(Math.round(variance))}`) : 'No target',
+      expected,
+      expectedRaw,
+      variance,
+      varianceRaw,
+      statusText: target > 0 ? (varianceRaw >= 0 ? `Ahead by ${Math.round(varianceRaw)}` : `Behind by ${Math.abs(Math.round(varianceRaw))}`) : 'No target',
     };
   }, [staffPerformance, workingDays, workingDaysUpToToday, selectedMonth, selectedYear, dashboardMode, currentStaff, teamTarget]);
 };

@@ -44,7 +44,6 @@ export const Dashboard: React.FC = () => {
   const { services } = useServices();
   const { staffPerformance, dailyActivities, teamTarget, loading } = useStaffPerformance("desc");
 
-  // Bank holidays for the selected month — used to exclude them from working-day counts
   const [bankHolidayDates, setBankHolidayDates] = useState<Set<string>>(new Set());
 
   const yearForMonth = selectedMonth >= 4 ? financialYear.start : financialYear.end;
@@ -284,10 +283,6 @@ export const Dashboard: React.FC = () => {
     });
   }, [filteredActivities, services, staffPerformance]);
 
-  /**
-   * Working days elapsed up to the playback day, correctly excluding weekends and
-   * public holidays. Uses a fractional approach so the animated progress bar is smooth.
-   */
   const workingDaysElapsedToPlayback = useMemo(() => {
     const safeProgress = Math.max(1, Math.min(daysInMonth, playbackController.animationProgress));
     let count = 0;
@@ -299,7 +294,6 @@ export const Dashboard: React.FC = () => {
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
       const isHoliday = bankHolidayDates.has(dateStr);
 
-      // Only count working days (not weekends, not bank holidays)
       if (isWeekend || isHoliday) continue;
 
       const visibleFraction = Math.max(0, Math.min(1, safeProgress - (day - 1)));
@@ -327,7 +321,7 @@ export const Dashboard: React.FC = () => {
     teamTarget: teamTarget,
   });
 
-  const variance = performanceSummary.delivered - performanceSummary.expected;
+  const variance = performanceSummary.varianceRaw;
 
   const handleDaySelect = (day: number) => {
     stopPlaybackLoop();
@@ -375,7 +369,7 @@ export const Dashboard: React.FC = () => {
 
   const expectedPercent =
     performanceSummary.target > 0
-      ? Math.min((performanceSummary.expected / performanceSummary.target) * 100, 100)
+      ? Math.min((performanceSummary.expectedRaw / performanceSummary.target) * 100, 100)
       : 0;
 
   const elapsedWorkingDayPercent =
@@ -412,8 +406,6 @@ export const Dashboard: React.FC = () => {
       </div>
 
       <div className="mb-6">
-        {/* Pass the bank-holiday-aware working day values so the bar uses the
-            same denominator as all other tiles on the dashboard. */}
         <StaffPerformanceBar
           staffPerformance={historicalStaffPerformance}
           teamTarget={performanceSummary.target}
