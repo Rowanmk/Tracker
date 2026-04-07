@@ -310,14 +310,16 @@ export const Dashboard: React.FC = () => {
     bankHolidayDates,
   ]);
 
+  const isIndividualDashboard = !isTeamView && !!selectedAccountant;
+
   const performanceSummary = usePerformanceSummary({
     staffPerformance: historicalStaffPerformance,
     workingDays: teamWorkingDays,
     workingDaysUpToToday: workingDaysElapsedToPlayback,
     selectedMonth,
     selectedYear,
-    dashboardMode: "team",
-    currentStaff: null,
+    dashboardMode: isIndividualDashboard ? "individual" : "team",
+    currentStaff: isIndividualDashboard ? { staff_id: selectedAccountant.staff_id } : null,
     teamTarget: teamTarget,
   });
 
