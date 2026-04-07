@@ -28,22 +28,18 @@ export const usePerformanceSummary = ({
   teamTarget,
 }: Params) => {
   return useMemo(() => {
-    const today = new Date();
-    const isCurrentMonth = selectedMonth === today.getMonth() + 1 && selectedYear === today.getFullYear();
-
     const delivered = dashboardMode === 'individual' && currentStaff
       ? staffPerformance.find(p => p.staff_id === currentStaff.staff_id)?.total || 0
       : staffPerformance.reduce((s, p) => s + p.total, 0);
 
     const target = teamTarget !== undefined ? teamTarget : 0;
 
+    // Always use the passed workingDays and workingDaysUpToToday directly.
+    // These already account for bank holidays, weekends, playback position,
+    // and whether the month is current/past/future — computed in Dashboard.tsx.
     let expected = 0;
-    if (target > 0) {
-      if (!isCurrentMonth) {
-        expected = target;
-      } else if (workingDays > 0) {
-        expected = (target / workingDays) * workingDaysUpToToday;
-      }
+    if (target > 0 && workingDays > 0) {
+      expected = (target / workingDays) * Math.min(workingDaysUpToToday, workingDays);
     }
 
     const variance = delivered - expected;
