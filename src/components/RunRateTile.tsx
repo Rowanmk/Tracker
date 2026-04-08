@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import type { FinancialYear } from '../utils/financialYear';
-import { calculateRunRateDelta, getMonthYearFromFinancialYear } from '../utils/runRate';
+import { getMonthYearFromFinancialYear } from '../utils/runRate';
 
 interface RunRateTileProps {
   workingDays: number;
@@ -17,13 +17,13 @@ interface RunRateTileProps {
   totalDelivered?: number;
 }
 
-const VIEWBOX_HEIGHT = 300;
-const BASELINE_Y = 250;
-const TOP_MARGIN = 20;
+const VIEWBOX_HEIGHT = 320;
+const BASELINE_Y = 270;
+const TOP_MARGIN = 30;
 const BAR_AREA_HEIGHT = BASELINE_Y - TOP_MARGIN;
 const CHART_WIDTH = 800;
-const FIXED_LEFT_MARGIN = 60;
-const RIGHT_PADDING = 40;
+const FIXED_LEFT_MARGIN = 55;
+const RIGHT_PADDING = 20;
 
 export const RunRateTile: React.FC<RunRateTileProps> = ({
   workingDays,
@@ -31,42 +31,26 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
   month,
   financialYear,
   target,
-  viewMode = "numbers",
   playbackDay,
   totalDelivered,
 }) => {
   const selectedYear = getMonthYearFromFinancialYear(month, financialYear);
-  const daysInSelectedMonth = new Date(selectedYear, month, 0).getDate();
+  const daysInMonth = new Date(selectedYear, month, 0).getDate();
 
-  const today = new Date();
-  const isCurrentMonth =
-    selectedYear === today.getFullYear() && month === today.getMonth() + 1;
-  const isFutureMonth =
-    selectedYear > today.getFullYear() ||
-    (selectedYear === today.getFullYear() && month > today.getMonth() + 1);
-
-  const actualVisibleDay = isFutureMonth
-    ? 0
-    : isCurrentMonth
-    ? Math.min(today.getDate(), daysInSelectedMonth)
-    : daysInSelectedMonth;
-
-  const dailyTarget = workingDays > 0 ? target / workingDays : 0;
-
+  // Build list of working days (Mon–Fri) in the month
   const workingDaysList = useMemo(() => {
     const result: number[] = [];
-    for (let d = 1; d <= daysInSelectedMonth; d++) {
+    for (let d = 1; d <= daysInMonth; d++) {
       const dow = new Date(selectedYear, month - 1, d).getDay();
-      if (dow !== 0 && dow !== 6) {
-        result.push(d);
-      }
+      if (dow !== 0 && dow !== 6) result.push(d);
     }
     return result;
-  }, [daysInSelectedMonth, month, selectedYear]);
+  }, [daysInMonth, month, selectedYear]);
 
-  // Sum delivered_count per calendar day from the already-filtered dailyActivities prop.
-  // Dashboard passes in playback-scoped, individual/team-filtered activities — so this
-  // is the exact same data source as every other dashboard metric.
+  // Daily target per working day
+  const dailyTarget = workingDays > 0 ? target / workingDays : 0;
+
+  // Sum delivered_count per calendar day from the already-filtered dailyActivities prop
   const deliveredByDay = useMemo(() => {
     const totals: Record<number, number> = {};
     dailyActivities.forEach((activity) => {
@@ -75,174 +59,120 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     return totals;
   }, [dailyActivities]);
 
-  const safePlaybackDay = Math.max(1, Math.min(playbackDay ?? daysInSelectedMonth, daysInSelectedMonth));
+  // Playback day capped to month length
+  const safePlaybackDay = Math.max(1, Math.min(playbackDay ?? daysInMonth, daysInMonth));
+  const playbackDayCapped = Math.floor(safePlaybackDay);
 
+  // Build per-day series
   const series = useMemo(() => {
-    let expectedRunning = 0;
-    let workingDaysElapsed = 0;
-    const expectedCumulative: number[] = [];
-    const actualCumulative: number[] = [];
-    const roundedVarianceByDay: number[] = [];
-
-    // Build cumulative actual from deliveredByDay — already playback-scoped by Dashboard
+    // Cumulative actual delivered up to each calendar day
     let actualRunning = 0;
-    for (let d = 1; d <= daysInSelectedMonth; d++) {
-      if (workingDaysList.includes(d)) {
-        expectedRunning += dailyTarget;
-        workingDaysElapsed += 1;
-      }
-
-      expectedCumulative.push(expectedRunning);
-
-      // Accumulate actual from the per-day totals (already fractional from playback)
+    const actualCumulative: number[] = [];
+    for (let d = 1; d <= daysInMonth; d++) {
       actualRunning += deliveredByDay[d] || 0;
       actualCumulative.push(actualRunning);
-
-      const runRate = calculateRunRateDelta(actualRunning, target, workingDays, workingDaysElapsed);
-      roundedVarianceByDay.push(runRate.variance);
     }
 
-    // Scale expected line so it ends exactly at `target`
-    const rawExpectedEnd = expectedCumulative[expectedCumulative.length - 1] || 0;
-    const scaledExpected =
-      rawExpectedEnd > 0 && target > 0
-        ? expectedCumulative.map((value) => (value / rawExpectedEnd) * target)
-        : expectedCumulative;
-
-    // If totalDelivered is provided, scale the actual series so the final bar's
-    // cumulative total matches the Global Progress bar exactly (handles rounding
-    // differences from fractional playback accumulation).
+    // Scale actual so the final value matches totalDelivered exactly (eliminates rounding drift)
     let finalActualCumulative = actualCumulative;
     if (totalDelivered !== undefined && actualRunning > 0) {
       const scaleFactor = totalDelivered / actualRunning;
       finalActualCumulative = actualCumulative.map((v) => v * scaleFactor);
-
-      // Recompute variance labels using scaled actuals
-      let wdElapsed = 0;
-      for (let d = 1; d <= daysInSelectedMonth; d++) {
-        if (workingDaysList.includes(d)) {
-          wdElapsed += 1;
-        }
-        const scaledActual = finalActualCumulative[d - 1];
-        const runRate = calculateRunRateDelta(scaledActual, target, workingDays, wdElapsed);
-        roundedVarianceByDay[d - 1] = runRate.variance;
-      }
     }
 
-    const barValues =
-      viewMode === "percent"
-        ? finalActualCumulative.map((value) => (target > 0 ? (value / target) * 100 : 0))
-        : finalActualCumulative;
+    // Cumulative expected target line: advances only on working days
+    // Scaled so it ends exactly at `target`
+    let workingDaysElapsed = 0;
+    const expectedCumulative: number[] = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      if (workingDaysList.includes(d)) {
+        workingDaysElapsed += 1;
+      }
+      expectedCumulative.push(workingDays > 0 ? (target / workingDays) * workingDaysElapsed : 0);
+    }
 
-    const expectedValues =
-      viewMode === "percent"
-        ? scaledExpected.map((value) => (target > 0 ? (value / target) * 100 : 0))
-        : scaledExpected;
+    // Variance above each bar: cumulative actual − cumulative expected at that day
+    const varianceByDay: number[] = finalActualCumulative.map((actual, idx) => {
+      const expected = expectedCumulative[idx];
+      return Math.round(actual) - Math.round(expected);
+    });
 
-    return {
-      actualCumulative: finalActualCumulative,
-      scaledExpected,
-      barValues,
-      expectedValues,
-      roundedVarianceByDay,
-    };
+    return { actualCumulative: finalActualCumulative, expectedCumulative, varianceByDay };
   }, [
-    actualVisibleDay,
-    dailyTarget,
-    daysInSelectedMonth,
     deliveredByDay,
-    target,
-    viewMode,
+    daysInMonth,
     workingDaysList,
     workingDays,
+    target,
     totalDelivered,
   ]);
 
-  const safeMaxValue = useMemo(() => {
-    const values =
-      viewMode === "percent"
-        ? [100, ...series.expectedValues, ...series.barValues]
-        : [...series.expectedValues, ...series.barValues, target, 1];
+  // Y-axis max: highest of target, max actual, max expected
+  const yMax = useMemo(() => {
+    const maxActual = Math.max(...series.actualCumulative.slice(0, playbackDayCapped), 0);
+    const maxExpected = Math.max(...series.expectedCumulative, 0);
+    return Math.max(target, maxActual, maxExpected, 1) * 1.05;
+  }, [series, target, playbackDayCapped]);
 
-    return Math.max(...values, 1);
-  }, [series.barValues, series.expectedValues, target, viewMode]);
-
-  const yAxisSteps = useMemo(
-    () => Array.from({ length: 5 }, (_, index) => Math.round((safeMaxValue / 4) * index)),
-    [safeMaxValue]
+  // Y-axis ticks (5 steps)
+  const yAxisTicks = useMemo(
+    () => Array.from({ length: 5 }, (_, i) => Math.round((yMax / 4) * i)),
+    [yMax]
   );
 
   const availableWidth = CHART_WIDTH - FIXED_LEFT_MARGIN - RIGHT_PADDING;
-  const daySlotWidth = availableWidth / Math.max(daysInSelectedMonth, 1);
-  const barWidth = Math.min(daySlotWidth * 0.8, 16);
+  const daySlotWidth = availableWidth / Math.max(daysInMonth, 1);
+  const barWidth = Math.min(daySlotWidth * 0.75, 18);
 
-  const getX = (day: number) => FIXED_LEFT_MARGIN + (day - 1) * daySlotWidth + daySlotWidth / 2;
+  const getX = (day: number) =>
+    FIXED_LEFT_MARGIN + (day - 1) * daySlotWidth + daySlotWidth / 2;
 
-  const formatYAxisValue = (value: number) => {
-    if (viewMode === "percent") {
-      return `${Math.round(value)}%`;
-    }
-    return `${Math.round(value)}`;
-  };
+  const toY = (value: number) =>
+    BASELINE_Y - (Math.max(0, value) / yMax) * BAR_AREA_HEIGHT;
 
-  const expectedPolylinePoints = useMemo(
+  // Dotted target line polyline points (all days in month)
+  const targetPolylinePoints = useMemo(
     () =>
-      series.expectedValues
-        .map((value, index) => {
-          const x = getX(index + 1);
-          const y = BASELINE_Y - (value / safeMaxValue) * BAR_AREA_HEIGHT;
-          return `${x},${y}`;
-        })
-        .join(" "),
-    [series.expectedValues, safeMaxValue]
+      series.expectedCumulative
+        .map((value, idx) => `${getX(idx + 1)},${toY(value)}`)
+        .join(' '),
+    [series.expectedCumulative, yMax, daysInMonth]
   );
-
-  // Determine which days have visible bars: days where the playback-scoped
-  // cumulative actual is non-zero, or days up to actualVisibleDay with any data.
-  // We use the safePlaybackDay to cap rendering.
-  const playbackDayCapped = Math.floor(safePlaybackDay);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[418px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
-      <div className="tile-header px-4 py-1.5">
-        Run Rate
-        {playbackDay ? <span className="ml-2 text-white/80">Day {Math.round(safePlaybackDay)}</span> : null}
+      <div className="tile-header px-4 py-1.5 flex items-center justify-between">
+        <span>Run Rate</span>
+        {playbackDay ? (
+          <span className="text-white/80 text-sm">Day {Math.round(safePlaybackDay)}</span>
+        ) : null}
       </div>
 
-      <div className="flex-1 flex flex-col justify-end p-3 pb-2 overflow-hidden">
+      <div className="flex-1 flex flex-col p-3 pb-2 overflow-hidden">
         <svg
           viewBox={`0 0 ${CHART_WIDTH} ${VIEWBOX_HEIGHT}`}
           preserveAspectRatio="none"
           className="w-full h-full"
-          style={{ overflow: "hidden", display: "block" }}
+          style={{ overflow: 'hidden', display: 'block' }}
         >
-          <line
-            x1={FIXED_LEFT_MARGIN}
-            y1={BASELINE_Y}
-            x2={CHART_WIDTH - 20}
-            y2={BASELINE_Y}
-            stroke="#6B7280"
-            strokeWidth="1"
-          />
-
-          {yAxisSteps.map((tick) => {
-            const y = BASELINE_Y - (tick / safeMaxValue) * BAR_AREA_HEIGHT;
-
+          {/* Y-axis gridlines and labels */}
+          {yAxisTicks.map((tick) => {
+            const y = toY(tick);
             return (
               <g key={tick}>
                 <text
-                  x={FIXED_LEFT_MARGIN - 10}
+                  x={FIXED_LEFT_MARGIN - 6}
                   y={y + 4}
                   textAnchor="end"
-                  className="text-[10px] fill-gray-600 dark:fill-gray-400"
+                  className="text-[10px] fill-gray-500 dark:fill-gray-400"
                 >
-                  {formatYAxisValue(tick)}
+                  {tick}
                 </text>
                 {tick > 0 && (
                   <line
                     x1={FIXED_LEFT_MARGIN}
                     y1={y}
-                    x2={CHART_WIDTH - 20}
+                    x2={CHART_WIDTH - RIGHT_PADDING}
                     y2={y}
                     stroke="#E5E7EB"
                     strokeDasharray="4,4"
@@ -253,58 +183,49 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             );
           })}
 
-          {Array.from({ length: Math.floor(daysInSelectedMonth / 5) }, (_, i) => {
-            const day = (i + 1) * 5;
-            if (day > daysInSelectedMonth) return null;
+          {/* Baseline */}
+          <line
+            x1={FIXED_LEFT_MARGIN}
+            y1={BASELINE_Y}
+            x2={CHART_WIDTH - RIGHT_PADDING}
+            y2={BASELINE_Y}
+            stroke="#6B7280"
+            strokeWidth="1"
+          />
 
+          {/* X-axis day labels every 5 days */}
+          {Array.from({ length: Math.floor(daysInMonth / 5) }, (_, i) => {
+            const day = (i + 1) * 5;
+            if (day > daysInMonth) return null;
             return (
-              <g key={day}>
-                <text
-                  x={getX(day)}
-                  y={BASELINE_Y + 15}
-                  textAnchor="middle"
-                  className="text-[10px] font-medium fill-gray-600 dark:fill-gray-400"
-                >
-                  {day}
-                </text>
-              </g>
+              <text
+                key={day}
+                x={getX(day)}
+                y={BASELINE_Y + 14}
+                textAnchor="middle"
+                className="text-[10px] fill-gray-500 dark:fill-gray-400"
+              >
+                {day}
+              </text>
             );
           })}
 
-          <polyline
-            points={expectedPolylinePoints}
-            fill="none"
-            stroke="#6B7280"
-            strokeWidth="3"
-            strokeDasharray="8,4"
-          />
-
-          {series.barValues.map((value, idx) => {
+          {/* Actual cumulative bars */}
+          {series.actualCumulative.map((value, idx) => {
             const day = idx + 1;
+            if (day > playbackDayCapped) return null;
+            if (value <= 0) return null;
 
-            // Only render bars up to the playback day
-            if (day > playbackDayCapped) {
-              return null;
-            }
-
-            // Skip days with zero cumulative actual (nothing delivered yet)
-            if (value <= 0) {
-              return null;
-            }
-
-            const ratio = safeMaxValue > 0 ? value / safeMaxValue : 0;
-            const barHeight = Math.max(0, ratio * BAR_AREA_HEIGHT);
+            const barHeight = Math.max(0, (value / yMax) * BAR_AREA_HEIGHT);
             const x = getX(day);
-
-            const roundedVariance = series.roundedVarianceByDay[idx] || 0;
-            const varianceText =
-              roundedVariance > 0 ? `+${roundedVariance}` : `${roundedVariance}`;
+            const variance = series.varianceByDay[idx];
+            const varianceLabel = variance > 0 ? `+${variance}` : `${variance}`;
             const varianceColor =
-              roundedVariance > 0
-                ? "fill-green-600 dark:fill-green-400"
-                : roundedVariance < 0
-                ? "fill-red-600 dark:fill-red-400"
-                : "fill-gray-500 dark:fill-gray-400";
+              variance > 0
+                ? '#008A00'
+                : variance < 0
+                ? '#FF3B30'
+                : '#6B7280';
 
             return (
               <g key={day}>
@@ -318,16 +239,56 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
                 />
                 <text
                   x={x}
-                  y={BASELINE_Y - barHeight - 6}
+                  y={BASELINE_Y - barHeight - 5}
                   textAnchor="middle"
-                  className={`text-[9px] font-bold ${varianceColor}`}
+                  style={{ fontSize: 9, fontWeight: 700, fill: varianceColor }}
                 >
-                  {varianceText}
+                  {varianceLabel}
                 </text>
               </g>
             );
           })}
+
+          {/* Dotted target run-rate line */}
+          <polyline
+            points={targetPolylinePoints}
+            fill="none"
+            stroke="#6B7280"
+            strokeWidth="2.5"
+            strokeDasharray="7,4"
+            strokeLinecap="round"
+          />
+
+          {/* Target line label at end */}
+          {target > 0 && (
+            <text
+              x={getX(daysInMonth) + 4}
+              y={toY(target) + 4}
+              className="text-[9px] fill-gray-400 dark:fill-gray-500"
+              style={{ fontSize: 9 }}
+            >
+              Target
+            </text>
+          )}
         </svg>
+
+        {/* Legend */}
+        <div className="flex items-center gap-4 mt-1 px-1">
+          <div className="flex items-center gap-1.5">
+            <div className="w-4 h-3 rounded-sm bg-[#001B47]" />
+            <span className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">Cumulative Delivered</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <svg width="20" height="8">
+              <line x1="0" y1="4" x2="20" y2="4" stroke="#6B7280" strokeWidth="2" strokeDasharray="5,3" />
+            </svg>
+            <span className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">Target Run Rate</span>
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            <span className="text-[10px] font-bold text-green-600">+n ahead</span>
+            <span className="text-[10px] font-bold text-red-500">−n behind</span>
+          </div>
+        </div>
       </div>
     </div>
   );
