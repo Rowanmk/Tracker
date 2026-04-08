@@ -33,6 +33,7 @@ interface AccountantBreakdown {
   name: string;
   delivered: number;
   target: number;
+  expectedByToday: number;
 }
 
 interface TooltipState {
@@ -67,7 +68,6 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
   const [staffTargets, setStaffTargets] = useState<Record<number, number>>({});
   const [teamTargets, setTeamTargets] = useState<Record<number, number>>({});
-  // perStaffServiceTargets: staff_id -> service_id -> target
   const [perStaffServiceTargets, setPerStaffServiceTargets] = useState<Record<number, Record<number, number>>>({});
   const [loading, setLoading] = useState(false);
   const [tooltip, setTooltip] = useState<TooltipState>({
@@ -124,7 +124,6 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
           setServiceTargets(perService);
           setPerStaffServiceTargets({ [selectedStaffId]: perService });
         } else {
-          // team-wide: load per-staff service targets for tooltip
           const nextPerStaffServiceTargets: Record<number, Record<number, number>> = {};
           const nextServiceTargets: Record<number, number> = {};
           for (const staff of staffPerformance) {
@@ -189,15 +188,17 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
           const runRatePercent =
             expectedByToday > 0 ? (delivered / expectedByToday) * 100 : 0;
 
-          // For team view, each bar is one accountant — breakdown is per service
           const breakdown: AccountantBreakdown[] = services.map((service) => {
             const serviceDelivered = staff.services[service.service_name] || 0;
             const serviceTarget = perStaffServiceTargets[staff.staff_id]?.[service.service_id] || 0;
+            const serviceExpectedByToday =
+              workingDays > 0 ? (serviceTarget / workingDays) * workingDaysUpToToday : 0;
             return {
               staff_id: service.service_id,
               name: service.service_name,
               delivered: serviceDelivered,
               target: serviceTarget,
+              expectedByToday: serviceExpectedByToday,
             };
           }).filter((b) => b.delivered > 0 || b.target > 0);
 
@@ -228,11 +229,14 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
       const breakdown: AccountantBreakdown[] = staffPerformance.map((staff) => {
         const staffDelivered = staff.services[service.service_name] || 0;
         const staffTarget = perStaffServiceTargets[staff.staff_id]?.[service.service_id] || 0;
+        const staffExpectedByToday =
+          workingDays > 0 ? (staffTarget / workingDays) * workingDaysUpToToday : 0;
         return {
           staff_id: staff.staff_id,
           name: staff.name,
           delivered: staffDelivered,
           target: staffTarget,
+          expectedByToday: staffExpectedByToday,
         };
       }).filter((b) => b.delivered > 0 || b.target > 0);
 
@@ -486,7 +490,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
         >
           <div
             className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden"
-            style={{ minWidth: '220px', maxWidth: '280px' }}
+            style={{ minWidth: '240px', maxWidth: '300px' }}
           >
             {/* Header */}
             <div className="bg-[#001B47] px-3 py-2">
@@ -500,18 +504,27 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
               <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">
                 {isTeamView ? 'Service' : 'Accountant'}
               </span>
-              <div className="flex items-center gap-3">
-                <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Delivered</span>
-                <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 w-10 text-right">Target</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Del</span>
+                <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 w-8 text-right">Tgt</span>
+                <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 w-12 text-right">Run Rate</span>
               </div>
             </div>
 
             {/* Rows */}
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {tooltip.breakdown.map((entry) => {
-                const pct = entry.target > 0 ? Math.round((entry.delivered / entry.target) * 100) : 0;
-                const pctColor =
-                  pct >= 90 ? '#008A00' : pct >= 75 ? '#FF8A2A' : '#FF3B30';
+                const runRatePct = entry.expectedByToday > 0
+                  ? Math.round((entry.delivered / entry.expectedByToday) * 100)
+                  : null;
+                const runRateColor =
+                  runRatePct === null
+                    ? '#6B7280'
+                    : runRatePct >= 90
+                    ? '#008A00'
+                    : runRatePct >= 75
+                    ? '#FF8A2A'
+                    : '#FF3B30';
 
                 return (
                   <div key={entry.staff_id} className="px-3 py-2 flex items-center justify-between gap-2">
@@ -523,17 +536,15 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                         {entry.delivered}
                       </span>
                       <span className="text-xs text-gray-400">/</span>
-                      <span className="text-xs text-gray-600 dark:text-gray-400 w-10 text-right">
+                      <span className="text-xs text-gray-600 dark:text-gray-400 w-8 text-right">
                         {entry.target}
                       </span>
-                      {entry.target > 0 && (
-                        <span
-                          className="text-[10px] font-bold ml-1 w-8 text-right"
-                          style={{ color: pctColor }}
-                        >
-                          {pct}%
-                        </span>
-                      )}
+                      <span
+                        className="text-[10px] font-bold w-12 text-right"
+                        style={{ color: runRateColor }}
+                      >
+                        {runRatePct === null ? '—' : `${runRatePct}%`}
+                      </span>
                     </div>
                   </div>
                 );
@@ -542,7 +553,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
 
             {/* Footer */}
             <div className="bg-gray-50 dark:bg-gray-800/60 px-3 py-1.5 border-t border-gray-100 dark:border-gray-700">
-              <span className="text-[10px] text-gray-400">Delivered / Target</span>
+              <span className="text-[10px] text-gray-400">Delivered / Target · Run Rate % vs today's expected</span>
             </div>
           </div>
 
