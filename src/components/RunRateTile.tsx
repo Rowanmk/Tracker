@@ -6,7 +6,7 @@ interface AccountantDailyBreakdown {
   staff_id: number;
   name: string;
   cumulativeDelivered: number;
-  sharePercent: number;
+  aheadBehind: number;
 }
 
 interface RunRateTileProps {
@@ -30,6 +30,7 @@ interface RunRateTileProps {
   staffPerformance?: Array<{
     staff_id: number;
     name: string;
+    target?: number;
   }>;
 }
 
@@ -40,6 +41,7 @@ interface TooltipState {
   y: number;
   breakdown: AccountantDailyBreakdown[];
   cumulativeTotal: number;
+  expectedAtDay: number;
 }
 
 const VIEWBOX_HEIGHT = 320;
@@ -72,6 +74,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     y: 0,
     breakdown: [],
     cumulativeTotal: 0,
+    expectedAtDay: 0,
   });
 
   // Build list of working days (Mon–Fri) in the month
@@ -205,7 +208,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
   );
 
   // Build tooltip breakdown for a given day
-  const buildBreakdown = (day: number): { breakdown: AccountantDailyBreakdown[]; cumulativeTotal: number } => {
+  const buildBreakdown = (day: number): { breakdown: AccountantDailyBreakdown[]; cumulativeTotal: number; expectedAtDay: number } => {
     const cumulativeForDay = cumulativeByDayByStaff[day] || {};
     const scaleFactor = series.scaleFactor;
 
@@ -213,30 +216,39 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     const rawTotal = Object.values(cumulativeForDay).reduce((s, v) => s + v, 0);
     const scaledTotal = rawTotal * scaleFactor;
 
-    const breakdown: AccountantDailyBreakdown[] = [];
+    // Expected at this day from the series
+    const expectedAtDay = series.expectedCumulative[day - 1] || 0;
 
-    // Build per-staff entries
-    const staffMap = new Map(staffPerformance.map((s) => [s.staff_id, s.name]));
+    // Per-staff expected share: proportional to their target if available, else equal split
+    const staffMap = new Map(staffPerformance.map((s) => [s.staff_id, s]));
+    const staffCount = staffPerformance.filter(s => s.staff_id !== -1).length || 1;
+
+    const breakdown: AccountantDailyBreakdown[] = [];
 
     Object.entries(cumulativeForDay).forEach(([staffIdStr, rawCumulative]) => {
       const staffId = Number(staffIdStr);
       if (staffId === -1) return; // skip unknown staff
-      const name = staffMap.get(staffId) || `Staff #${staffId}`;
+      const staffEntry = staffMap.get(staffId);
+      const name = staffEntry?.name || `Staff #${staffId}`;
       const scaledCumulative = rawCumulative * scaleFactor;
-      const sharePercent = scaledTotal > 0 ? Math.round((scaledCumulative / scaledTotal) * 100) : 0;
+
+      // Calculate this staff member's share of the expected total
+      // Use equal split of expected if no individual targets available
+      const staffExpected = expectedAtDay / staffCount;
+      const aheadBehind = Math.round(scaledCumulative) - Math.round(staffExpected);
 
       breakdown.push({
         staff_id: staffId,
         name,
         cumulativeDelivered: Math.round(scaledCumulative),
-        sharePercent,
+        aheadBehind,
       });
     });
 
     // Sort by cumulative delivered descending
     breakdown.sort((a, b) => b.cumulativeDelivered - a.cumulativeDelivered);
 
-    return { breakdown, cumulativeTotal: Math.round(scaledTotal) };
+    return { breakdown, cumulativeTotal: Math.round(scaledTotal), expectedAtDay };
   };
 
   const handleBarMouseEnter = (
@@ -262,7 +274,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     const pixelX = svgRect.left - containerRect.left + barCenterXSvg * scaleX;
     const pixelY = svgRect.top - containerRect.top + barTopYSvg * scaleY;
 
-    const { breakdown, cumulativeTotal } = buildBreakdown(day);
+    const { breakdown, cumulativeTotal, expectedAtDay } = buildBreakdown(day);
 
     setTooltip({
       visible: true,
@@ -271,6 +283,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
       y: pixelY,
       breakdown,
       cumulativeTotal,
+      expectedAtDay,
     });
   };
 
@@ -443,14 +456,14 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
         <div
           className="absolute z-50 pointer-events-none"
           style={{
-            left: Math.min(tooltip.x, containerRef.current ? containerRef.current.offsetWidth - 240 : tooltip.x),
+            left: Math.min(tooltip.x, containerRef.current ? containerRef.current.offsetWidth - 260 : tooltip.x),
             top: tooltip.y - 8,
             transform: 'translate(-50%, -100%)',
           }}
         >
           <div
             className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden"
-            style={{ minWidth: '210px', maxWidth: '260px' }}
+            style={{ minWidth: '240px', maxWidth: '300px' }}
           >
             {/* Header */}
             <div className="bg-[#001B47] px-3 py-2">
@@ -463,41 +476,57 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-700">
               <span className="text-[10px] text-gray-500 dark:text-gray-400">
                 Cumulative total: <span className="font-bold text-gray-800 dark:text-gray-200">{tooltip.cumulativeTotal}</span>
+                <span className="mx-1.5 text-gray-300">·</span>
+                Expected: <span className="font-bold text-gray-800 dark:text-gray-200">{Math.round(tooltip.expectedAtDay)}</span>
               </span>
+            </div>
+
+            {/* Column headers */}
+            <div className="px-3 py-1 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Accountant</span>
+              <div className="flex items-center gap-3">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Delivered</span>
+                <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 w-14 text-right">+/−</span>
+              </div>
             </div>
 
             {/* Rows */}
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              {tooltip.breakdown.map((entry) => (
-                <div key={entry.staff_id} className="px-3 py-2 flex items-center justify-between gap-3">
-                  <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate flex-1">
-                    {entry.name}
-                  </span>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-xs font-bold text-[#001B47] dark:text-blue-300">
-                      {entry.cumulativeDelivered}
+              {tooltip.breakdown.map((entry) => {
+                const aheadBehindLabel = entry.aheadBehind > 0
+                  ? `+${entry.aheadBehind}`
+                  : `${entry.aheadBehind}`;
+                const aheadBehindColor =
+                  entry.aheadBehind > 0
+                    ? '#008A00'
+                    : entry.aheadBehind < 0
+                    ? '#FF3B30'
+                    : '#6B7280';
+
+                return (
+                  <div key={entry.staff_id} className="px-3 py-2 flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate flex-1">
+                      {entry.name}
                     </span>
-                    <span
-                      className="text-[10px] font-bold ml-1"
-                      style={{
-                        color:
-                          entry.sharePercent >= 40
-                            ? '#008A00'
-                            : entry.sharePercent >= 20
-                            ? '#FF8A2A'
-                            : '#6B7280',
-                      }}
-                    >
-                      {entry.sharePercent}%
-                    </span>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-xs font-bold text-[#001B47] dark:text-blue-300">
+                        {entry.cumulativeDelivered}
+                      </span>
+                      <span
+                        className="text-xs font-bold w-14 text-right"
+                        style={{ color: aheadBehindColor }}
+                      >
+                        {aheadBehindLabel}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Footer hint */}
             <div className="bg-gray-50 dark:bg-gray-800/60 px-3 py-1.5 border-t border-gray-100 dark:border-gray-700">
-              <span className="text-[10px] text-gray-400">Cumulative delivered / share of total</span>
+              <span className="text-[10px] text-gray-400">Delivered · Ahead (+) / Behind (−) of run rate</span>
             </div>
           </div>
 
