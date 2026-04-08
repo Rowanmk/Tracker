@@ -403,7 +403,6 @@ export const Dashboard: React.FC = () => {
   );
 
   // Build run rate activities: no bagels, scoped to individual if needed
-  // These are used for the per-day breakdown in the chart bars
   const runRateActivities = useMemo(() => {
     const bagelService = services.find((s) => s.service_name === "Bagel Days");
 
@@ -417,6 +416,16 @@ export const Dashboard: React.FC = () => {
 
     return noBagels;
   }, [filteredActivities, services, isIndividualDashboard, selectedAccountant]);
+
+  // Staff list for run rate tooltip breakdown
+  const runRateStaffList = useMemo(() => {
+    if (isIndividualDashboard && selectedAccountant) {
+      return staffPerformance
+        .filter((s) => s.staff_id === selectedAccountant.staff_id)
+        .map((s) => ({ staff_id: s.staff_id, name: s.name }));
+    }
+    return staffPerformance.map((s) => ({ staff_id: s.staff_id, name: s.name }));
+  }, [staffPerformance, isIndividualDashboard, selectedAccountant]);
 
   if (loading) {
     return (
@@ -526,6 +535,7 @@ export const Dashboard: React.FC = () => {
             viewMode={viewMode}
             playbackDay={playbackController.animationProgress}
             totalDelivered={performanceSummary.delivered}
+            staffPerformance={runRateStaffList}
           />
         </div>
       </div>
