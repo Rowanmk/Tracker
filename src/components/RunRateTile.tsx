@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import type { FinancialYear } from '../utils/financialYear';
+import { calculateExpectedRaw, calculateRunRateDelta, getMonthYearFromFinancialYear } from '../utils/runRate';
 
 interface RunRateTileProps {
   workingDays: number;
@@ -32,7 +33,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
   viewMode = "numbers",
   playbackDay,
 }) => {
-  const selectedYear = month >= 4 ? financialYear.start : financialYear.end;
+  const selectedYear = getMonthYearFromFinancialYear(month, financialYear);
   const daysInSelectedMonth = new Date(selectedYear, month, 0).getDate();
 
   const today = new Date();
@@ -74,12 +75,15 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
   const series = useMemo(() => {
     let expectedRunning = 0;
     let actualRunning = 0;
+    let workingDaysElapsed = 0;
     const expectedCumulative: number[] = [];
     const actualCumulative: number[] = [];
+    const roundedVarianceByDay: number[] = [];
 
     for (let d = 1; d <= daysInSelectedMonth; d++) {
       if (workingDaysList.includes(d)) {
         expectedRunning += dailyTarget;
+        workingDaysElapsed += 1;
       }
 
       expectedCumulative.push(expectedRunning);
@@ -89,13 +93,18 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
       }
 
       actualCumulative.push(actualRunning);
+
+      const runRate = calculateRunRateDelta(actualRunning, target, workingDays, workingDaysElapsed);
+      roundedVarianceByDay.push(runRate.variance);
     }
 
     const rawExpectedEnd = expectedCumulative[expectedCumulative.length - 1] || 0;
     const scaledExpected =
       rawExpectedEnd > 0 && target > 0
         ? expectedCumulative.map((value) => (value / rawExpectedEnd) * target)
-        : expectedCumulative;
+        : expectedCumulative.map((_, index) =>
+            calculateExpectedRaw(target, workingDays, index + 1)
+          );
 
     const barValues =
       viewMode === "percent"
@@ -112,8 +121,9 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
       scaledExpected,
       barValues,
       expectedValues,
+      roundedVarianceByDay,
     };
-  }, [actualVisibleDay, dailyTarget, daysInSelectedMonth, deliveredByDay, target, viewMode, workingDaysList]);
+  }, [actualVisibleDay, dailyTarget, daysInSelectedMonth, deliveredByDay, target, viewMode, workingDaysList, workingDays]);
 
   const safeMaxValue = useMemo(() => {
     const values =
@@ -242,9 +252,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             const barHeight = Math.max(0, ratio * BAR_AREA_HEIGHT);
             const x = getX(day);
 
-            const deliveredTotal = series.actualCumulative[idx];
-            const expectedRawValue = series.scaledExpected[idx];
-            const roundedVariance = Math.round(deliveredTotal) - Math.round(expectedRawValue);
+            const roundedVariance = series.roundedVarianceByDay[idx] || 0;
             const varianceText =
               roundedVariance > 0 ? `+${roundedVariance}` : `${roundedVariance}`;
             const varianceColor =

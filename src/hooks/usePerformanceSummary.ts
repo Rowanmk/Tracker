@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { calculateRunRateDelta } from '../utils/runRate';
 
 interface PerformanceData {
   staff_id: number;
@@ -40,28 +41,20 @@ export const usePerformanceSummary = ({
 
     const target = teamTarget !== undefined ? teamTarget : fallbackTarget;
 
-    const clampedWorkingDaysElapsed = Math.max(0, Math.min(workingDaysUpToToday, workingDays));
-    const expectedRaw =
-      target > 0 && workingDays > 0
-        ? (target / workingDays) * clampedWorkingDaysElapsed
-        : 0;
-
-    const varianceRaw = delivered - expectedRaw;
-    const expected = Math.round(expectedRaw);
-    const variance = Math.round(varianceRaw);
+    const runRate = calculateRunRateDelta(delivered, target, workingDays, workingDaysUpToToday);
 
     return {
       delivered,
       target,
-      expected,
-      expectedRaw,
-      variance,
-      varianceRaw,
+      expected: runRate.roundedExpected,
+      expectedRaw: runRate.expectedRaw,
+      variance: runRate.variance,
+      varianceRaw: runRate.variance,
       statusText:
         target > 0
-          ? varianceRaw >= 0
-            ? `Ahead by ${Math.round(varianceRaw)}`
-            : `Behind by ${Math.abs(Math.round(varianceRaw))}`
+          ? runRate.variance >= 0
+            ? `Ahead by ${runRate.variance}`
+            : `Behind by ${Math.abs(runRate.variance)}`
           : 'No target',
     };
   }, [staffPerformance, workingDays, workingDaysUpToToday, selectedMonth, selectedYear, dashboardMode, currentStaff, teamTarget]);

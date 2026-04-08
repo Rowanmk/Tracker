@@ -42,7 +42,7 @@ export const Dashboard: React.FC = () => {
   const { selectedTeamId, teams, accountantStaff, currentStaff } = useAuth();
 
   const { services } = useServices();
-  const { staffPerformance, dailyActivities, teamTarget, loading } = useStaffPerformance("desc");
+  const { staffPerformance, dailyActivities, loading } = useStaffPerformance("desc");
 
   const [bankHolidayDates, setBankHolidayDates] = useState<Set<string>>(new Set());
 
@@ -341,7 +341,7 @@ export const Dashboard: React.FC = () => {
     teamTarget: summaryTarget,
   });
 
-  const variance = performanceSummary.varianceRaw;
+  const variance = performanceSummary.variance;
 
   const handleDaySelect = (day: number) => {
     stopPlaybackLoop();
@@ -473,8 +473,8 @@ export const Dashboard: React.FC = () => {
           <div
             className={`absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold ${globalProgressStatus.text}`}
           >
-            {variance > 0 ? "+" : variance < 0 ? "-" : ""}
-            {Math.abs(Math.round(variance))}
+            {variance > 0 ? "+" : ""}
+            {variance}
           </div>
         </div>
       </div>

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { loadTargets } from '../utils/loadTargets';
 import { useAuth } from '../context/AuthContext';
 import type { FinancialYear } from '../utils/financialYear';
+import { calculateExpectedRaw, calculateRunRateDelta } from '../utils/runRate';
 
 interface TeamProgressTileProps {
   services: Array<{
@@ -115,8 +116,8 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
       );
       const target = serviceTargets[service.service_id] || 0;
       const achievedPercent = target > 0 ? (delivered / target) * 100 : 0;
-      const expectedSoFar = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
-      const difference = delivered - expectedSoFar;
+      const expectedSoFar = calculateExpectedRaw(target, workingDays, workingDaysUpToToday);
+      const difference = calculateRunRateDelta(delivered, target, workingDays, workingDaysUpToToday).variance;
       const expectedPercent = target > 0 ? Math.min((expectedSoFar / target) * 100, 100) : 0;
 
       return {
@@ -135,8 +136,8 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     const totalDelivered = staffPerformance.reduce((sum, staff) => sum + staff.total, 0);
     const totalTarget = selectedTarget;
     const totalAchievedPercent = totalTarget > 0 ? (totalDelivered / totalTarget) * 100 : 0;
-    const totalExpectedSoFar = workingDays > 0 ? (totalTarget / workingDays) * workingDaysUpToToday : 0;
-    const totalDifference = totalDelivered - totalExpectedSoFar;
+    const totalExpectedSoFar = calculateExpectedRaw(totalTarget, workingDays, workingDaysUpToToday);
+    const totalDifference = calculateRunRateDelta(totalDelivered, totalTarget, workingDays, workingDaysUpToToday).variance;
     const totalExpectedPercent = totalTarget > 0 ? Math.min((totalExpectedSoFar / totalTarget) * 100, 100) : 0;
 
     return [
@@ -182,9 +183,8 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {progressRows.map((row) => {
-          const roundedDifference = Math.round(row.difference * 10) / 10;
           const formattedDifference =
-            roundedDifference > 0 ? `+${roundedDifference}` : `${roundedDifference}`;
+            row.difference > 0 ? `+${row.difference}` : `${row.difference}`;
 
           return (
             <div key={row.id} className="space-y-2">
@@ -225,9 +225,9 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
                     className="inline-flex items-center px-2 py-1 rounded text-sm font-bold"
                     style={{
                       color:
-                        roundedDifference > 0
+                        row.difference > 0
                           ? '#008A00'
-                          : roundedDifference < 0
+                          : row.difference < 0
                           ? '#FF3B30'
                           : '#6B7280',
                     }}

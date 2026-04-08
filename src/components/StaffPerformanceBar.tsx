@@ -2,6 +2,7 @@ import React, { useMemo, useState, useRef, useEffect } from "react";
 import { useDate } from "../context/DateContext";
 import { useWorkingDays } from "../hooks/useWorkingDays";
 import { getFinancialYears, getFinancialYearFromMonth } from "../utils/financialYear";
+import { calculateRunRateDelta } from "../utils/runRate";
 
 interface StaffPerformance {
   staff_id: number;
@@ -13,9 +14,7 @@ interface StaffPerformance {
 interface Props {
   staffPerformance: StaffPerformance[];
   teamTarget?: number;
-  /** If provided, overrides the hook-derived workingDaysUpToToday (e.g. from playback) */
   workingDaysUpToToday?: number;
-  /** If provided, overrides the hook-derived teamWorkingDays */
   workingDays?: number;
 }
 
@@ -68,15 +67,12 @@ export const StaffPerformanceBar: React.FC<Props> = ({
   const today = new Date();
   const todayValue = `${today.getMonth() + 1}-${today.getFullYear()}`;
 
-  // Always call the hook so we have a fallback value
   const { teamWorkingDays: hookWorkingDays, workingDaysUpToToday: hookWorkingDaysUpToToday } =
     useWorkingDays({
       financialYear: selectedFinancialYear,
       month: selectedMonth,
     });
 
-  // Use externally-provided values if available (these come from the dashboard's
-  // bank-holiday-aware playback calculation), otherwise fall back to the hook values.
   const workingDays = externalWorkingDays !== undefined ? externalWorkingDays : hookWorkingDays;
   const workingDaysUpToToday = externalWorkingDaysUpToToday !== undefined
     ? externalWorkingDaysUpToToday
@@ -88,20 +84,17 @@ export const StaffPerformanceBar: React.FC<Props> = ({
     return { actualTotal: actual, targetTotal: target };
   }, [staffPerformance, teamTarget]);
 
-  const expectedByNow =
-    workingDays > 0
-      ? (targetTotal / workingDays) *
-        Math.min(workingDaysUpToToday, workingDays)
-      : 0;
-
-  const variance = actualTotal - expectedByNow;
+  const runRate = useMemo(
+    () => calculateRunRateDelta(actualTotal, targetTotal, workingDays, workingDaysUpToToday),
+    [actualTotal, targetTotal, workingDays, workingDaysUpToToday]
+  );
 
   let statusText = "No target set";
   if (targetTotal > 0) {
     statusText =
-      variance >= 0
-        ? `Ahead by ${Math.round(variance)} items`
-        : `Behind by ${Math.abs(Math.round(variance))} items`;
+      runRate.variance >= 0
+        ? `Ahead by ${runRate.variance} items`
+        : `Behind by ${Math.abs(runRate.variance)} items`;
   }
 
   const handleMonthYearChange = (value: string) => {
@@ -199,8 +192,8 @@ export const StaffPerformanceBar: React.FC<Props> = ({
 
       <div className="text-white text-xl font-semibold text-center leading-tight">
         {statusText}
-        {" | "}Delivered: {Math.round(actualTotal)}
-        {" | "}Expected: {Math.round(expectedByNow)}
+        {" | "}Delivered: {runRate.roundedDelivered}
+        {" | "}Expected: {runRate.roundedExpected}
       </div>
     </div>
   );
