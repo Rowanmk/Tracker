@@ -405,8 +405,15 @@ export const Dashboard: React.FC = () => {
   const runRateActivities = useMemo(() => {
     const bagelService = services.find((s) => s.service_name === "Bagel Days");
     if (!bagelService) return filteredActivities;
-    return filteredActivities.filter((a) => a.service_id !== bagelService.service_id);
-  }, [filteredActivities, services]);
+
+    const noBagels = filteredActivities.filter((a) => a.service_id !== bagelService.service_id);
+
+    if (isIndividualDashboard && selectedAccountant) {
+      return noBagels.filter((a) => a.staff_id === selectedAccountant.staff_id);
+    }
+
+    return noBagels;
+  }, [filteredActivities, services, isIndividualDashboard, selectedAccountant]);
 
   if (loading) {
     return (
