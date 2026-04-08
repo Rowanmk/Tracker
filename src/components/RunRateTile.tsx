@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import type { FinancialYear } from '../utils/financialYear';
-import { calculateExpectedRaw, calculateRunRateDelta, getMonthYearFromFinancialYear } from '../utils/runRate';
+import { calculateRunRateDelta, getMonthYearFromFinancialYear } from '../utils/runRate';
 
 interface RunRateTileProps {
   workingDays: number;
@@ -64,6 +64,9 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     return result;
   }, [daysInSelectedMonth, month, selectedYear]);
 
+  // Sum delivered_count per calendar day from the already-filtered dailyActivities prop.
+  // Dashboard passes in playback-scoped, individual/team-filtered activities — so this
+  // is the exact same data source as every other dashboard metric.
   const deliveredByDay = useMemo(() => {
     const totals: Record<number, number> = {};
     dailyActivities.forEach((activity) => {
@@ -76,12 +79,13 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
 
   const series = useMemo(() => {
     let expectedRunning = 0;
-    let actualRunning = 0;
     let workingDaysElapsed = 0;
     const expectedCumulative: number[] = [];
     const actualCumulative: number[] = [];
     const roundedVarianceByDay: number[] = [];
 
+    // Build cumulative actual from deliveredByDay — already playback-scoped by Dashboard
+    let actualRunning = 0;
     for (let d = 1; d <= daysInSelectedMonth; d++) {
       if (workingDaysList.includes(d)) {
         expectedRunning += dailyTarget;
@@ -90,49 +94,39 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
 
       expectedCumulative.push(expectedRunning);
 
-      if (d <= actualVisibleDay) {
-        actualRunning += deliveredByDay[d] || 0;
-      }
-
+      // Accumulate actual from the per-day totals (already fractional from playback)
+      actualRunning += deliveredByDay[d] || 0;
       actualCumulative.push(actualRunning);
 
       const runRate = calculateRunRateDelta(actualRunning, target, workingDays, workingDaysElapsed);
       roundedVarianceByDay.push(runRate.variance);
     }
 
+    // Scale expected line so it ends exactly at `target`
     const rawExpectedEnd = expectedCumulative[expectedCumulative.length - 1] || 0;
     const scaledExpected =
       rawExpectedEnd > 0 && target > 0
         ? expectedCumulative.map((value) => (value / rawExpectedEnd) * target)
-        : expectedCumulative.map((_, index) =>
-            calculateExpectedRaw(target, workingDays, index + 1)
-          );
+        : expectedCumulative;
 
-    // If totalDelivered is provided (from parent), use it to scale the last bar
-    // so the final variance matches the Global Progress bar exactly.
-    // We scale all actual values proportionally so the chart shape is preserved.
+    // If totalDelivered is provided, scale the actual series so the final bar's
+    // cumulative total matches the Global Progress bar exactly (handles rounding
+    // differences from fractional playback accumulation).
     let finalActualCumulative = actualCumulative;
     if (totalDelivered !== undefined && actualRunning > 0) {
       const scaleFactor = totalDelivered / actualRunning;
       finalActualCumulative = actualCumulative.map((v) => v * scaleFactor);
 
-      // Recompute variance by day using scaled actuals
+      // Recompute variance labels using scaled actuals
       let wdElapsed = 0;
       for (let d = 1; d <= daysInSelectedMonth; d++) {
         if (workingDaysList.includes(d)) {
           wdElapsed += 1;
         }
-        if (d <= actualVisibleDay) {
-          const scaledActual = finalActualCumulative[d - 1];
-          const runRate = calculateRunRateDelta(scaledActual, target, workingDays, wdElapsed);
-          roundedVarianceByDay[d - 1] = runRate.variance;
-        }
+        const scaledActual = finalActualCumulative[d - 1];
+        const runRate = calculateRunRateDelta(scaledActual, target, workingDays, wdElapsed);
+        roundedVarianceByDay[d - 1] = runRate.variance;
       }
-    } else if (totalDelivered !== undefined && actualRunning === 0 && totalDelivered > 0) {
-      // Edge case: no daily breakdown but we have a total
-      finalActualCumulative = actualCumulative.map((_, i) =>
-        i < actualVisibleDay ? totalDelivered : 0
-      );
     }
 
     const barValues =
@@ -152,7 +146,17 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
       expectedValues,
       roundedVarianceByDay,
     };
-  }, [actualVisibleDay, dailyTarget, daysInSelectedMonth, deliveredByDay, target, viewMode, workingDaysList, workingDays, totalDelivered]);
+  }, [
+    actualVisibleDay,
+    dailyTarget,
+    daysInSelectedMonth,
+    deliveredByDay,
+    target,
+    viewMode,
+    workingDaysList,
+    workingDays,
+    totalDelivered,
+  ]);
 
   const safeMaxValue = useMemo(() => {
     const values =
@@ -192,6 +196,11 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
         .join(" "),
     [series.expectedValues, safeMaxValue]
   );
+
+  // Determine which days have visible bars: days where the playback-scoped
+  // cumulative actual is non-zero, or days up to actualVisibleDay with any data.
+  // We use the safePlaybackDay to cap rendering.
+  const playbackDayCapped = Math.floor(safePlaybackDay);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[418px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
@@ -273,7 +282,13 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
           {series.barValues.map((value, idx) => {
             const day = idx + 1;
 
-            if (day > actualVisibleDay) {
+            // Only render bars up to the playback day
+            if (day > playbackDayCapped) {
+              return null;
+            }
+
+            // Skip days with zero cumulative actual (nothing delivered yet)
+            if (value <= 0) {
               return null;
             }
 
