@@ -242,15 +242,9 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             const barHeight = Math.max(0, ratio * BAR_AREA_HEIGHT);
             const x = getX(day);
 
-            const rawDeliveredValue =
-              viewMode === "percent"
-                ? target > 0
-                  ? (value / 100) * target
-                  : 0
-                : series.actualCumulative[idx];
-
+            const deliveredTotal = series.actualCumulative[idx];
             const expectedRawValue = series.scaledExpected[idx];
-            const roundedVariance = Math.round(rawDeliveredValue - expectedRawValue);
+            const roundedVariance = Math.round(deliveredTotal) - Math.round(expectedRawValue);
             const varianceText =
               roundedVariance > 0 ? `+${roundedVariance}` : `${roundedVariance}`;
             const varianceColor =
