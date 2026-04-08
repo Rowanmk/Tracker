@@ -312,15 +312,33 @@ export const Dashboard: React.FC = () => {
 
   const isIndividualDashboard = !isTeamView && !!selectedAccountant;
 
+  const summaryStaffPerformance = useMemo(() => {
+    if (isIndividualDashboard && selectedAccountant) {
+      return historicalStaffPerformance.filter(
+        (staff) => staff.staff_id === selectedAccountant.staff_id
+      );
+    }
+
+    return historicalStaffPerformance;
+  }, [historicalStaffPerformance, isIndividualDashboard, selectedAccountant]);
+
+  const summaryTarget = useMemo(() => {
+    if (isIndividualDashboard && selectedAccountant) {
+      return summaryStaffPerformance[0]?.target || 0;
+    }
+
+    return summaryStaffPerformance.reduce((sum, staff) => sum + (staff.target || 0), 0);
+  }, [isIndividualDashboard, selectedAccountant, summaryStaffPerformance]);
+
   const performanceSummary = usePerformanceSummary({
-    staffPerformance: historicalStaffPerformance,
+    staffPerformance: summaryStaffPerformance,
     workingDays: teamWorkingDays,
     workingDaysUpToToday: workingDaysElapsedToPlayback,
     selectedMonth,
     selectedYear,
     dashboardMode: isIndividualDashboard ? "individual" : "team",
-    currentStaff: isIndividualDashboard ? { staff_id: selectedAccountant.staff_id } : null,
-    teamTarget: teamTarget,
+    currentStaff: isIndividualDashboard && selectedAccountant ? { staff_id: selectedAccountant.staff_id } : null,
+    teamTarget: summaryTarget,
   });
 
   const variance = performanceSummary.varianceRaw;
@@ -409,7 +427,7 @@ export const Dashboard: React.FC = () => {
 
       <div className="mb-6">
         <StaffPerformanceBar
-          staffPerformance={historicalStaffPerformance}
+          staffPerformance={summaryStaffPerformance}
           teamTarget={performanceSummary.target}
           workingDaysUpToToday={workingDaysElapsedToPlayback}
           workingDays={teamWorkingDays}
