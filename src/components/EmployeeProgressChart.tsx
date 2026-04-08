@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { loadTargets } from '../utils/loadTargets';
 import type { FinancialYear } from '../utils/financialYear';
 
@@ -28,6 +28,22 @@ interface EmployeeProgressChartProps {
   playbackDay?: number;
 }
 
+interface AccountantBreakdown {
+  staff_id: number;
+  name: string;
+  delivered: number;
+  target: number;
+}
+
+interface TooltipState {
+  visible: boolean;
+  x: number;
+  y: number;
+  barIndex: number;
+  label: string;
+  breakdown: AccountantBreakdown[];
+}
+
 const VIEWBOX_HEIGHT = 300;
 const BASELINE_Y = 250;
 const TOP_MARGIN = 20;
@@ -51,7 +67,20 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
   const [staffTargets, setStaffTargets] = useState<Record<number, number>>({});
   const [teamTargets, setTeamTargets] = useState<Record<number, number>>({});
+  // perStaffServiceTargets: staff_id -> service_id -> target
+  const [perStaffServiceTargets, setPerStaffServiceTargets] = useState<Record<number, Record<number, number>>>({});
   const [loading, setLoading] = useState(false);
+  const [tooltip, setTooltip] = useState<TooltipState>({
+    visible: false,
+    x: 0,
+    y: 0,
+    barIndex: -1,
+    label: '',
+    breakdown: [],
+  });
+
+  const svgRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const isAllTeams = selectedTeamId === "all";
   const isTeamView = selectedTeamId === "team-view";
@@ -70,18 +99,22 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
           setTeamTargets(nextTeamTargets);
           setStaffTargets({});
           setServiceTargets({});
+          setPerStaffServiceTargets({});
           return;
         }
 
         if (isTeamView) {
           const nextStaffTargets: Record<number, number> = {};
+          const nextPerStaffServiceTargets: Record<number, Record<number, number>> = {};
           for (const staff of staffPerformance) {
-            const { totalTarget } = await loadTargets(month, financialYear, staff.staff_id);
+            const { totalTarget, perService } = await loadTargets(month, financialYear, staff.staff_id);
             nextStaffTargets[staff.staff_id] = totalTarget;
+            nextPerStaffServiceTargets[staff.staff_id] = perService;
           }
           setStaffTargets(nextStaffTargets);
           setTeamTargets({});
           setServiceTargets({});
+          setPerStaffServiceTargets(nextPerStaffServiceTargets);
           return;
         }
 
@@ -89,8 +122,21 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
         if (!Number.isNaN(selectedStaffId) && selectedStaffId > 0) {
           const { perService } = await loadTargets(month, financialYear, selectedStaffId);
           setServiceTargets(perService);
+          setPerStaffServiceTargets({ [selectedStaffId]: perService });
         } else {
-          setServiceTargets({});
+          // team-wide: load per-staff service targets for tooltip
+          const nextPerStaffServiceTargets: Record<number, Record<number, number>> = {};
+          const nextServiceTargets: Record<number, number> = {};
+          for (const staff of staffPerformance) {
+            const { perService } = await loadTargets(month, financialYear, staff.staff_id);
+            nextPerStaffServiceTargets[staff.staff_id] = perService;
+            Object.entries(perService).forEach(([sid, val]) => {
+              const numSid = Number(sid);
+              nextServiceTargets[numSid] = (nextServiceTargets[numSid] || 0) + val;
+            });
+          }
+          setServiceTargets(nextServiceTargets);
+          setPerStaffServiceTargets(nextPerStaffServiceTargets);
         }
         setStaffTargets({});
         setTeamTargets({});
@@ -98,6 +144,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
         setServiceTargets({});
         setStaffTargets({});
         setTeamTargets({});
+        setPerStaffServiceTargets({});
       } finally {
         setLoading(false);
       }
@@ -125,6 +172,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
             target,
             expectedByToday,
             runRatePercent,
+            breakdown: [] as AccountantBreakdown[],
           };
         })
         .filter((item) => item.delivered > 0 || item.target > 0)
@@ -141,6 +189,18 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
           const runRatePercent =
             expectedByToday > 0 ? (delivered / expectedByToday) * 100 : 0;
 
+          // For team view, each bar is one accountant — breakdown is per service
+          const breakdown: AccountantBreakdown[] = services.map((service) => {
+            const serviceDelivered = staff.services[service.service_name] || 0;
+            const serviceTarget = perStaffServiceTargets[staff.staff_id]?.[service.service_id] || 0;
+            return {
+              staff_id: service.service_id,
+              name: service.service_name,
+              delivered: serviceDelivered,
+              target: serviceTarget,
+            };
+          }).filter((b) => b.delivered > 0 || b.target > 0);
+
           return {
             id: staff.staff_id,
             label: staff.name,
@@ -148,12 +208,14 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
             target,
             expectedByToday,
             runRatePercent,
+            breakdown,
           };
         })
         .filter((item) => item.delivered > 0 || item.target > 0)
         .sort((a, b) => b.runRatePercent - a.runRatePercent);
     }
 
+    // Service view: each bar is a service, breakdown is per accountant
     return services.map((service) => {
       const delivered = staffPerformance.reduce(
         (sum, s) => sum + (s.services[service.service_name] || 0),
@@ -163,6 +225,17 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
       const expectedByToday = workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
       const runRatePercent = expectedByToday > 0 ? (delivered / expectedByToday) * 100 : 0;
 
+      const breakdown: AccountantBreakdown[] = staffPerformance.map((staff) => {
+        const staffDelivered = staff.services[service.service_name] || 0;
+        const staffTarget = perStaffServiceTargets[staff.staff_id]?.[service.service_id] || 0;
+        return {
+          staff_id: staff.staff_id,
+          name: staff.name,
+          delivered: staffDelivered,
+          target: staffTarget,
+        };
+      }).filter((b) => b.delivered > 0 || b.target > 0);
+
       return {
         id: service.service_id,
         label: service.service_name,
@@ -170,6 +243,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
         target,
         expectedByToday,
         runRatePercent,
+        breakdown,
       };
     });
   }, [
@@ -181,6 +255,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
     serviceTargets,
     staffTargets,
     teamTargets,
+    perStaffServiceTargets,
     workingDays,
     workingDaysUpToToday,
   ]);
@@ -235,8 +310,41 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
     if (viewMode === "percent") {
       return `${Math.round(value)}%`;
     }
-
     return `${Math.round(value)}`;
+  };
+
+  const handleBarMouseEnter = (
+    e: React.MouseEvent<SVGRectElement>,
+    index: number,
+    barTopY: number,
+    barCenterX: number
+  ) => {
+    if (!svgRef.current || !containerRef.current) return;
+
+    const svgRect = svgRef.current.getBoundingClientRect();
+    const containerRect = containerRef.current.getBoundingClientRect();
+
+    const scaleX = svgRect.width / CHART_WIDTH;
+    const scaleY = svgRect.height / VIEWBOX_HEIGHT;
+
+    const pixelX = svgRect.left - containerRect.left + barCenterX * scaleX;
+    const pixelY = svgRect.top - containerRect.top + barTopY * scaleY;
+
+    const data = chartData[index];
+    if (!data) return;
+
+    setTooltip({
+      visible: true,
+      x: pixelX,
+      y: pixelY,
+      barIndex: index,
+      label: data.label,
+      breakdown: data.breakdown,
+    });
+  };
+
+  const handleBarMouseLeave = () => {
+    setTooltip((prev) => ({ ...prev, visible: false }));
   };
 
   if (loading) {
@@ -249,7 +357,10 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[418px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
+    <div
+      ref={containerRef}
+      className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[418px] flex flex-col tile-brand transition-all duration-300 ease-in-out relative"
+    >
       <div className="tile-header px-4 py-1.5">
         {chartTitle}
         {roundedPlaybackDay ? <span className="ml-2 text-white/80">Day {roundedPlaybackDay}</span> : null}
@@ -257,9 +368,11 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
 
       <div className="flex-1 flex flex-col justify-end p-3 pb-2">
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${CHART_WIDTH} ${VIEWBOX_HEIGHT}`}
           preserveAspectRatio="none"
           className="w-full h-full"
+          style={{ overflow: 'visible' }}
         >
           {axisTicks.map((tick) => (
             <g key={tick.value}>
@@ -303,6 +416,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
             const clampedDisplay = Math.max(0, Math.min(displayValue, yMax));
             const barHeight = (clampedDisplay / Math.max(yMax, 1)) * BAR_AREA_HEIGHT;
             const x = FIXED_LEFT_MARGIN + i * barSlotWidth + barSlotWidth / 2;
+            const barTopY = BASELINE_Y - barHeight;
             const barColor = getBarColor(data.runRatePercent);
             const displayLabel = formatAxisLabel(data.label, axisLabelCharLimit);
 
@@ -310,16 +424,19 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
               <g key={data.id}>
                 <rect
                   x={x - barWidth / 2}
-                  y={BASELINE_Y - barHeight}
+                  y={barTopY}
                   width={barWidth}
                   height={barHeight}
                   fill={barColor}
                   rx="4"
+                  style={{ cursor: 'pointer' }}
+                  onMouseEnter={(e) => handleBarMouseEnter(e, i, barTopY, x)}
+                  onMouseLeave={handleBarMouseLeave}
                 />
 
                 <text
                   x={x}
-                  y={BASELINE_Y - barHeight - 8}
+                  y={barTopY - 8}
                   textAnchor="middle"
                   className="text-[12px] font-bold fill-gray-700 dark:fill-gray-300"
                 >
@@ -353,6 +470,88 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
           )}
         </svg>
       </div>
+
+      {/* Tooltip */}
+      {tooltip.visible && tooltip.breakdown.length > 0 && (
+        <div
+          className="absolute z-50 pointer-events-none"
+          style={{
+            left: Math.min(
+              Math.max(tooltip.x, 130),
+              containerRef.current ? containerRef.current.offsetWidth - 130 : tooltip.x
+            ),
+            top: tooltip.y - 8,
+            transform: 'translate(-50%, -100%)',
+          }}
+        >
+          <div
+            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden"
+            style={{ minWidth: '220px', maxWidth: '280px' }}
+          >
+            {/* Header */}
+            <div className="bg-[#001B47] px-3 py-2">
+              <span className="text-white text-xs font-bold uppercase tracking-wide">
+                {tooltip.label} — {isTeamView ? 'Service Split' : 'Accountant Split'}
+              </span>
+            </div>
+
+            {/* Column headers */}
+            <div className="px-3 py-1 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">
+                {isTeamView ? 'Service' : 'Accountant'}
+              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Delivered</span>
+                <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 w-10 text-right">Target</span>
+              </div>
+            </div>
+
+            {/* Rows */}
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              {tooltip.breakdown.map((entry) => {
+                const pct = entry.target > 0 ? Math.round((entry.delivered / entry.target) * 100) : 0;
+                const pctColor =
+                  pct >= 90 ? '#008A00' : pct >= 75 ? '#FF8A2A' : '#FF3B30';
+
+                return (
+                  <div key={entry.staff_id} className="px-3 py-2 flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate flex-1">
+                      {entry.name}
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs font-bold text-[#001B47] dark:text-blue-300">
+                        {entry.delivered}
+                      </span>
+                      <span className="text-xs text-gray-400">/</span>
+                      <span className="text-xs text-gray-600 dark:text-gray-400 w-10 text-right">
+                        {entry.target}
+                      </span>
+                      {entry.target > 0 && (
+                        <span
+                          className="text-[10px] font-bold ml-1 w-8 text-right"
+                          style={{ color: pctColor }}
+                        >
+                          {pct}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            <div className="bg-gray-50 dark:bg-gray-800/60 px-3 py-1.5 border-t border-gray-100 dark:border-gray-700">
+              <span className="text-[10px] text-gray-400">Delivered / Target</span>
+            </div>
+          </div>
+
+          {/* Arrow */}
+          <div className="flex justify-center">
+            <div className="w-3 h-3 bg-white dark:bg-gray-900 border-r border-b border-gray-200 dark:border-gray-700 rotate-45 -mt-1.5" />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
