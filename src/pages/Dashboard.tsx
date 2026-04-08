@@ -402,11 +402,14 @@ export const Dashboard: React.FC = () => {
     Math.min(maxActualDay, Math.round(playbackController.animationProgress))
   );
 
+  // Build run rate activities: no bagels, scoped to individual if needed
+  // These are used for the per-day breakdown in the chart bars
   const runRateActivities = useMemo(() => {
     const bagelService = services.find((s) => s.service_name === "Bagel Days");
-    if (!bagelService) return filteredActivities;
 
-    const noBagels = filteredActivities.filter((a) => a.service_id !== bagelService.service_id);
+    const noBagels = filteredActivities.filter(
+      (a) => !bagelService || a.service_id !== bagelService.service_id
+    );
 
     if (isIndividualDashboard && selectedAccountant) {
       return noBagels.filter((a) => a.staff_id === selectedAccountant.staff_id);
@@ -522,6 +525,7 @@ export const Dashboard: React.FC = () => {
             target={performanceSummary.target}
             viewMode={viewMode}
             playbackDay={playbackController.animationProgress}
+            totalDelivered={performanceSummary.delivered}
           />
         </div>
       </div>

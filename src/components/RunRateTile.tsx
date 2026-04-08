@@ -14,6 +14,7 @@ interface RunRateTileProps {
   target: number;
   viewMode?: "percent" | "numbers";
   playbackDay?: number;
+  totalDelivered?: number;
 }
 
 const VIEWBOX_HEIGHT = 300;
@@ -32,6 +33,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
   target,
   viewMode = "numbers",
   playbackDay,
+  totalDelivered,
 }) => {
   const selectedYear = getMonthYearFromFinancialYear(month, financialYear);
   const daysInSelectedMonth = new Date(selectedYear, month, 0).getDate();
@@ -106,10 +108,37 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             calculateExpectedRaw(target, workingDays, index + 1)
           );
 
+    // If totalDelivered is provided (from parent), use it to scale the last bar
+    // so the final variance matches the Global Progress bar exactly.
+    // We scale all actual values proportionally so the chart shape is preserved.
+    let finalActualCumulative = actualCumulative;
+    if (totalDelivered !== undefined && actualRunning > 0) {
+      const scaleFactor = totalDelivered / actualRunning;
+      finalActualCumulative = actualCumulative.map((v) => v * scaleFactor);
+
+      // Recompute variance by day using scaled actuals
+      let wdElapsed = 0;
+      for (let d = 1; d <= daysInSelectedMonth; d++) {
+        if (workingDaysList.includes(d)) {
+          wdElapsed += 1;
+        }
+        if (d <= actualVisibleDay) {
+          const scaledActual = finalActualCumulative[d - 1];
+          const runRate = calculateRunRateDelta(scaledActual, target, workingDays, wdElapsed);
+          roundedVarianceByDay[d - 1] = runRate.variance;
+        }
+      }
+    } else if (totalDelivered !== undefined && actualRunning === 0 && totalDelivered > 0) {
+      // Edge case: no daily breakdown but we have a total
+      finalActualCumulative = actualCumulative.map((_, i) =>
+        i < actualVisibleDay ? totalDelivered : 0
+      );
+    }
+
     const barValues =
       viewMode === "percent"
-        ? actualCumulative.map((value) => (target > 0 ? (value / target) * 100 : 0))
-        : actualCumulative;
+        ? finalActualCumulative.map((value) => (target > 0 ? (value / target) * 100 : 0))
+        : finalActualCumulative;
 
     const expectedValues =
       viewMode === "percent"
@@ -117,13 +146,13 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
         : scaledExpected;
 
     return {
-      actualCumulative,
+      actualCumulative: finalActualCumulative,
       scaledExpected,
       barValues,
       expectedValues,
       roundedVarianceByDay,
     };
-  }, [actualVisibleDay, dailyTarget, daysInSelectedMonth, deliveredByDay, target, viewMode, workingDaysList, workingDays]);
+  }, [actualVisibleDay, dailyTarget, daysInSelectedMonth, deliveredByDay, target, viewMode, workingDaysList, workingDays, totalDelivered]);
 
   const safeMaxValue = useMemo(() => {
     const values =
