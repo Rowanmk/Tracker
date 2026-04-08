@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { loadTargets } from '../utils/loadTargets';
 import { useAuth } from '../context/AuthContext';
 import type { FinancialYear } from '../utils/financialYear';
@@ -26,6 +26,13 @@ interface TeamProgressTileProps {
   financialYear: FinancialYear;
 }
 
+interface AccountantBreakdown {
+  staff_id: number;
+  name: string;
+  delivered: number;
+  target: number;
+}
+
 interface ProgressRow {
   id: string;
   label: string;
@@ -36,13 +43,19 @@ interface ProgressRow {
   difference: number;
   barColor: string;
   expectedSoFar: number;
+  accountantBreakdown: AccountantBreakdown[];
+}
+
+interface TooltipState {
+  visible: boolean;
+  x: number;
+  y: number;
+  rowId: string;
 }
 
 const getRunRateBarColor = (achievedPercent: number, elapsedWorkingDayPercent: number) => {
   if (elapsedWorkingDayPercent <= 0) return '#008A00';
-
   const paceRatio = (achievedPercent / elapsedWorkingDayPercent) * 100;
-
   if (paceRatio >= 100) return '#008A00';
   if (paceRatio >= 80) return '#FF8A2A';
   return '#FF3B30';
@@ -59,7 +72,10 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
   const { selectedTeamId } = useAuth();
   const [selectedTarget, setSelectedTarget] = useState(0);
   const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
+  const [perStaffServiceTargets, setPerStaffServiceTargets] = useState<Record<number, Record<number, number>>>({});
   const [loading, setLoading] = useState(false);
+  const [tooltip, setTooltip] = useState<TooltipState>({ visible: false, x: 0, y: 0, rowId: '' });
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchSelectedTargets = async () => {
@@ -67,11 +83,13 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
       try {
         let totalTarget = 0;
         const nextServiceTargets: Record<number, number> = {};
+        const nextPerStaffServiceTargets: Record<number, Record<number, number>> = {};
 
         if (selectedTeamId === 'team-view' || selectedTeamId === 'all' || !selectedTeamId) {
           for (const staffMember of staffPerformance) {
             const { totalTarget: staffTarget, perService } = await loadTargets(month, financialYear, staffMember.staff_id);
             totalTarget += staffTarget;
+            nextPerStaffServiceTargets[staffMember.staff_id] = perService;
 
             Object.entries(perService).forEach(([serviceId, value]) => {
               const numericServiceId = Number(serviceId);
@@ -83,6 +101,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
           if (!Number.isNaN(selectedStaffId)) {
             const { totalTarget: staffTarget, perService } = await loadTargets(month, financialYear, selectedStaffId);
             totalTarget = staffTarget;
+            nextPerStaffServiceTargets[selectedStaffId] = perService;
 
             Object.entries(perService).forEach(([serviceId, value]) => {
               nextServiceTargets[Number(serviceId)] = value;
@@ -92,9 +111,11 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
 
         setSelectedTarget(totalTarget);
         setServiceTargets(nextServiceTargets);
+        setPerStaffServiceTargets(nextPerStaffServiceTargets);
       } catch {
         setSelectedTarget(0);
         setServiceTargets({});
+        setPerStaffServiceTargets({});
       } finally {
         setLoading(false);
       }
@@ -120,6 +141,17 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
       const difference = calculateRunRateDelta(delivered, target, workingDays, workingDaysUpToToday).variance;
       const expectedPercent = target > 0 ? Math.min((expectedSoFar / target) * 100, 100) : 0;
 
+      const accountantBreakdown: AccountantBreakdown[] = staffPerformance.map((staff) => {
+        const staffDelivered = staff.services[service.service_name] || 0;
+        const staffTarget = perStaffServiceTargets[staff.staff_id]?.[service.service_id] || 0;
+        return {
+          staff_id: staff.staff_id,
+          name: staff.name,
+          delivered: staffDelivered,
+          target: staffTarget,
+        };
+      }).filter((b) => b.delivered > 0 || b.target > 0);
+
       return {
         id: `service-${service.service_id}`,
         label: service.service_name,
@@ -130,6 +162,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
         difference,
         barColor: getRunRateBarColor(achievedPercent, todayExpectedPercentage),
         expectedSoFar,
+        accountantBreakdown,
       };
     });
 
@@ -139,6 +172,16 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     const totalExpectedSoFar = calculateExpectedRaw(totalTarget, workingDays, workingDaysUpToToday);
     const totalDifference = calculateRunRateDelta(totalDelivered, totalTarget, workingDays, workingDaysUpToToday).variance;
     const totalExpectedPercent = totalTarget > 0 ? Math.min((totalExpectedSoFar / totalTarget) * 100, 100) : 0;
+
+    const totalAccountantBreakdown: AccountantBreakdown[] = staffPerformance.map((staff) => {
+      const staffTotalTarget = Object.values(perStaffServiceTargets[staff.staff_id] || {}).reduce((s, v) => s + v, 0);
+      return {
+        staff_id: staff.staff_id,
+        name: staff.name,
+        delivered: staff.total,
+        target: staffTotalTarget,
+      };
+    }).filter((b) => b.delivered > 0 || b.target > 0);
 
     return [
       ...baseRows,
@@ -152,17 +195,37 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
         difference: totalDifference,
         barColor: getRunRateBarColor(totalAchievedPercent, todayExpectedPercentage),
         expectedSoFar: totalExpectedSoFar,
+        accountantBreakdown: totalAccountantBreakdown,
       },
     ];
   }, [
     services,
     staffPerformance,
     serviceTargets,
+    perStaffServiceTargets,
     workingDays,
     workingDaysUpToToday,
     selectedTarget,
     todayExpectedPercentage,
   ]);
+
+  const activeRow = tooltip.visible ? progressRows.find((r) => r.id === tooltip.rowId) : null;
+
+  const handleBarMouseEnter = (e: React.MouseEvent<HTMLDivElement>, rowId: string) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const barRect = e.currentTarget.getBoundingClientRect();
+    setTooltip({
+      visible: true,
+      x: barRect.left - rect.left + barRect.width / 2,
+      y: barRect.top - rect.top,
+      rowId,
+    });
+  };
+
+  const handleBarMouseLeave = () => {
+    setTooltip((prev) => ({ ...prev, visible: false }));
+  };
 
   if (loading) {
     return (
@@ -176,7 +239,10 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[418px] flex flex-col tile-brand transition-all duration-300 ease-in-out">
+    <div
+      ref={containerRef}
+      className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[418px] flex flex-col tile-brand transition-all duration-300 ease-in-out relative"
+    >
       <div className="tile-header px-4 py-1.5">
         Accountant Progress
       </div>
@@ -202,7 +268,11 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
 
               <div className="relative flex items-center">
                 <div className="flex-1 relative">
-                  <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-7 overflow-hidden shadow-inner">
+                  <div
+                    className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-7 overflow-hidden shadow-inner cursor-pointer"
+                    onMouseEnter={(e) => handleBarMouseEnter(e, row.id)}
+                    onMouseLeave={handleBarMouseLeave}
+                  >
                     <div
                       className="h-7 rounded-full shadow-sm transition-[width] duration-[800ms] ease-in-out"
                       style={{
@@ -240,6 +310,73 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
           );
         })}
       </div>
+
+      {/* Tooltip */}
+      {tooltip.visible && activeRow && activeRow.accountantBreakdown.length > 0 && (
+        <div
+          className="absolute z-50 pointer-events-none"
+          style={{
+            left: Math.min(tooltip.x, 260),
+            top: tooltip.y - 8,
+            transform: 'translate(-50%, -100%)',
+          }}
+        >
+          <div
+            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden"
+            style={{ minWidth: '220px', maxWidth: '280px' }}
+          >
+            {/* Header */}
+            <div className="bg-[#001B47] px-3 py-2">
+              <span className="text-white text-xs font-bold uppercase tracking-wide">
+                {activeRow.label} — Accountant Split
+              </span>
+            </div>
+
+            {/* Rows */}
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              {activeRow.accountantBreakdown.map((entry) => {
+                const pct = entry.target > 0 ? Math.round((entry.delivered / entry.target) * 100) : 0;
+                return (
+                  <div key={entry.staff_id} className="px-3 py-2 flex items-center justify-between gap-3">
+                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate flex-1">
+                      {entry.name}
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-xs font-bold text-[#001B47] dark:text-blue-300">
+                        {entry.delivered}
+                      </span>
+                      <span className="text-xs text-gray-400">/</span>
+                      <span className="text-xs text-gray-600 dark:text-gray-400">
+                        {entry.target}
+                      </span>
+                      <span
+                        className="text-[10px] font-bold ml-1"
+                        style={{
+                          color: pct >= 90 ? '#008A00' : pct >= 75 ? '#FF8A2A' : '#FF3B30',
+                        }}
+                      >
+                        {pct}%
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer hint */}
+            <div className="bg-gray-50 dark:bg-gray-800/60 px-3 py-1.5 border-t border-gray-100 dark:border-gray-700">
+              <span className="text-[10px] text-gray-400">Delivered / Target</span>
+            </div>
+          </div>
+
+          {/* Arrow */}
+          <div className="flex justify-center">
+            <div
+              className="w-3 h-3 bg-white dark:bg-gray-900 border-r border-b border-gray-200 dark:border-gray-700 rotate-45 -mt-1.5"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
