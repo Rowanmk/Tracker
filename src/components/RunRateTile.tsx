@@ -47,9 +47,6 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     return result;
   }, [daysInMonth, month, selectedYear]);
 
-  // Daily target per working day
-  const dailyTarget = workingDays > 0 ? target / workingDays : 0;
-
   // Sum delivered_count per calendar day from the already-filtered dailyActivities prop
   const deliveredByDay = useMemo(() => {
     const totals: Record<number, number> = {};
@@ -65,23 +62,26 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
 
   // Build per-day series
   const series = useMemo(() => {
-    // Cumulative actual delivered up to each calendar day
+    // Raw cumulative actual delivered up to each calendar day
     let actualRunning = 0;
-    const actualCumulative: number[] = [];
+    const actualCumulativeRaw: number[] = [];
     for (let d = 1; d <= daysInMonth; d++) {
       actualRunning += deliveredByDay[d] || 0;
-      actualCumulative.push(actualRunning);
+      actualCumulativeRaw.push(actualRunning);
     }
 
-    // Scale actual so the final value matches totalDelivered exactly (eliminates rounding drift)
-    let finalActualCumulative = actualCumulative;
-    if (totalDelivered !== undefined && actualRunning > 0) {
-      const scaleFactor = totalDelivered / actualRunning;
-      finalActualCumulative = actualCumulative.map((v) => v * scaleFactor);
-    }
+    // The final raw sum from dailyActivities
+    const finalRawSum = actualRunning;
+
+    // Scale factor: if totalDelivered is provided, scale so the final bar matches exactly
+    const scaleFactor =
+      totalDelivered !== undefined && finalRawSum > 0
+        ? totalDelivered / finalRawSum
+        : 1;
+
+    const actualCumulative = actualCumulativeRaw.map((v) => v * scaleFactor);
 
     // Cumulative expected target line: advances only on working days
-    // Scaled so it ends exactly at `target`
     let workingDaysElapsed = 0;
     const expectedCumulative: number[] = [];
     for (let d = 1; d <= daysInMonth; d++) {
@@ -91,13 +91,15 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
       expectedCumulative.push(workingDays > 0 ? (target / workingDays) * workingDaysElapsed : 0);
     }
 
-    // Variance above each bar: cumulative actual − cumulative expected at that day
-    const varianceByDay: number[] = finalActualCumulative.map((actual, idx) => {
+    // Variance above each bar: use the SAME rounding logic as the Global Progress bar
+    // i.e. Math.round(cumulativeActual) - Math.round(cumulativeExpected)
+    // This ensures the final bar's label always matches the Global Progress bar exactly.
+    const varianceByDay: number[] = actualCumulative.map((actual, idx) => {
       const expected = expectedCumulative[idx];
       return Math.round(actual) - Math.round(expected);
     });
 
-    return { actualCumulative: finalActualCumulative, expectedCumulative, varianceByDay };
+    return { actualCumulative, expectedCumulative, varianceByDay };
   }, [
     deliveredByDay,
     daysInMonth,
@@ -136,6 +138,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
       series.expectedCumulative
         .map((value, idx) => `${getX(idx + 1)},${toY(value)}`)
         .join(' '),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [series.expectedCumulative, yMax, daysInMonth]
   );
 
