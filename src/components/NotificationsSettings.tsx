@@ -14,8 +14,8 @@ interface NotificationTemplate {
   day_of_week: number | null;
   send_time: string;
   timezone: string;
-  created_at: string;
-  updated_at: string;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 interface DeliveryLog {
@@ -23,9 +23,9 @@ interface DeliveryLog {
   template_name: string | null;
   channel: string;
   recipient_name: string | null;
-  status: 'sent' | 'failed' | 'test';
+  status: string;
   error_message: string | null;
-  sent_at: string;
+  sent_at: string | null;
 }
 
 interface GlobalSettings {
@@ -52,7 +52,7 @@ const PLACEHOLDERS = [
   { key: '{{recipient_role}}', desc: 'Role of the recipient' },
   { key: '{{organisation_name}}', desc: 'Organisation name' },
   { key: '{{app_link}}', desc: 'Link back to the app' },
-  { key: '{{current_date}}', desc: 'Today\'s date' },
+  { key: '{{current_date}}', desc: "Today's date" },
   { key: '{{week_commencing_date}}', desc: 'Start of the current week' },
   { key: '{{period_start_date}}', desc: 'Start of the current period' },
   { key: '{{period_end_date}}', desc: 'End of the current period' },
@@ -70,7 +70,21 @@ const PLACEHOLDERS = [
   { key: '{{required_weekly_delivery_rate}}', desc: 'Required weekly rate to hit target' },
 ];
 
-const emptyTemplate = (): Omit<NotificationTemplate, 'id' | 'created_at' | 'updated_at'> => ({
+type TemplateFormData = {
+  name: string;
+  description: string;
+  channel: 'email' | 'teams';
+  is_enabled: boolean;
+  subject: string;
+  body: string;
+  recipient_role: string;
+  frequency: 'daily' | 'weekly' | 'monthly';
+  day_of_week: number | null;
+  send_time: string;
+  timezone: string;
+};
+
+const emptyTemplate = (): TemplateFormData => ({
   name: '',
   description: '',
   channel: 'email',
@@ -94,14 +108,14 @@ export const NotificationsSettings: React.FC = () => {
   const [activeView, setActiveView] = useState<'templates' | 'logs' | 'placeholders'>('templates');
   const [editingTemplate, setEditingTemplate] = useState<NotificationTemplate | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [formData, setFormData] = useState(emptyTemplate());
+  const [formData, setFormData] = useState<TemplateFormData>(emptyTemplate());
   const [isSaving, setIsSaving] = useState(false);
   const [showPlaceholders, setShowPlaceholders] = useState(false);
   const [testSending, setTestSending] = useState<string | null>(null);
 
   const setTimedFeedback = (type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
-    window.setTimeout(() => setFeedback(null), 5000);
+    window.setTimeout(() => setFeedback(null), 6000);
   };
 
   const fetchData = useCallback(async () => {
@@ -109,15 +123,29 @@ export const NotificationsSettings: React.FC = () => {
     try {
       const [templatesRes, logsRes, settingsRes] = await Promise.all([
         supabase.from('notification_templates').select('*').order('created_at'),
-        supabase.from('notification_delivery_logs').select('*').order('sent_at', { ascending: false }).limit(100),
+        supabase
+          .from('notification_delivery_logs')
+          .select('*')
+          .order('sent_at', { ascending: false })
+          .limit(100),
         supabase.from('notification_global_settings').select('*').limit(1).maybeSingle(),
       ]);
 
-      if (!templatesRes.error) setTemplates((templatesRes.data || []) as NotificationTemplate[]);
-      if (!logsRes.error) setLogs((logsRes.data || []) as DeliveryLog[]);
-      if (!settingsRes.error && settingsRes.data) setGlobalSettings(settingsRes.data as GlobalSettings);
-    } catch {
-      setTimedFeedback('error', 'Failed to load notification data');
+      if (templatesRes.error) {
+        setTimedFeedback('error', `Failed to load templates: ${templatesRes.error.message}`);
+      } else {
+        setTemplates((templatesRes.data || []) as NotificationTemplate[]);
+      }
+
+      if (!logsRes.error) {
+        setLogs((logsRes.data || []) as DeliveryLog[]);
+      }
+
+      if (!settingsRes.error && settingsRes.data) {
+        setGlobalSettings(settingsRes.data as GlobalSettings);
+      }
+    } catch (err) {
+      setTimedFeedback('error', `Failed to load notification data: ${String(err)}`);
     } finally {
       setLoading(false);
     }
@@ -136,9 +164,9 @@ export const NotificationsSettings: React.FC = () => {
       .eq('id', globalSettings.id);
 
     if (error) {
-      setTimedFeedback('error', 'Failed to update global pause setting');
+      setTimedFeedback('error', `Failed to update global pause: ${error.message}`);
     } else {
-      setGlobalSettings(prev => prev ? { ...prev, is_paused: newPaused } : prev);
+      setGlobalSettings(prev => (prev ? { ...prev, is_paused: newPaused } : prev));
       setTimedFeedback('success', newPaused ? 'All notifications paused' : 'Notifications resumed');
     }
   };
@@ -150,9 +178,11 @@ export const NotificationsSettings: React.FC = () => {
       .eq('id', template.id);
 
     if (error) {
-      setTimedFeedback('error', 'Failed to update template');
+      setTimedFeedback('error', `Failed to update template: ${error.message}`);
     } else {
-      setTemplates(prev => prev.map(t => t.id === template.id ? { ...t, is_enabled: !t.is_enabled } : t));
+      setTemplates(prev =>
+        prev.map(t => (t.id === template.id ? { ...t, is_enabled: !t.is_enabled } : t))
+      );
     }
   };
 
@@ -189,49 +219,74 @@ export const NotificationsSettings: React.FC = () => {
   };
 
   const handleSaveTemplate = async () => {
-    if (!formData.name.trim() || !formData.body.trim()) {
-      setTimedFeedback('error', 'Template name and body are required');
+    if (!formData.name.trim()) {
+      setTimedFeedback('error', 'Template name is required');
+      return;
+    }
+    if (!formData.body.trim()) {
+      setTimedFeedback('error', 'Message body is required');
+      return;
+    }
+    if (formData.channel === 'email' && !formData.subject?.trim()) {
+      setTimedFeedback('error', 'Email subject is required for email templates');
       return;
     }
 
     setIsSaving(true);
     try {
-      const payload = {
+      const now = new Date().toISOString();
+
+      const basePayload = {
         name: formData.name.trim(),
-        description: formData.description?.trim() || null,
+        description: formData.description.trim() || null,
         channel: formData.channel,
         is_enabled: formData.is_enabled,
-        subject: formData.channel === 'email' ? (formData.subject?.trim() || null) : null,
+        subject: formData.channel === 'email' ? (formData.subject.trim() || null) : null,
         body: formData.body.trim(),
         recipient_role: formData.recipient_role,
         frequency: formData.frequency,
         day_of_week: formData.frequency === 'weekly' ? formData.day_of_week : null,
         send_time: formData.send_time,
         timezone: formData.timezone,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       };
 
       if (editingTemplate) {
         const { error } = await supabase
           .from('notification_templates')
-          .update(payload)
+          .update(basePayload)
           .eq('id', editingTemplate.id);
 
-        if (error) throw error;
+        if (error) {
+          setTimedFeedback(
+            'error',
+            `Failed to update template: ${error.message}${error.code === '42501' ? ' — check that Row Level Security policies allow updates on notification_templates.' : ''}`
+          );
+          return;
+        }
         setTimedFeedback('success', 'Template updated successfully');
       } else {
-        const { error } = await supabase
-          .from('notification_templates')
-          .insert({ ...payload, created_at: new Date().toISOString() });
+        const insertPayload = {
+          ...basePayload,
+          created_at: now,
+        };
 
-        if (error) throw error;
+        const { error } = await supabase.from('notification_templates').insert(insertPayload);
+
+        if (error) {
+          setTimedFeedback(
+            'error',
+            `Failed to create template: ${error.message}${error.code === '42501' ? ' — check that Row Level Security policies allow inserts on notification_templates. Run the migration SQL in your Supabase dashboard.' : ''}`
+          );
+          return;
+        }
         setTimedFeedback('success', 'Template created successfully');
       }
 
       await fetchData();
       handleCancelEdit();
-    } catch {
-      setTimedFeedback('error', 'Failed to save template');
+    } catch (err) {
+      setTimedFeedback('error', `Unexpected error saving template: ${String(err)}`);
     } finally {
       setIsSaving(false);
     }
@@ -246,7 +301,7 @@ export const NotificationsSettings: React.FC = () => {
       .eq('id', template.id);
 
     if (error) {
-      setTimedFeedback('error', 'Failed to delete template');
+      setTimedFeedback('error', `Failed to delete template: ${error.message}`);
     } else {
       setTemplates(prev => prev.filter(t => t.id !== template.id));
       setTimedFeedback('success', 'Template deleted');
@@ -257,23 +312,27 @@ export const NotificationsSettings: React.FC = () => {
   const handleTestSend = async (template: NotificationTemplate) => {
     setTestSending(template.id);
     try {
-      const { error } = await supabase
-        .from('notification_delivery_logs')
-        .insert({
-          template_id: template.id,
-          template_name: template.name,
-          channel: template.channel,
-          recipient_name: 'Test Send',
-          status: 'test',
-          error_message: null,
-          sent_at: new Date().toISOString(),
-        });
+      const { error } = await supabase.from('notification_delivery_logs').insert({
+        template_id: template.id,
+        template_name: template.name,
+        channel: template.channel,
+        recipient_name: 'Test Send',
+        status: 'test',
+        error_message: null,
+        sent_at: new Date().toISOString(),
+      });
 
-      if (error) throw error;
-      setTimedFeedback('success', `Test send logged for "${template.name}" (${CHANNEL_LABELS[template.channel]}). Configure your channel integration to enable actual delivery.`);
-      await fetchData();
-    } catch {
-      setTimedFeedback('error', 'Failed to log test send');
+      if (error) {
+        setTimedFeedback('error', `Failed to log test send: ${error.message}`);
+      } else {
+        setTimedFeedback(
+          'success',
+          `Test send logged for "${template.name}" (${CHANNEL_LABELS[template.channel]}). Configure your channel integration to enable actual delivery.`
+        );
+        await fetchData();
+      }
+    } catch (err) {
+      setTimedFeedback('error', `Unexpected error: ${String(err)}`);
     } finally {
       setTestSending(null);
     }
@@ -314,20 +373,162 @@ export const NotificationsSettings: React.FC = () => {
                     : 'bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100'
                 }`}
               >
-                <span className={`w-2 h-2 rounded-full ${globalSettings.is_paused ? 'bg-amber-500' : 'bg-green-500'}`} />
-                {globalSettings.is_paused ? 'Notifications Paused — Click to Resume' : 'Notifications Active — Click to Pause All'}
+                <span
+                  className={`w-2 h-2 rounded-full ${globalSettings.is_paused ? 'bg-amber-500' : 'bg-green-500'}`}
+                />
+                {globalSettings.is_paused
+                  ? 'Notifications Paused — Click to Resume'
+                  : 'Notifications Active — Click to Pause All'}
               </button>
             )}
           </div>
         </div>
       </div>
 
+      {/* RLS guidance banner — shown when no global settings row exists (tables may not have policies) */}
+      {!globalSettings && !loading && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <p className="text-sm font-bold text-amber-800 mb-1">Database setup required</p>
+          <p className="text-sm text-amber-700">
+            The notification tables exist but the global settings row is missing, or Row Level Security
+            is blocking reads. Run the migration SQL below in your Supabase SQL editor to enable full
+            functionality.
+          </p>
+          <details className="mt-3">
+            <summary className="text-xs font-bold text-amber-800 cursor-pointer hover:underline">
+              Show required SQL migration
+            </summary>
+            <pre className="mt-2 p-3 bg-amber-100 rounded text-xs text-amber-900 overflow-x-auto whitespace-pre-wrap">
+{`-- Enable RLS and add permissive policies for notification tables
+-- Run this in your Supabase SQL editor
+
+ALTER TABLE public.notification_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notification_delivery_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notification_global_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notification_channel_config ENABLE ROW LEVEL SECURITY;
+
+-- Allow all operations for authenticated users (admin-only UI enforced in app)
+CREATE POLICY IF NOT EXISTS "Allow all for authenticated users"
+  ON public.notification_templates
+  FOR ALL
+  TO anon, authenticated
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY IF NOT EXISTS "Allow all for authenticated users"
+  ON public.notification_delivery_logs
+  FOR ALL
+  TO anon, authenticated
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY IF NOT EXISTS "Allow all for authenticated users"
+  ON public.notification_global_settings
+  FOR ALL
+  TO anon, authenticated
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY IF NOT EXISTS "Allow all for authenticated users"
+  ON public.notification_channel_config
+  FOR ALL
+  TO anon, authenticated
+  USING (true)
+  WITH CHECK (true);
+
+-- Seed global settings row if missing
+INSERT INTO public.notification_global_settings (id, is_paused, updated_at)
+VALUES (gen_random_uuid(), false, now())
+ON CONFLICT DO NOTHING;
+
+-- Seed default Weekly Service Delivery Summary templates if missing
+INSERT INTO public.notification_templates (
+  id, name, description, channel, is_enabled, subject, body,
+  recipient_role, frequency, day_of_week, send_time, timezone,
+  created_at, updated_at
+)
+SELECT
+  gen_random_uuid(),
+  'Weekly Service Delivery Summary (Email)',
+  'Sent every Monday morning to each Accountant summarising their service delivery performance.',
+  'email',
+  false,
+  'Your Weekly Service Delivery Summary — w/c {{week_commencing_date}}',
+  'Hi {{recipient_first_name}},
+
+Here is your service delivery summary for the week commencing {{week_commencing_date}}.
+
+MONTH TO DATE
+{{services}}
+
+THIS WEEK''S FOCUS
+{{services_this_week}}
+
+FORECAST
+{{service_forecast_status}}
+Delivery trend: {{delivery_trend}}
+Average weekly delivery rate: {{avg_weekly_delivery_rate}}
+Required weekly rate to stay on track: {{required_weekly_delivery_rate}}
+
+View your full dashboard: {{app_link}}
+
+— {{organisation_name}}',
+  'accountant',
+  'weekly',
+  1,
+  '08:00',
+  'Europe/London',
+  now(),
+  now()
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.notification_templates WHERE name = 'Weekly Service Delivery Summary (Email)'
+);
+
+INSERT INTO public.notification_templates (
+  id, name, description, channel, is_enabled, subject, body,
+  recipient_role, frequency, day_of_week, send_time, timezone,
+  created_at, updated_at
+)
+SELECT
+  gen_random_uuid(),
+  'Weekly Service Delivery Summary (Teams)',
+  'Sent every Monday morning via Microsoft Teams to each Accountant.',
+  'teams',
+  false,
+  null,
+  '👋 Hi {{recipient_first_name}}, here is your weekly delivery summary for w/c {{week_commencing_date}}.
+
+📊 **Month to date:** {{services}}
+
+🎯 **This week''s focus:** {{services_this_week}}
+
+📈 **Forecast:** {{service_forecast_status}}
+Trend: {{delivery_trend}} | Avg rate: {{avg_weekly_delivery_rate}} | Required: {{required_weekly_delivery_rate}}
+
+🔗 {{app_link}}',
+  'accountant',
+  'weekly',
+  1,
+  '08:00',
+  'Europe/London',
+  now(),
+  now()
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.notification_templates WHERE name = 'Weekly Service Delivery Summary (Teams)'
+);`}
+            </pre>
+          </details>
+        </div>
+      )}
+
       {feedback && (
-        <div className={`p-4 border rounded-md text-sm ${
-          feedback.type === 'success'
-            ? 'bg-green-50 border-green-200 text-green-800'
-            : 'bg-red-50 border-red-200 text-red-800'
-        }`}>
+        <div
+          className={`p-4 border rounded-md text-sm ${
+            feedback.type === 'success'
+              ? 'bg-green-50 border-green-200 text-green-800'
+              : 'bg-red-50 border-red-200 text-red-800'
+          }`}
+        >
           {feedback.message}
         </div>
       )}
@@ -345,7 +546,11 @@ export const NotificationsSettings: React.FC = () => {
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              {view === 'templates' ? 'Templates' : view === 'logs' ? 'Delivery Logs' : 'Placeholder Reference'}
+              {view === 'templates'
+                ? 'Templates'
+                : view === 'logs'
+                ? 'Delivery Logs'
+                : 'Placeholder Reference'}
             </button>
           ))}
         </nav>
@@ -378,7 +583,9 @@ export const NotificationsSettings: React.FC = () => {
                 {/* Basic Info */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Template Name *</label>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                      Template Name *
+                    </label>
                     <input
                       type="text"
                       value={formData.name}
@@ -388,10 +595,12 @@ export const NotificationsSettings: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                      Description
+                    </label>
                     <input
                       type="text"
-                      value={formData.description || ''}
+                      value={formData.description}
                       onChange={e => setFormData(p => ({ ...p, description: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#001B47]"
                       placeholder="Internal description / purpose"
@@ -402,10 +611,14 @@ export const NotificationsSettings: React.FC = () => {
                 {/* Channel & Recipients */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Delivery Channel</label>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                      Delivery Channel
+                    </label>
                     <select
                       value={formData.channel}
-                      onChange={e => setFormData(p => ({ ...p, channel: e.target.value as 'email' | 'teams' }))}
+                      onChange={e =>
+                        setFormData(p => ({ ...p, channel: e.target.value as 'email' | 'teams' }))
+                      }
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#001B47]"
                     >
                       <option value="email">Email</option>
@@ -413,7 +626,9 @@ export const NotificationsSettings: React.FC = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Recipient Role</label>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                      Recipient Role
+                    </label>
                     <select
                       value={formData.recipient_role}
                       onChange={e => setFormData(p => ({ ...p, recipient_role: e.target.value }))}
@@ -428,9 +643,15 @@ export const NotificationsSettings: React.FC = () => {
                     <label className="flex items-center gap-2 cursor-pointer">
                       <div
                         onClick={() => setFormData(p => ({ ...p, is_enabled: !p.is_enabled }))}
-                        className={`relative w-10 h-6 rounded-full transition-colors cursor-pointer ${formData.is_enabled ? 'bg-green-500' : 'bg-gray-300'}`}
+                        className={`relative w-10 h-6 rounded-full transition-colors cursor-pointer ${
+                          formData.is_enabled ? 'bg-green-500' : 'bg-gray-300'
+                        }`}
                       >
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${formData.is_enabled ? 'translate-x-5' : 'translate-x-1'}`} />
+                        <div
+                          className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                            formData.is_enabled ? 'translate-x-5' : 'translate-x-1'
+                          }`}
+                        />
                       </div>
                       <span className="text-sm font-medium text-gray-700">
                         {formData.is_enabled ? 'Enabled' : 'Disabled'}
@@ -441,13 +662,22 @@ export const NotificationsSettings: React.FC = () => {
 
                 {/* Scheduling */}
                 <div className="border border-gray-200 rounded-lg p-4 space-y-4">
-                  <h5 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Scheduling</h5>
+                  <h5 className="text-sm font-bold text-gray-700 uppercase tracking-wide">
+                    Scheduling
+                  </h5>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Frequency</label>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                        Frequency
+                      </label>
                       <select
                         value={formData.frequency}
-                        onChange={e => setFormData(p => ({ ...p, frequency: e.target.value as 'daily' | 'weekly' | 'monthly' }))}
+                        onChange={e =>
+                          setFormData(p => ({
+                            ...p,
+                            frequency: e.target.value as 'daily' | 'weekly' | 'monthly',
+                          }))
+                        }
                         className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#001B47]"
                       >
                         <option value="daily">Daily</option>
@@ -457,20 +687,28 @@ export const NotificationsSettings: React.FC = () => {
                     </div>
                     {formData.frequency === 'weekly' && (
                       <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Day of Week</label>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                          Day of Week
+                        </label>
                         <select
                           value={formData.day_of_week ?? 1}
-                          onChange={e => setFormData(p => ({ ...p, day_of_week: Number(e.target.value) }))}
+                          onChange={e =>
+                            setFormData(p => ({ ...p, day_of_week: Number(e.target.value) }))
+                          }
                           className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#001B47]"
                         >
                           {DAYS_OF_WEEK.map((day, idx) => (
-                            <option key={idx} value={idx}>{day}</option>
+                            <option key={idx} value={idx}>
+                              {day}
+                            </option>
                           ))}
                         </select>
                       </div>
                     )}
                     <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Send Time</label>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                        Send Time
+                      </label>
                       <input
                         type="time"
                         value={formData.send_time}
@@ -479,7 +717,9 @@ export const NotificationsSettings: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Timezone</label>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                        Timezone
+                      </label>
                       <select
                         value={formData.timezone}
                         onChange={e => setFormData(p => ({ ...p, timezone: e.target.value }))}
@@ -498,7 +738,9 @@ export const NotificationsSettings: React.FC = () => {
                 {formData.channel === 'email' && (
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-bold text-gray-500 uppercase">Email Subject *</label>
+                      <label className="block text-xs font-bold text-gray-500 uppercase">
+                        Email Subject *
+                      </label>
                       <button
                         type="button"
                         onClick={() => setShowPlaceholders(p => !p)}
@@ -509,7 +751,7 @@ export const NotificationsSettings: React.FC = () => {
                     </div>
                     <input
                       type="text"
-                      value={formData.subject || ''}
+                      value={formData.subject}
                       onChange={e => setFormData(p => ({ ...p, subject: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#001B47]"
                       placeholder="e.g. Your Weekly Service Delivery Summary — {{week_commencing_date}}"
@@ -536,7 +778,10 @@ export const NotificationsSettings: React.FC = () => {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-bold text-gray-500 uppercase">
-                      Message Body * {formData.channel === 'email' ? '(HTML or plain text)' : '(Plain text or Markdown)'}
+                      Message Body *{' '}
+                      {formData.channel === 'email'
+                        ? '(HTML or plain text)'
+                        : '(Plain text or Markdown)'}
                     </label>
                     <button
                       type="button"
@@ -549,7 +794,9 @@ export const NotificationsSettings: React.FC = () => {
 
                   {showPlaceholders && (
                     <div className="mb-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                      <p className="text-xs font-bold text-gray-500 uppercase mb-2">Click to insert placeholder</p>
+                      <p className="text-xs font-bold text-gray-500 uppercase mb-2">
+                        Click to insert placeholder
+                      </p>
                       <div className="flex flex-wrap gap-1">
                         {PLACEHOLDERS.map(p => (
                           <button
@@ -620,24 +867,31 @@ export const NotificationsSettings: React.FC = () => {
                   >
                     <div className="px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div className="flex items-start gap-3">
-                        {/* Channel badge */}
-                        <span className={`mt-0.5 inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide shrink-0 ${
-                          template.channel === 'email'
-                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                            : 'bg-purple-50 text-purple-700 border border-purple-200'
-                        }`}>
+                        <span
+                          className={`mt-0.5 inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide shrink-0 ${
+                            template.channel === 'email'
+                              ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                              : 'bg-purple-50 text-purple-700 border border-purple-200'
+                          }`}
+                        >
                           {template.channel === 'email' ? '✉ Email' : '💬 Teams'}
                         </span>
 
                         <div>
                           <div className="flex items-center gap-2">
                             <h4 className="font-bold text-gray-900">{template.name}</h4>
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${
-                              template.is_enabled
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-gray-100 text-gray-500'
-                            }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${template.is_enabled ? 'bg-green-500' : 'bg-gray-400'}`} />
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${
+                                template.is_enabled
+                                  ? 'bg-green-100 text-green-700'
+                                  : 'bg-gray-100 text-gray-500'
+                              }`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  template.is_enabled ? 'bg-green-500' : 'bg-gray-400'
+                                }`}
+                              />
                               {template.is_enabled ? 'Enabled' : 'Disabled'}
                             </span>
                           </div>
@@ -650,7 +904,8 @@ export const NotificationsSettings: React.FC = () => {
                               {template.frequency === 'weekly' && template.day_of_week !== null
                                 ? ` · ${DAYS_OF_WEEK[template.day_of_week]}`
                                 : ''}
-                              {' · '}{template.send_time} {template.timezone}
+                              {' · '}
+                              {template.send_time} {template.timezone}
                             </span>
                             <span>Recipients: {template.recipient_role}</span>
                           </div>
@@ -719,46 +974,86 @@ export const NotificationsSettings: React.FC = () => {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-gray-500">Date / Time</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-gray-500">Template</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-gray-500">Channel</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-gray-500">Recipient</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-gray-500">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-gray-500">Details</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-gray-500">
+                      Date / Time
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-gray-500">
+                      Template
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-gray-500">
+                      Channel
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-gray-500">
+                      Recipient
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-gray-500">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-gray-500">
+                      Details
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {logs.map((log, idx) => {
-                    const date = new Date(log.sent_at);
+                    const date = log.sent_at ? new Date(log.sent_at) : null;
                     return (
-                      <tr key={log.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                      <tr
+                        key={log.id}
+                        className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}
+                      >
                         <td className="px-4 py-3 text-sm text-gray-700">
-                          <div>{date.toLocaleDateString('en-GB')}</div>
-                          <div className="text-xs text-gray-400">{date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>
+                          {date ? (
+                            <>
+                              <div>{date.toLocaleDateString('en-GB')}</div>
+                              <div className="text-xs text-gray-400">
+                                {date.toLocaleTimeString('en-GB', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </div>
+                            </>
+                          ) : (
+                            '—'
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{log.template_name || '—'}</td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                          {log.template_name || '—'}
+                        </td>
                         <td className="px-4 py-3">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${
-                            log.channel === 'email'
-                              ? 'bg-blue-50 text-blue-700'
-                              : 'bg-purple-50 text-purple-700'
-                          }`}>
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${
+                              log.channel === 'email'
+                                ? 'bg-blue-50 text-blue-700'
+                                : 'bg-purple-50 text-purple-700'
+                            }`}
+                          >
                             {CHANNEL_LABELS[log.channel] || log.channel}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{log.recipient_name || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {log.recipient_name || '—'}
+                        </td>
                         <td className="px-4 py-3">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${
-                            log.status === 'sent'
-                              ? 'bg-green-100 text-green-700'
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${
+                              log.status === 'sent'
+                                ? 'bg-green-100 text-green-700'
+                                : log.status === 'test'
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-red-100 text-red-700'
+                            }`}
+                          >
+                            {log.status === 'sent'
+                              ? '✓ Sent'
                               : log.status === 'test'
-                              ? 'bg-amber-100 text-amber-700'
-                              : 'bg-red-100 text-red-700'
-                          }`}>
-                            {log.status === 'sent' ? '✓ Sent' : log.status === 'test' ? '⚡ Test' : '✗ Failed'}
+                              ? '⚡ Test'
+                              : '✗ Failed'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-500">{log.error_message || '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500">
+                          {log.error_message || '—'}
+                        </td>
                       </tr>
                     );
                   })}
@@ -774,7 +1069,9 @@ export const NotificationsSettings: React.FC = () => {
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <div className="bg-[#001B47] px-6 py-3">
             <h4 className="text-white font-bold">Placeholder Reference</h4>
-            <p className="text-white/70 text-xs mt-0.5">All placeholders are resolved at send time using live data from the tracker.</p>
+            <p className="text-white/70 text-xs mt-0.5">
+              All placeholders are resolved at send time using live data from the tracker.
+            </p>
           </div>
 
           <div className="divide-y divide-gray-100">
@@ -787,7 +1084,9 @@ export const NotificationsSettings: React.FC = () => {
             ].map(section => (
               <div key={section.group}>
                 <div className="px-6 py-2 bg-gray-50 border-b border-gray-100">
-                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500">{section.group}</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                    {section.group}
+                  </span>
                 </div>
                 {section.items.map(p => (
                   <div key={p.key} className="px-6 py-3 flex items-start gap-4">
@@ -803,7 +1102,11 @@ export const NotificationsSettings: React.FC = () => {
 
           <div className="px-6 py-4 bg-amber-50 border-t border-amber-100">
             <p className="text-xs text-amber-800 font-medium">
-              <strong>Note:</strong> Dataset placeholders like <code className="bg-amber-100 px-1 rounded">{'{{services}}'}</code> and <code className="bg-amber-100 px-1 rounded">{'{{services_this_week}}'}</code> are rendered as structured lists at send time, formatted appropriately for each channel (plain text for Teams, HTML table for Email).
+              <strong>Note:</strong> Dataset placeholders like{' '}
+              <code className="bg-amber-100 px-1 rounded">{'{{services}}'}</code> and{' '}
+              <code className="bg-amber-100 px-1 rounded">{'{{services_this_week}}'}</code> are
+              rendered as structured lists at send time, formatted appropriately for each channel
+              (plain text for Teams, HTML table for Email).
             </p>
           </div>
         </div>
