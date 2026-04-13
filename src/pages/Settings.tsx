@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDate } from '../context/DateContext';
 import { CalendarMonthYearSelector } from '../components/CalendarMonthYearSelector';
+import { NotificationsSettings } from '../components/NotificationsSettings';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
 import { logStaffBatchChange, createAuditLog } from '../utils/auditLog';
@@ -69,7 +70,7 @@ export const Settings: React.FC = () => {
     security_answer: '',
   });
 
-  const [activeTab, setActiveTab] = useState<'users' | 'calendar' | 'permissions' | 'account'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'calendar' | 'permissions' | 'account' | 'notifications'>('account');
 
   const [accountForm, setAccountForm] = useState({
     password: '',
@@ -622,6 +623,14 @@ export const Settings: React.FC = () => {
     return days;
   };
 
+  const adminTabs = ['users', 'calendar', 'permissions', 'notifications'] as const;
+  const adminTabLabels: Record<string, string> = {
+    users: 'Users',
+    calendar: 'Calendar',
+    permissions: 'Permissions',
+    notifications: 'Notifications',
+  };
+
   return (
     <div className="px-4 sm:px-6 lg:px-8">
       <div className="page-header">
@@ -656,19 +665,17 @@ export const Settings: React.FC = () => {
             </button>
 
             {isAdmin &&
-              ['users', 'calendar', 'permissions'].map(tab => (
+              adminTabs.map(tab => (
                 <button
                   key={tab}
-                  onClick={() =>
-                    setActiveTab(tab as 'users' | 'calendar' | 'permissions')
-                  }
-                  className={`py-2 px-1 border-b-2 font-medium text-sm capitalize ${
+                  onClick={() => setActiveTab(tab)}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
                     activeTab === tab
                       ? 'border-blue-500 text-blue-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  {tab}
+                  {adminTabLabels[tab]}
                 </button>
               ))}
           </nav>
@@ -949,6 +956,12 @@ export const Settings: React.FC = () => {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {isAdmin && activeTab === 'notifications' && (
+          <div className="mt-6">
+            <NotificationsSettings />
           </div>
         )}
       </div>
