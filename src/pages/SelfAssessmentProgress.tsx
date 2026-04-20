@@ -102,6 +102,8 @@ export const SelfAssessmentProgress: React.FC = () => {
   const { services, loading: servicesLoading } = useServices();
 
   const [activeTeamId, setActiveTeamId] = useState<number | null>(null);
+  // selectedName tracks which accountant row is highlighted across both tiles
+  const [selectedName, setSelectedName] = useState<string | null>(null);
 
   const defaultFinancialYear = useMemo(() => {
     const allYears = getFinancialYears();
@@ -226,6 +228,7 @@ export const SelfAssessmentProgress: React.FC = () => {
 
   const visibleTeams = teamProgress.filter((t) => t.fullYearTarget > 0 || t.submitted > 0);
 
+  // Sort full year data by % complete high to low
   const sortedVisibleTeams = useMemo(() => {
     return [...visibleTeams].sort((a, b) => {
       const percentA = a.fullYearTarget > 0 ? (a.submitted / a.fullYearTarget) * 100 : 0;
@@ -268,11 +271,18 @@ export const SelfAssessmentProgress: React.FC = () => {
 
     const monthPct = monthTarget > 0 ? (monthSubmitted / monthTarget) * 100 : 0;
 
-    const perAccountant = sortedVisibleTeams.map(entry => ({
+    // Build per-accountant data sorted by % complete high to low
+    const perAccountantRaw = sortedVisibleTeams.map(entry => ({
       name: entry.name,
       submitted: monthlyData[entry.team_id]?.[selectedMonth]?.submitted || 0,
       target: monthlyData[entry.team_id]?.[selectedMonth]?.target || 0,
     })).filter(e => e.submitted > 0 || e.target > 0);
+
+    const perAccountant = [...perAccountantRaw].sort((a, b) => {
+      const pctA = a.target > 0 ? (a.submitted / a.target) * 100 : 0;
+      const pctB = b.target > 0 ? (b.submitted / b.target) * 100 : 0;
+      return pctB - pctA;
+    });
 
     return {
       month: selectedMonth,
@@ -284,22 +294,18 @@ export const SelfAssessmentProgress: React.FC = () => {
     };
   }, [monthlyData, selectedMonth, sortedVisibleTeams]);
 
-  // Build monthlyData keyed by team_id with fullYearTarget as denominator for the chart
-  // This ensures the chart lines use the same denominator as the full year tile
   const chartMonthlyData = useMemo(() => {
-    if (Object.keys(monthlyData).length === 0) return monthlyData;
-
-    // We need to pass fullYearTarget per staff to the chart so it uses the correct denominator.
-    // The chart component uses monthlyData[team_id][month].target to build its target line,
-    // and uses the sum of monthly submitted vs sum of monthly targets as denominator.
-    // The full year tile uses teamProgress[].submitted / teamProgress[].fullYearTarget.
-    // To align them, we ensure the chart denominator equals fullYearTarget by not changing
-    // the monthly breakdown — the chart already sums all monthly targets which should equal fullYearTarget.
-    // The discrepancy comes from the chart distributing submitted evenly across working days
-    // within each month, then summing — this can differ from the raw submitted total.
-    // We pass the corrected data through: override the chart to use raw submitted totals.
     return monthlyData;
   }, [monthlyData]);
+
+  const handleRowClick = (name: string) => {
+    setSelectedName(prev => prev === name ? null : name);
+    // Also sync the chart active team
+    const entry = sortedVisibleTeams.find(t => t.name === name);
+    if (entry) {
+      setActiveTeamId(prev => prev === entry.team_id ? null : entry.team_id);
+    }
+  };
 
   if (loading || authLoading || servicesLoading) {
     return <div className="py-6 text-center text-gray-500">Loading…</div>;
@@ -371,14 +377,15 @@ export const SelfAssessmentProgress: React.FC = () => {
                     monthlyData
                   );
 
-                  const isActive = activeTeamId === entry.team_id;
+                  const isSelected = selectedName === entry.name;
 
                   return (
                     <tr
                       key={entry.team_id}
-                      className={`transition-colors ${
-                        isActive
-                          ? 'bg-blue-50 ring-1 ring-blue-300'
+                      onClick={() => handleRowClick(entry.name)}
+                      className={`cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'bg-blue-100 ring-1 ring-inset ring-blue-400'
                           : idx % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50 hover:bg-gray-100'
                       }`}
                     >
@@ -467,6 +474,7 @@ export const SelfAssessmentProgress: React.FC = () => {
               <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span>
               &lt;75% — significantly behind
             </span>
+            <span className="ml-auto text-gray-400 italic">Click a row to highlight across both tiles</span>
           </div>
         </div>
 
@@ -504,11 +512,17 @@ export const SelfAssessmentProgress: React.FC = () => {
                   <tbody>
                     {monthlyTileData.perAccountant.map((entry, idx) => {
                       const pct = entry.target > 0 ? (entry.submitted / entry.target) * 100 : 0;
+                      const isSelected = selectedName === entry.name;
 
                       return (
                         <tr
                           key={entry.name}
-                          className={idx % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50 hover:bg-gray-100'}
+                          onClick={() => handleRowClick(entry.name)}
+                          className={`cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'bg-blue-100 ring-1 ring-inset ring-blue-400'
+                              : idx % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50 hover:bg-gray-100'
+                          }`}
                         >
                           <td className="px-4 py-3 font-medium text-gray-900">{entry.name}</td>
                           <td className="px-4 py-3 text-center font-semibold text-gray-700">
@@ -586,7 +600,15 @@ export const SelfAssessmentProgress: React.FC = () => {
               financialYear={localFinancialYear}
               monthlyData={chartMonthlyData}
               activeTeamId={activeTeamId}
-              onActiveTeamChange={setActiveTeamId}
+              onActiveTeamChange={(id) => {
+                setActiveTeamId(id);
+                if (id === null) {
+                  setSelectedName(null);
+                } else {
+                  const entry = sortedVisibleTeams.find(t => t.team_id === id);
+                  setSelectedName(entry?.name ?? null);
+                }
+              }}
             />
           )}
         </div>
