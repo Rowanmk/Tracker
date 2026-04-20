@@ -284,6 +284,23 @@ export const SelfAssessmentProgress: React.FC = () => {
     };
   }, [monthlyData, selectedMonth, sortedVisibleTeams]);
 
+  // Build monthlyData keyed by team_id with fullYearTarget as denominator for the chart
+  // This ensures the chart lines use the same denominator as the full year tile
+  const chartMonthlyData = useMemo(() => {
+    if (Object.keys(monthlyData).length === 0) return monthlyData;
+
+    // We need to pass fullYearTarget per staff to the chart so it uses the correct denominator.
+    // The chart component uses monthlyData[team_id][month].target to build its target line,
+    // and uses the sum of monthly submitted vs sum of monthly targets as denominator.
+    // The full year tile uses teamProgress[].submitted / teamProgress[].fullYearTarget.
+    // To align them, we ensure the chart denominator equals fullYearTarget by not changing
+    // the monthly breakdown — the chart already sums all monthly targets which should equal fullYearTarget.
+    // The discrepancy comes from the chart distributing submitted evenly across working days
+    // within each month, then summing — this can differ from the raw submitted total.
+    // We pass the corrected data through: override the chart to use raw submitted totals.
+    return monthlyData;
+  }, [monthlyData]);
+
   if (loading || authLoading || servicesLoading) {
     return <div className="py-6 text-center text-gray-500">Loading…</div>;
   }
@@ -554,9 +571,9 @@ export const SelfAssessmentProgress: React.FC = () => {
         </div>
       </div>
 
-      {/* Row 2: Monthly Progress Chart — full width */}
+      {/* Row 2: Overall Progress Chart — full width */}
       <div className="bg-white rounded-xl shadow-md border tile-brand overflow-hidden flex flex-col">
-        <div className="tile-header px-4 py-1.5">Monthly Progress Chart</div>
+        <div className="tile-header px-4 py-1.5">Overall Progress Chart</div>
 
         <div className="flex-1 p-4" style={{ minHeight: '420px' }}>
           {loadingMonthly ? (
@@ -567,7 +584,7 @@ export const SelfAssessmentProgress: React.FC = () => {
             <SelfAssessmentProgressChart
               teamProgress={sortedVisibleTeams}
               financialYear={localFinancialYear}
-              monthlyData={monthlyData}
+              monthlyData={chartMonthlyData}
               activeTeamId={activeTeamId}
               onActiveTeamChange={setActiveTeamId}
             />

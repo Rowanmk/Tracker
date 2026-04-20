@@ -171,19 +171,24 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   }, [visibleTeams, monthlyData, dayPoints, cumulativeWorkingDays, totalWorkingDays]);
 
   // For each team, build cumulative submitted % per day (only up to today)
+  // KEY FIX: Use fullYearTarget (from teamProgress) as the denominator, not the sum of monthly targets.
+  // This ensures the chart line's final value matches the % Complete shown in the full year tile.
   const chartData = React.useMemo(() => {
     return visibleTeams.map((team, idx) => {
-      // Build submitted per month
+      // Build submitted per month from monthlyData
       const submittedPerMonth: Record<number, number> = {};
       SA_MONTHS.forEach(m => {
         submittedPerMonth[m] = monthlyData[team.team_id]?.[m]?.submitted ?? 0;
       });
 
-      // Total target for denominator
-      const teamTotalTarget = SA_MONTHS.reduce((sum, m) => sum + (monthlyData[team.team_id]?.[m]?.target ?? 0), 0);
-      const denominator = teamTotalTarget > 0 ? teamTotalTarget : team.fullYearTarget;
+      // Use fullYearTarget as the denominator — same as the full year tile
+      const denominator = team.fullYearTarget > 0 ? team.fullYearTarget : 1;
+
+      // Total submitted across all SA months (should equal team.submitted)
+      const totalSubmitted = SA_MONTHS.reduce((sum, m) => sum + (submittedPerMonth[m] ?? 0), 0);
 
       // Distribute each month's submitted evenly across its working days
+      // so the line progresses smoothly, but the final value = totalSubmitted / denominator
       const submittedPerWorkingDay: number[] = dayPoints.map(dp => {
         const monthWDs = dayPoints.filter(d => d.monthIndex === dp.monthIndex && d.isWorkingDay).length;
         if (!dp.isWorkingDay || monthWDs === 0) return 0;
@@ -209,6 +214,8 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
         name: team.name,
         color: colours[idx % colours.length],
         percents,
+        // The final visible percent should equal submitted/fullYearTarget * 100
+        finalPercent: denominator > 0 ? (totalSubmitted / denominator) * 100 : 0,
       };
     });
   }, [visibleTeams, monthlyData, dayPoints, todayStr]);
@@ -403,6 +410,9 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
               if (!lastVisible) return null;
 
+              // Show the final percent which matches the full year tile
+              const displayPct = Math.round(team.finalPercent * 10) / 10;
+
               return (
                 <text
                   key={`label-${team.team_id}`}
@@ -412,7 +422,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
                   className="text-xs font-semibold fill-gray-800"
                   fontSize="11"
                 >
-                  {Math.round(lastVisible.percent)}%
+                  {displayPct}%
                 </text>
               );
             })}
