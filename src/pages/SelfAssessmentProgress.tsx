@@ -17,11 +17,6 @@ const isAccountant = (staffMember: Staff) => {
   return role === 'staff' || role === 'admin';
 };
 
-/**
- * Calculates the expected number of SA submissions by today's date,
- * based on the delivery window (Apr FY.end → Jan FY.end+1) and the non-linear
- * monthly targets set in the Targets Control sheet.
- */
 function calcRunRatePercent(
   submitted: number,
   fullYearTarget: number,
@@ -34,51 +29,40 @@ function calcRunRatePercent(
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Delivery window: 6 April of FY.end → 31 January of FY.end+1
-  const windowStart = new Date(financialYear.end, 3, 6); // 6 April
-  const windowEnd = new Date(financialYear.end + 1, 0, 31); // 31 January
+  const windowStart = new Date(financialYear.end, 3, 6);
+  const windowEnd = new Date(financialYear.end + 1, 0, 31);
 
-  // If today is before the window starts, expected = 0 → run rate is undefined
   if (today < windowStart) return null;
 
-  // If today is after the window ends, expected = full target
   if (today > windowEnd) {
     return (submitted / fullYearTarget) * 100;
   }
 
-  // Calculate expected target up to today based on monthly targets
   let expectedByToday = 0;
   const SA_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1];
-  
+
   for (const monthNum of SA_MONTHS) {
     const year = monthNum >= 4 ? financialYear.end : financialYear.end + 1;
     const monthStart = new Date(year, monthNum - 1, 1);
     const monthEnd = new Date(year, monthNum, 0);
-    
-    // Special case for April: starts on 6th
     const effectiveMonthStart = monthNum === 4 ? new Date(year, 3, 6) : monthStart;
-    
-    // Get the target for this month
+
     let monthTarget = 0;
     if (teamId === 'total') {
-      // Sum across all teams
       monthTarget = Object.values(monthlyData).reduce((sum, teamData) => sum + (teamData[monthNum]?.target || 0), 0);
     } else {
       monthTarget = monthlyData[teamId]?.[monthNum]?.target || 0;
     }
 
     if (today > monthEnd) {
-      // Full month has passed
       expectedByToday += monthTarget;
     } else if (today >= effectiveMonthStart && today <= monthEnd) {
-      // We are in this month, calculate partial target
       const totalDaysInMonth = monthEnd.getDate() - effectiveMonthStart.getDate() + 1;
       const daysElapsed = today.getDate() - effectiveMonthStart.getDate() + 1;
       const fraction = Math.max(0, Math.min(1, daysElapsed / totalDaysInMonth));
       expectedByToday += monthTarget * fraction;
-      break; // Future months will be 0
+      break;
     } else {
-      // Future month
       break;
     }
   }
@@ -94,22 +78,25 @@ function getRunRateColor(pct: number): string {
   return 'text-red-700 bg-red-50';
 }
 
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
 export const SelfAssessmentProgress: React.FC = () => {
-  const { selectedFinancialYear } = useDate();
+  const { selectedFinancialYear, selectedMonth } = useDate();
   const { allStaff, teams, loading: authLoading } = useAuth();
   const { services, loading: servicesLoading } = useServices();
 
   const [activeTeamId, setActiveTeamId] = useState<number | null>(null);
 
-  const lastCompletedFinancialYear = useMemo(() => {
+  // Default to 25/26 financial year
+  const defaultFinancialYear = useMemo(() => {
     const allYears = getFinancialYears();
-    const currentFY = selectedFinancialYear;
-    const lastCompleted = allYears.find((fy) => fy.end === currentFY.start);
-    return lastCompleted || currentFY;
+    return allYears.find(fy => fy.start === 2025 && fy.end === 2026) || allYears[1] || selectedFinancialYear;
   }, [selectedFinancialYear]);
 
-  const [localFinancialYear, setLocalFinancialYear] =
-    useState<FinancialYear>(lastCompletedFinancialYear);
+  const [localFinancialYear, setLocalFinancialYear] = useState<FinancialYear>(defaultFinancialYear);
 
   const { teamProgress, loading, error } = useSelfAssessmentProgress(
     localFinancialYear,
@@ -130,9 +117,7 @@ export const SelfAssessmentProgress: React.FC = () => {
       setLoadingMonthly(true);
 
       try {
-        const saService = services.find(
-          (s) => s.service_name === 'Self Assessments'
-        );
+        const saService = services.find((s) => s.service_name === 'Self Assessments');
 
         if (!saService) {
           setMonthlyData({});
@@ -142,12 +127,8 @@ export const SelfAssessmentProgress: React.FC = () => {
         const deliveryStartYear = localFinancialYear.end;
         const deliveryEndYear = localFinancialYear.end + 1;
 
-        const deliveryStartIso = new Date(deliveryStartYear, 3, 1)
-          .toISOString()
-          .slice(0, 10);
-        const deliveryEndIso = new Date(deliveryEndYear, 0, 31)
-          .toISOString()
-          .slice(0, 10);
+        const deliveryStartIso = new Date(deliveryStartYear, 3, 1).toISOString().slice(0, 10);
+        const deliveryEndIso = new Date(deliveryEndYear, 0, 31).toISOString().slice(0, 10);
 
         const staffIds = teamProgress.map((t) => t.team_id);
 
@@ -166,10 +147,7 @@ export const SelfAssessmentProgress: React.FC = () => {
           .in('year', [deliveryStartYear, deliveryEndYear])
           .in('staff_id', staffIds);
 
-        const breakdown: Record<
-          number,
-          Record<number, { submitted: number; target: number }>
-        > = {};
+        const breakdown: Record<number, Record<number, { submitted: number; target: number }>> = {};
 
         teamProgress.forEach((staffEntry) => {
           breakdown[staffEntry.team_id] = {};
@@ -183,7 +161,6 @@ export const SelfAssessmentProgress: React.FC = () => {
             const dateObj = new Date(a.date);
             const m = dateObj.getMonth() + 1;
             const y = dateObj.getFullYear();
-            // Only count if it's in the SA window
             const expectedYear = m >= 4 ? deliveryStartYear : deliveryEndYear;
             if (y !== expectedYear) return;
 
@@ -197,7 +174,6 @@ export const SelfAssessmentProgress: React.FC = () => {
         const dbTargets: Record<number, Record<number, number>> = {};
         (targets || []).forEach((t) => {
           if (t.staff_id != null) {
-            // Strictly filter targets to the exact year for the SA window month
             const expectedYear = t.month >= 4 ? deliveryStartYear : deliveryEndYear;
             if (t.year !== expectedYear) return;
 
@@ -218,10 +194,8 @@ export const SelfAssessmentProgress: React.FC = () => {
             const isPastMonth = yearNum < currentYear || (yearNum === currentYear && monthNum < currentMonth);
 
             if (isPastMonth) {
-              // For past months, the target is the actual submitted amount
               breakdown[staffId][monthNum].target = breakdown[staffId][monthNum].submitted;
             } else {
-              // For current and future months, use the DB target
               breakdown[staffId][monthNum].target = dbTargets[staffId]?.[monthNum] || 0;
             }
           });
@@ -238,9 +212,7 @@ export const SelfAssessmentProgress: React.FC = () => {
     fetchMonthlyData();
   }, [localFinancialYear, services, teamProgress]);
 
-  const visibleTeams = teamProgress.filter(
-    (t) => t.fullYearTarget > 0 || t.submitted > 0
-  );
+  const visibleTeams = teamProgress.filter((t) => t.fullYearTarget > 0 || t.submitted > 0);
 
   const sortedVisibleTeams = useMemo(() => {
     return [...visibleTeams].sort((a, b) => {
@@ -261,9 +233,7 @@ export const SelfAssessmentProgress: React.FC = () => {
   );
 
   const totalPercentAchieved =
-    totals.fullYearTarget > 0
-      ? (totals.submitted / totals.fullYearTarget) * 100
-      : 0;
+    totals.fullYearTarget > 0 ? (totals.submitted / totals.fullYearTarget) * 100 : 0;
 
   const totalRunRatePct = calcRunRatePercent(
     totals.submitted,
@@ -272,6 +242,36 @@ export const SelfAssessmentProgress: React.FC = () => {
     'total',
     monthlyData
   );
+
+  // Monthly tile data — linked to dashboard selected month
+  const monthlyTileData = useMemo(() => {
+    if (!monthlyData || Object.keys(monthlyData).length === 0) return null;
+
+    const monthSubmitted = sortedVisibleTeams.reduce((sum, entry) => {
+      return sum + (monthlyData[entry.team_id]?.[selectedMonth]?.submitted || 0);
+    }, 0);
+
+    const monthTarget = sortedVisibleTeams.reduce((sum, entry) => {
+      return sum + (monthlyData[entry.team_id]?.[selectedMonth]?.target || 0);
+    }, 0);
+
+    const monthPct = monthTarget > 0 ? (monthSubmitted / monthTarget) * 100 : 0;
+
+    const perAccountant = sortedVisibleTeams.map(entry => ({
+      name: entry.name,
+      submitted: monthlyData[entry.team_id]?.[selectedMonth]?.submitted || 0,
+      target: monthlyData[entry.team_id]?.[selectedMonth]?.target || 0,
+    })).filter(e => e.submitted > 0 || e.target > 0);
+
+    return {
+      month: selectedMonth,
+      monthName: MONTH_NAMES[selectedMonth - 1],
+      submitted: monthSubmitted,
+      target: monthTarget,
+      pct: monthPct,
+      perAccountant,
+    };
+  }, [monthlyData, selectedMonth, sortedVisibleTeams]);
 
   if (loading || authLoading || servicesLoading) {
     return <div className="py-6 text-center text-gray-500">Loading…</div>;
@@ -304,25 +304,18 @@ export const SelfAssessmentProgress: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[45%_55%] gap-6">
+        {/* Full Year Data Tile */}
         <div className="bg-white rounded-xl shadow-md border tile-brand overflow-hidden flex flex-col">
-          <div className="tile-header px-4 py-1.5">Self Assessment Data</div>
+          <div className="tile-header px-4 py-1.5">Self Assessment Data — Full Year</div>
 
           <div className="flex-1 overflow-auto">
             <table className="w-full divide-y">
               <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">
-                    Accountant
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-bold uppercase">
-                    Target
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-bold uppercase">
-                    Submitted
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-bold uppercase">
-                    Total % Completed
-                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Accountant</th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase">Target</th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase">Submitted</th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase">Total % Completed</th>
                   <th className="px-4 py-3 text-center text-xs font-bold uppercase leading-tight">
                     Run Rate %
                     <div className="text-[9px] font-normal text-gray-400 normal-case tracking-normal mt-0.5">
@@ -359,15 +352,9 @@ export const SelfAssessmentProgress: React.FC = () => {
                       }`}
                     >
                       <td className="px-4 py-3 font-medium">{entry.name}</td>
-                      <td className="px-4 py-3 text-center font-semibold">
-                        {entry.fullYearTarget}
-                      </td>
-                      <td className="px-4 py-3 text-center font-semibold">
-                        {entry.submitted}
-                      </td>
-                      <td className="px-4 py-3 text-center font-semibold">
-                        {pct.toFixed(1)}%
-                      </td>
+                      <td className="px-4 py-3 text-center font-semibold">{entry.fullYearTarget}</td>
+                      <td className="px-4 py-3 text-center font-semibold">{entry.submitted}</td>
+                      <td className="px-4 py-3 text-center font-semibold">{pct.toFixed(1)}%</td>
                       <td className="px-4 py-3 text-center">
                         {runRatePct === null ? (
                           <span className="text-xs text-gray-400">—</span>
@@ -389,9 +376,7 @@ export const SelfAssessmentProgress: React.FC = () => {
                   <td className="px-4 py-3">Total</td>
                   <td className="px-4 py-3 text-center">{totals.fullYearTarget}</td>
                   <td className="px-4 py-3 text-center">{totals.submitted}</td>
-                  <td className="px-4 py-3 text-center">
-                    {totalPercentAchieved.toFixed(1)}%
-                  </td>
+                  <td className="px-4 py-3 text-center">{totalPercentAchieved.toFixed(1)}%</td>
                   <td className="px-4 py-3 text-center">
                     {totalRunRatePct === null ? (
                       <span className="text-xs text-gray-400">—</span>
@@ -426,6 +411,7 @@ export const SelfAssessmentProgress: React.FC = () => {
           </div>
         </div>
 
+        {/* Monthly Progress Chart */}
         <div className="bg-white rounded-xl shadow-md border tile-brand overflow-hidden flex flex-col">
           <div className="tile-header px-4 py-1.5">Monthly Progress</div>
 
@@ -445,6 +431,134 @@ export const SelfAssessmentProgress: React.FC = () => {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Monthly Data Tile — linked to dashboard selected month */}
+      <div className="bg-white rounded-xl shadow-md border tile-brand overflow-hidden">
+        <div className="tile-header px-4 py-1.5 flex items-center justify-between">
+          <span>Self Assessment Data — {monthlyTileData?.monthName ?? MONTH_NAMES[selectedMonth - 1]}</span>
+          <span className="text-white/70 text-xs font-normal">
+            Linked to dashboard month selector
+          </span>
+        </div>
+
+        {loadingMonthly ? (
+          <div className="px-6 py-8 text-center text-gray-500 text-sm">Loading monthly data…</div>
+        ) : !monthlyTileData || (monthlyTileData.submitted === 0 && monthlyTileData.target === 0) ? (
+          <div className="px-6 py-8 text-center text-gray-500 text-sm">
+            No Self Assessment data recorded for {MONTH_NAMES[selectedMonth - 1]}.
+          </div>
+        ) : (
+          <div className="overflow-auto">
+            <table className="w-full divide-y">
+              <thead className="bg-gray-50 sticky top-0 z-10">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Accountant</th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase">
+                    {monthlyTileData.monthName} Target
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase">
+                    {monthlyTileData.monthName} Submitted
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase">% of Month Target</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Progress</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {monthlyTileData.perAccountant.map((entry, idx) => {
+                  const pct = entry.target > 0 ? (entry.submitted / entry.target) * 100 : 0;
+                  const barColor =
+                    pct >= 95
+                      ? 'bg-green-500'
+                      : pct >= 75
+                      ? 'bg-orange-500'
+                      : 'bg-red-500';
+
+                  return (
+                    <tr
+                      key={entry.name}
+                      className={idx % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50 hover:bg-gray-100'}
+                    >
+                      <td className="px-4 py-3 font-medium text-gray-900">{entry.name}</td>
+                      <td className="px-4 py-3 text-center font-semibold text-gray-700">
+                        {entry.target}
+                      </td>
+                      <td className="px-4 py-3 text-center font-semibold text-gray-900">
+                        {entry.submitted}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span
+                          className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-bold ${
+                            pct >= 95
+                              ? 'text-green-700 bg-green-50'
+                              : pct >= 75
+                              ? 'text-orange-700 bg-orange-50'
+                              : entry.target === 0
+                              ? 'text-gray-500 bg-gray-50'
+                              : 'text-red-700 bg-red-50'
+                          }`}
+                        >
+                          {entry.target === 0 ? '—' : `${pct.toFixed(1)}%`}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden min-w-[80px]">
+                          <div
+                            className={`h-full rounded-full transition-all duration-300 ${barColor}`}
+                            style={{ width: `${Math.min(pct, 100)}%` }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+
+              <tfoot className="bg-gray-100 font-bold sticky bottom-0">
+                <tr>
+                  <td className="px-4 py-3 text-gray-900">Total</td>
+                  <td className="px-4 py-3 text-center text-gray-900">{monthlyTileData.target}</td>
+                  <td className="px-4 py-3 text-center text-gray-900">{monthlyTileData.submitted}</td>
+                  <td className="px-4 py-3 text-center">
+                    <span
+                      className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-bold ${
+                        monthlyTileData.pct >= 95
+                          ? 'text-green-700 bg-green-100'
+                          : monthlyTileData.pct >= 75
+                          ? 'text-orange-700 bg-orange-100'
+                          : monthlyTileData.target === 0
+                          ? 'text-gray-500 bg-gray-100'
+                          : 'text-red-700 bg-red-100'
+                      }`}
+                    >
+                      {monthlyTileData.target === 0 ? '—' : `${monthlyTileData.pct.toFixed(1)}%`}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="w-full h-2 bg-gray-300 rounded-full overflow-hidden min-w-[80px]">
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${
+                          monthlyTileData.pct >= 95
+                            ? 'bg-green-500'
+                            : monthlyTileData.pct >= 75
+                            ? 'bg-orange-500'
+                            : 'bg-red-500'
+                        }`}
+                        style={{ width: `${Math.min(monthlyTileData.pct, 100)}%` }}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+
+            <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500">
+              Showing data for <span className="font-semibold text-gray-700">{monthlyTileData.monthName}</span>.
+              Change the month using the dashboard month selector.
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
