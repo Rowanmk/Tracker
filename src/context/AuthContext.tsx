@@ -56,6 +56,33 @@ const enforceKnownAdminRole = (staffMember: Staff): Staff => {
 const getStoredStaffId = () => localStorage.getItem('crew_tracker_logged_in_staff_id');
 const getStoredTeamId = () => localStorage.getItem('crew_tracker_team_id');
 
+const normalizeStoredTeamSelection = (
+  storedTeamId: string | null,
+  staffMember: Staff,
+  availableStaff: Staff[]
+) => {
+  if (!storedTeamId) {
+    return String(staffMember.staff_id);
+  }
+
+  if (storedTeamId === 'all' || storedTeamId === 'team-view') {
+    return 'team-view';
+  }
+
+  const selectedStaffExists = availableStaff.some(
+    (availableStaffMember) =>
+      !availableStaffMember.is_hidden &&
+      isAccountant(availableStaffMember) &&
+      String(availableStaffMember.staff_id) === storedTeamId
+  );
+
+  if (selectedStaffExists) {
+    return storedTeamId;
+  }
+
+  return String(staffMember.staff_id);
+};
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -70,7 +97,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [error, setError] = useState<string | null>(null);
   const [showFallbackWarning, setShowFallbackWarning] = useState<boolean>(false);
 
-  const applyCurrentStaff = useCallback((staffMember: Staff | null) => {
+  const applyCurrentStaff = useCallback((staffMember: Staff | null, availableStaff: Staff[] = []) => {
     if (!staffMember) {
       setCurrentStaff(null);
       setIsAuthenticated(false);
@@ -81,11 +108,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const normalized = enforceKnownAdminRole(staffMember);
     const savedTeam = getStoredTeamId();
+    const nextSelectedTeamId = normalizeStoredTeamSelection(
+      savedTeam,
+      normalized,
+      availableStaff.length > 0 ? availableStaff : [normalized]
+    );
 
     setCurrentStaff(normalized);
     setIsAuthenticated(true);
-    setSelectedTeamId(savedTeam || String(normalized.staff_id));
+    setSelectedTeamId(nextSelectedTeamId);
     localStorage.setItem('crew_tracker_logged_in_staff_id', String(normalized.staff_id));
+    localStorage.setItem('crew_tracker_team_id', nextSelectedTeamId);
   }, []);
 
   const fetchStaff = useCallback(async () => {
@@ -114,11 +147,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setPermissions(loadedPermissions);
 
       const matchedStoredStaff = storedStaffId
-        ? normalizedStaff.find((staffMember) => String(staffMember.staff_id) === storedStaffId) || null
+        ? normalizedStaff.find((staffMember) => String(staffMember.staff_id) === storedStaffId && !staffMember.is_hidden) || null
         : null;
 
       if (matchedStoredStaff) {
-        applyCurrentStaff(matchedStoredStaff);
+        applyCurrentStaff(matchedStoredStaff, normalizedStaff);
       } else {
         applyCurrentStaff(null);
       }
@@ -166,7 +199,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return { error: 'Incorrect password.' };
       }
 
-      applyCurrentStaff(matchedStaff);
+      applyCurrentStaff(matchedStaff, allStaff);
       setError(null);
       return {};
     } catch {

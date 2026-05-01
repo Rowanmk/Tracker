@@ -72,7 +72,10 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
       const startDate = new Date(financialYear.start, 3, 1);
       const endDate = new Date(financialYear.end, 2, 31);
 
-      const filteredStaff = !selectedTeamId || selectedTeamId === "team-view"
+      const isFullTeamSelection =
+        !selectedTeamId || selectedTeamId === "team-view" || selectedTeamId === "all";
+
+      const filteredStaff = isFullTeamSelection
         ? accountantStaff
         : accountantStaff.filter(s => String(s.staff_id) === selectedTeamId);
 
