@@ -402,7 +402,6 @@ export const Dashboard: React.FC = () => {
     Math.min(maxActualDay, Math.round(playbackController.animationProgress))
   );
 
-  // Build run rate activities: no bagels, scoped to individual if needed
   const runRateActivities = useMemo(() => {
     const bagelService = services.find((s) => s.service_name === "Bagel Days");
 
@@ -417,7 +416,6 @@ export const Dashboard: React.FC = () => {
     return noBagels;
   }, [filteredActivities, services, isIndividualDashboard, selectedAccountant]);
 
-  // Staff list for run rate tooltip breakdown
   const runRateStaffList = useMemo(() => {
     if (isIndividualDashboard && selectedAccountant) {
       return staffPerformance
