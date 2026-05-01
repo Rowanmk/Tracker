@@ -5,10 +5,10 @@ export interface FinancialYear {
 }
 
 /**
- * Derive Financial Year from calendar month and year
- * UK rules: April → March
- * Apr–Dec → FY starts same year
- * Jan–Mar → FY starts previous year
+ * Derive Financial Year from calendar month and year.
+ * UK rules: April → March.
+ * Apr–Dec → FY starts same year.
+ * Jan–Mar → FY starts previous year.
  */
 export const getFinancialYearFromMonth = (month: number, year: number): FinancialYear => {
   const startYear = month >= 4 ? year : year - 1;
@@ -19,39 +19,31 @@ export const getFinancialYearFromMonth = (month: number, year: number): Financia
   };
 };
 
-/**
- * Returns the supported financial years: 2024/25, 2025/26 and 2026/27.
- */
-export const getFinancialYears = (): FinancialYear[] => {
-  return [
-    {
-      label: '2024/25',
-      start: 2024,
-      end: 2025,
-    },
-    {
-      label: '2025/26',
-      start: 2025,
-      end: 2026,
-    },
-    {
-      label: '2026/27',
-      start: 2026,
-      end: 2027,
-    }
-  ];
-};
-
 export const getCurrentFinancialYear = (): FinancialYear => {
   const now = new Date();
-  const month = now.getMonth() + 1;
-  const year = now.getFullYear();
-  const fy = getFinancialYearFromMonth(month, year);
-  
-  // Clamp to supported range if outside
-  if (fy.start < 2024) return { label: '2024/25', start: 2024, end: 2025 };
-  if (fy.start > 2026) return { label: '2026/27', start: 2026, end: 2027 };
-  return fy;
+  return getFinancialYearFromMonth(now.getMonth() + 1, now.getFullYear());
+};
+
+/**
+ * Returns supported financial years, including the current financial year and the next year.
+ * This prevents the app from falling out of range when the calendar rolls into a new FY.
+ */
+export const getFinancialYears = (): FinancialYear[] => {
+  const currentFinancialYear = getCurrentFinancialYear();
+  const minimumStartYear = 2024;
+  const maximumStartYear = Math.max(2026, currentFinancialYear.start + 1);
+
+  return Array.from(
+    { length: maximumStartYear - minimumStartYear + 1 },
+    (_, index) => {
+      const start = minimumStartYear + index;
+      return {
+        label: `${start}/${String(start + 1).slice(-2)}`,
+        start,
+        end: start + 1,
+      };
+    }
+  );
 };
 
 export const getFinancialYearDateRange = (fy: FinancialYear) => {

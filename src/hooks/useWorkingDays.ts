@@ -30,13 +30,14 @@ interface Result {
   showFallbackWarning: boolean;
 }
 
-const iso = (d: Date) => d.toISOString().split('T')[0];
+const localDateISO = (year: number, month: number, day: number) =>
+  `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
 const startOfMonthISO = (year: number, month: number) =>
-  `${year}-${String(month).padStart(2, '0')}-01`;
+  localDateISO(year, month, 1);
 
 const endOfMonthISO = (year: number, month: number) =>
-  iso(new Date(year, month, 0));
+  localDateISO(year, month, new Date(year, month, 0).getDate());
 
 const isWeekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
 
@@ -61,11 +62,10 @@ export const useWorkingDays = (params: Params): Result => {
 
       try {
         const year = month >= 4 ? fyStart : fyEnd;
-
         const daysInMonth = new Date(year, month, 0).getDate();
 
         const now = new Date();
-        const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const todayIso = localDateISO(now.getFullYear(), now.getMonth() + 1, now.getDate());
 
         const startIso = startOfMonthISO(year, month);
         const endIso = endOfMonthISO(year, month);
@@ -105,7 +105,7 @@ export const useWorkingDays = (params: Params): Result => {
         let teamWorking = baseWorking;
 
         teamHolidayDates.forEach((dateStr) => {
-          const d = new Date(dateStr + 'T00:00:00');
+          const d = new Date(`${dateStr}T00:00:00`);
           if (!isWeekend(d)) {
             teamWorking--;
           }
@@ -117,10 +117,10 @@ export const useWorkingDays = (params: Params): Result => {
           teamWorkingToToday = 0;
         } else if (isPastMonth) {
           teamWorkingToToday = teamWorking;
-        } else {
+        } else if (isCurrentMonth) {
           for (let day = 1; day <= daysInMonth; day++) {
             const d = new Date(year, month - 1, day);
-            const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const dateStr = localDateISO(year, month, day);
 
             if (isWeekend(d)) continue;
             if (teamHolidayDates.has(dateStr)) continue;
@@ -166,7 +166,7 @@ export const useWorkingDays = (params: Params): Result => {
           });
 
           staffHolidayDates.forEach((dateStr) => {
-            const d = new Date(dateStr + 'T00:00:00');
+            const d = new Date(`${dateStr}T00:00:00`);
             if (!isWeekend(d)) staffWorkingCalc--;
           });
 
@@ -181,8 +181,8 @@ export const useWorkingDays = (params: Params): Result => {
           }
 
           (leaveRows as StaffLeaveRow[] | null)?.forEach((l) => {
-            const from = new Date(Math.max(new Date(l.start_date).getTime(), new Date(startIso).getTime()));
-            const to = new Date(Math.min(new Date(l.end_date).getTime(), new Date(endIso).getTime()));
+            const from = new Date(Math.max(new Date(`${l.start_date}T00:00:00`).getTime(), new Date(`${startIso}T00:00:00`).getTime()));
+            const to = new Date(Math.min(new Date(`${l.end_date}T00:00:00`).getTime(), new Date(`${endIso}T00:00:00`).getTime()));
 
             for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
               if (!isWeekend(d)) staffWorkingCalc--;
@@ -204,7 +204,7 @@ export const useWorkingDays = (params: Params): Result => {
       }
     };
 
-    run();
+    void run();
   }, [fyStart, fyEnd, month, staffId]);
 
   return {
