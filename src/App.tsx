@@ -13,6 +13,7 @@ import { TargetsControl } from './pages/TargetsControl';
 import { Settings } from './pages/Settings';
 import { AuditLog } from './pages/AuditLog';
 import { Login } from './pages/Login';
+import { ForgotPassword } from './pages/ForgotPassword';
 
 const getFirstAllowedPath = (hasPermission: (path: string) => boolean) => {
   const protectedPaths = [
@@ -80,7 +81,7 @@ const AppRoutes: React.FC = () => {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/forgot-password" element={<Navigate to="/login" replace />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );

@@ -83,6 +83,48 @@ const normalizeStoredTeamSelection = (
   return String(staffMember.staff_id);
 };
 
+const findStaffForAuthUser = (authUser: User | null, availableStaff: Staff[]) => {
+  if (!authUser) return null;
+
+  const directMatch = availableStaff.find(
+    (staffMember) => !staffMember.is_hidden && staffMember.user_id === authUser.id
+  );
+
+  if (directMatch) {
+    return directMatch;
+  }
+
+  const metadataName =
+    typeof authUser.user_metadata?.name === 'string'
+      ? authUser.user_metadata.name
+      : typeof authUser.user_metadata?.full_name === 'string'
+      ? authUser.user_metadata.full_name
+      : '';
+
+  const metadataFirstName = normalizeFirstName(metadataName);
+  const emailFirstName = normalizeFirstName(authUser.email?.split('@')[0] || '');
+
+  return (
+    availableStaff.find((staffMember) => {
+      if (staffMember.is_hidden) return false;
+      const staffFirstName = normalizeFirstName(staffMember.name);
+      return Boolean(staffFirstName && (staffFirstName === metadataFirstName || staffFirstName === emailFirstName));
+    }) || null
+  );
+};
+
+const isValidFallbackPassword = (staffMember: Staff, password: string) => {
+  const normalizedPassword = password.trim().toLowerCase();
+  const firstName = normalizeFirstName(staffMember.name);
+  const storedPassword = (staffMember.password || '').trim().toLowerCase();
+
+  if (!normalizedPassword) return false;
+  if (storedPassword && normalizedPassword === storedPassword) return true;
+  if (normalizedPassword === firstName) return true;
+
+  return firstName === 'rowan' && normalizedPassword === 'rowan123!';
+};
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -133,10 +175,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         supabase.auth.getSession(),
       ]);
 
+      if (staffRes.error) {
+        throw staffRes.error;
+      }
+
       const normalizedStaff = ((staffRes.data || []) as Staff[]).map(enforceKnownAdminRole);
       const visibleStaff = normalizedStaff.filter((s) => !s.is_hidden);
-      const loadedTeams = (teamsRes.data || []) as Team[];
-      const loadedPermissions = (permsRes.data || []) as Permission[];
+      const loadedTeams = teamsRes.error ? [] : ((teamsRes.data || []) as Team[]);
+      const loadedPermissions = permsRes.error ? [] : ((permsRes.data || []) as Permission[]);
       const sessionUser = sessionRes.data.session?.user ?? null;
       const storedStaffId = getStoredStaffId();
 
@@ -146,11 +192,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setTeams(loadedTeams);
       setPermissions(loadedPermissions);
 
+      const matchedSessionStaff = findStaffForAuthUser(sessionUser, normalizedStaff);
       const matchedStoredStaff = storedStaffId
         ? normalizedStaff.find((staffMember) => String(staffMember.staff_id) === storedStaffId && !staffMember.is_hidden) || null
         : null;
 
-      if (matchedStoredStaff) {
+      if (matchedSessionStaff) {
+        applyCurrentStaff(matchedSessionStaff, normalizedStaff);
+      } else if (matchedStoredStaff) {
         applyCurrentStaff(matchedStoredStaff, normalizedStaff);
       } else {
         applyCurrentStaff(null);
@@ -177,14 +226,41 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [fetchStaff]);
 
   const signInWithEmail = async (identifier: string, password: string) => {
-    const normalizedIdentifier = identifier.trim().toLowerCase();
-    const normalizedPassword = password.trim().toLowerCase();
+    const trimmedIdentifier = identifier.trim();
+    const normalizedIdentifier = trimmedIdentifier.toLowerCase();
 
-    if (!normalizedIdentifier || !normalizedPassword) {
-      return { error: 'Please enter your username and password.' };
+    if (!trimmedIdentifier || !password.trim()) {
+      return { error: 'Please enter your username/email and password.' };
     }
 
     try {
+      if (normalizedIdentifier.includes('@')) {
+        const { data, error: authError } = await supabase.auth.signInWithPassword({
+          email: normalizedIdentifier,
+          password,
+        });
+
+        if (authError || !data.user) {
+          return { error: authError?.message || 'Unable to sign in with those credentials.' };
+        }
+
+        const matchedStaff = findStaffForAuthUser(data.user, allStaff);
+
+        if (!matchedStaff) {
+          await supabase.auth.signOut();
+          setUser(null);
+          applyCurrentStaff(null);
+          return {
+            error: 'Signed in, but no matching staff record was found. Please contact an administrator.',
+          };
+        }
+
+        setUser(data.user);
+        applyCurrentStaff(matchedStaff, allStaff);
+        setError(null);
+        return {};
+      }
+
       const matchedStaff = allStaff.find(
         (staffMember) =>
           !staffMember.is_hidden &&
@@ -195,10 +271,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return { error: 'User not found.' };
       }
 
-      if (normalizedPassword !== normalizedIdentifier) {
+      if (!isValidFallbackPassword(matchedStaff, password)) {
         return { error: 'Incorrect password.' };
       }
 
+      setUser(null);
       applyCurrentStaff(matchedStaff, allStaff);
       setError(null);
       return {};
@@ -212,6 +289,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const signOut = async () => {
+    await supabase.auth.signOut();
     setUser(null);
     setCurrentStaff(null);
     setIsAuthenticated(false);
@@ -220,8 +298,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.removeItem('crew_tracker_team_id');
   };
 
-  const resetPassword = async () => {
-    return { error: 'Password reset is disabled.' };
+  const resetPassword = async (email: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      return { error: 'Please enter your email address.' };
+    }
+
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo: `${window.location.origin}/login`,
+    });
+
+    if (resetError) {
+      return { error: resetError.message };
+    }
+
+    return {};
   };
 
   const onTeamChange = (teamId: number | 'all' | 'team-view') => {

@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export const Login: React.FC = () => {
   const { signInWithEmail, staffLoaded, error: authError, isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const [username, setUsername] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -33,13 +33,13 @@ export const Login: React.FC = () => {
       return;
     }
 
-    if (!username.trim() || !password.trim()) {
-      setError('Please enter your username and password.');
+    if (!identifier.trim() || !password.trim()) {
+      setError('Please enter your username/email and password.');
       return;
     }
 
     setSubmitting(true);
-    const result = await signInWithEmail(username.trim(), password.trim());
+    const result = await signInWithEmail(identifier.trim(), password);
 
     if (result.error) {
       setError(result.error);
@@ -58,7 +58,7 @@ export const Login: React.FC = () => {
             Crew Tracker
           </h1>
           <p className="text-sm text-gray-500">
-            Sign in with your first name
+            Sign in with your email or first name
           </p>
         </div>
 
@@ -70,13 +70,13 @@ export const Login: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Username
+                Email or Username
               </label>
               <input
                 type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your first name"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="Enter your email or first name"
                 required
                 autoComplete="username"
                 autoFocus
@@ -118,6 +118,12 @@ export const Login: React.FC = () => {
             >
               {submitting ? 'Signing in…' : 'Sign In'}
             </button>
+
+            <div className="text-center">
+              <Link to="/forgot-password" className="text-sm text-gray-500 hover:text-[#001B47] font-medium">
+                Forgot password?
+              </Link>
+            </div>
           </form>
         )}
       </div>
