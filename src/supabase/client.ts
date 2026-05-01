@@ -1,21 +1,33 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const FALLBACK_SUPABASE_URL = 'https://placeholder.supabase.co';
-const FALLBACK_SUPABASE_PUBLISHABLE_KEY = 'placeholder-anon-key';
+const rawSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() ?? '';
+const rawSupabasePublishableKey = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined)?.trim() ?? '';
 
-const configuredSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim();
-const configuredSupabasePublishableKey = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined)?.trim();
+const missing: string[] = [];
+if (!rawSupabaseUrl) missing.push('VITE_SUPABASE_URL');
+if (!rawSupabasePublishableKey) missing.push('VITE_SUPABASE_PUBLISHABLE_KEY');
 
-const SUPABASE_URL =
-  configuredSupabaseUrl && configuredSupabaseUrl.startsWith('https://')
-    ? configuredSupabaseUrl
-    : FALLBACK_SUPABASE_URL;
+const isValidUrl = rawSupabaseUrl.startsWith('https://') && rawSupabaseUrl.includes('.supabase.co');
+const isValidKey = rawSupabasePublishableKey.length > 20;
 
-const SUPABASE_PUBLISHABLE_KEY =
-  configuredSupabasePublishableKey && configuredSupabasePublishableKey.length > 20
-    ? configuredSupabasePublishableKey
-    : FALLBACK_SUPABASE_PUBLISHABLE_KEY;
+const invalid: string[] = [];
+if (rawSupabaseUrl && !isValidUrl) invalid.push('VITE_SUPABASE_URL (must be a valid https://*.supabase.co URL)');
+if (rawSupabasePublishableKey && !isValidKey) invalid.push('VITE_SUPABASE_PUBLISHABLE_KEY (must be a valid publishable/anon key)');
+
+if (missing.length > 0 || invalid.length > 0) {
+  const parts: string[] = [];
+  if (missing.length > 0) {
+    parts.push(`Missing required environment variable(s): ${missing.join(', ')}.`);
+  }
+  if (invalid.length > 0) {
+    parts.push(`Invalid environment variable(s): ${invalid.join(', ')}.`);
+  }
+  parts.push(
+    'Set these as build-time environment variables on the deployment host (Netlify/Vercel) and redeploy. Vite bakes VITE_* variables in at build time, so a local .env file alone is not sufficient for production.'
+  );
+  throw new Error(`Supabase configuration error: ${parts.join(' ')}`);
+}
 
 const getAuthStorage = () => {
   try {
@@ -25,7 +37,7 @@ const getAuthStorage = () => {
   }
 };
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+export const supabase = createClient<Database>(rawSupabaseUrl, rawSupabasePublishableKey, {
   auth: {
     storage: getAuthStorage(),
     persistSession: true,

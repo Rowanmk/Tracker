@@ -25,6 +25,7 @@ interface AuthContextType {
   showFallbackWarning: boolean;
   error: string | null;
   staffLoaded: boolean;
+  loadFailed: boolean;
   permissions: Permission[];
   hasPermission: (path: string) => boolean;
   refreshStaff: () => Promise<void>;
@@ -33,9 +34,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
-const normalizeFirstName = (name?: string | null) => (name || '').split(' ')[0]?.trim().toLowerCase() || '';
+const normalizeFirstName = (name?: string | null): string => (name || '').split(' ')[0]?.trim().toLowerCase() || '';
 
-const isAccountant = (staffMember: Staff) => {
+const isAccountant = (staffMember: Staff): boolean => {
   const role = (staffMember.role || '').toLowerCase();
   const normalizedName = (staffMember.name || '').toLowerCase();
 
@@ -53,14 +54,14 @@ const enforceKnownAdminRole = (staffMember: Staff): Staff => {
   return staffMember;
 };
 
-const getStoredStaffId = () => localStorage.getItem('crew_tracker_logged_in_staff_id');
-const getStoredTeamId = () => localStorage.getItem('crew_tracker_team_id');
+const getStoredStaffId = (): string | null => localStorage.getItem('crew_tracker_logged_in_staff_id');
+const getStoredTeamId = (): string | null => localStorage.getItem('crew_tracker_team_id');
 
 const normalizeStoredTeamSelection = (
   storedTeamId: string | null,
   staffMember: Staff,
   availableStaff: Staff[]
-) => {
+): string => {
   if (!storedTeamId) {
     return String(staffMember.staff_id);
   }
@@ -83,7 +84,7 @@ const normalizeStoredTeamSelection = (
   return String(staffMember.staff_id);
 };
 
-const findStaffForAuthUser = (authUser: User | null, availableStaff: Staff[]) => {
+const findStaffForAuthUser = (authUser: User | null, availableStaff: Staff[]): Staff | null => {
   if (!authUser) return null;
 
   const directMatch = availableStaff.find(
@@ -94,11 +95,15 @@ const findStaffForAuthUser = (authUser: User | null, availableStaff: Staff[]) =>
     return directMatch;
   }
 
-  const metadataName =
-    typeof authUser.user_metadata?.name === 'string'
-      ? authUser.user_metadata.name
-      : typeof authUser.user_metadata?.full_name === 'string'
-      ? authUser.user_metadata.full_name
+  const metadata = (authUser.user_metadata ?? {}) as Record<string, unknown>;
+  const metadataNameValue = metadata.name;
+  const metadataFullNameValue = metadata.full_name;
+
+  const metadataName: string =
+    typeof metadataNameValue === 'string'
+      ? metadataNameValue
+      : typeof metadataFullNameValue === 'string'
+      ? metadataFullNameValue
       : '';
 
   const metadataFirstName = normalizeFirstName(metadataName);
@@ -113,7 +118,7 @@ const findStaffForAuthUser = (authUser: User | null, availableStaff: Staff[]) =>
   );
 };
 
-const isValidFallbackPassword = (staffMember: Staff, password: string) => {
+const isValidFallbackPassword = (staffMember: Staff, password: string): boolean => {
   const normalizedPassword = password.trim().toLowerCase();
   const firstName = normalizeFirstName(staffMember.name);
   const storedPassword = (staffMember.password || '').trim().toLowerCase();
@@ -129,6 +134,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [staffLoaded, setStaffLoaded] = useState<boolean>(false);
+  const [loadFailed, setLoadFailed] = useState<boolean>(false);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [allStaff, setAllStaff] = useState<Staff[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -166,6 +172,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const fetchStaff = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setLoadFailed(false);
 
     try {
       const [staffRes, teamsRes, permsRes, sessionRes] = await Promise.all([
@@ -206,7 +213,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       setShowFallbackWarning(false);
-    } catch {
+      setLoadFailed(false);
+    } catch (err) {
       setAllStaff([]);
       setStaff([]);
       setTeams([]);
@@ -214,7 +222,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUser(null);
       applyCurrentStaff(null);
       setShowFallbackWarning(false);
-      setError('Failed to load staff data.');
+      setLoadFailed(true);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Cannot connect to the server. Failed to load staff data: ${message}`);
     } finally {
       setStaffLoaded(true);
       setLoading(false);
@@ -225,7 +235,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     void fetchStaff();
   }, [fetchStaff]);
 
-  const signInWithEmail = async (identifier: string, password: string) => {
+  const signInWithEmail = async (identifier: string, password: string): Promise<{ error?: string }> => {
+    if (loadFailed) {
+      return { error: 'The system is currently offline. Please retry the connection before signing in.' };
+    }
+
     const trimmedIdentifier = identifier.trim();
     const normalizedIdentifier = trimmedIdentifier.toLowerCase();
 
@@ -284,11 +298,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const signUpWithEmail = async () => {
+  const signUpWithEmail = async (): Promise<{ error?: string }> => {
     return { error: 'Sign up is disabled.' };
   };
 
-  const signOut = async () => {
+  const signOut = async (): Promise<void> => {
     await supabase.auth.signOut();
     setUser(null);
     setCurrentStaff(null);
@@ -298,7 +312,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.removeItem('crew_tracker_team_id');
   };
 
-  const resetPassword = async (email: string) => {
+  const resetPassword = async (email: string): Promise<{ error?: string }> => {
     const normalizedEmail = email.trim().toLowerCase();
 
     if (!normalizedEmail) {
@@ -316,7 +330,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return {};
   };
 
-  const onTeamChange = (teamId: number | 'all' | 'team-view') => {
+  const onTeamChange = (teamId: number | 'all' | 'team-view'): void => {
     if (teamId === 'all') {
       setSelectedTeamId('team-view');
       localStorage.setItem('crew_tracker_team_id', 'team-view');
@@ -372,6 +386,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     showFallbackWarning,
     error,
     staffLoaded,
+    loadFailed,
     permissions,
     hasPermission,
     refreshStaff: fetchStaff,

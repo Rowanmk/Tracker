@@ -15,9 +15,11 @@
       "dest": "/index.html"
     }
   ],
-  "env": {
-    "VITE_SUPABASE_URL": "@vite_supabase_url",
-    "VITE_SUPABASE_PUBLISHABLE_KEY": "@vite_supabase_publishable_key",
-    "VITE_SUPABASE_PROJECT_ID": "@vite_supabase_project_id"
+  "build": {
+    "env": {
+      "VITE_SUPABASE_URL": "https://npoilhzrvdzdgspijplg.supabase.co",
+      "VITE_SUPABASE_PUBLISHABLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wb2lsaHpydmR6ZGdzcGlqcGxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5MjUwMjYsImV4cCI6MjA3OTUwMTAyNn0.2Wbhs9ItdkfGOpRql-T-Q3FkcO3BZiriU63vRjOdXkM",
+      "VITE_SUPABASE_PROJECT_ID": "npoilhzrvdzdgspijplg"
+    }
   }
 }

@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export const Login: React.FC = () => {
-  const { signInWithEmail, staffLoaded, error: authError, isAuthenticated } = useAuth();
+  const { signInWithEmail, staffLoaded, loadFailed, error: authError, isAuthenticated, refreshStaff } = useAuth();
   const navigate = useNavigate();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -12,10 +12,10 @@ export const Login: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (authError) {
+    if (authError && !loadFailed) {
       setError(authError);
     }
-  }, [authError]);
+  }, [authError, loadFailed]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -27,6 +27,11 @@ export const Login: React.FC = () => {
     e.preventDefault();
     setError(null);
     setMessage(null);
+
+    if (loadFailed) {
+      setError('The system is offline. Please retry the connection before signing in.');
+      return;
+    }
 
     if (!staffLoaded) {
       setError('System is still loading. Please wait a moment and try again.');
@@ -62,7 +67,26 @@ export const Login: React.FC = () => {
           </p>
         </div>
 
-        {!staffLoaded ? (
+        {loadFailed ? (
+          <div className="space-y-4">
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              <p className="font-bold mb-1">System offline</p>
+              <p>The app could not connect to the server. Sign-in is disabled until the connection is restored.</p>
+              {authError && (
+                <p className="mt-2 font-mono text-xs break-words">{authError}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                void refreshStaff();
+              }}
+              className="w-full py-3 bg-[#001B47] text-white font-bold rounded-lg hover:bg-[#00245F] transition"
+            >
+              Retry Connection
+            </button>
+          </div>
+        ) : !staffLoaded ? (
           <div className="text-center py-6 text-gray-500 text-sm">
             Loading system...
           </div>
