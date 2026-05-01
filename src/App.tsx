@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { DateProvider } from './context/DateContext';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { TeamView } from './pages/TeamView';
@@ -108,15 +109,17 @@ const AppRoutes: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <DateProvider>
-          <Router>
-            <AppRoutes />
-          </Router>
-        </DateProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <AppErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <DateProvider>
+            <Router>
+              <AppRoutes />
+            </Router>
+          </DateProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </AppErrorBoundary>
   );
 };
 

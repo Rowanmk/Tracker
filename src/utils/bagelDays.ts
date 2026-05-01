@@ -20,14 +20,14 @@ type Staff = {
   home_region?: string | null;
 };
 
-export function generateBagelDays(
-  activities: Activity[],
+export function generateBagelDays<TActivity extends Activity>(
+  activities: TActivity[],
   bankHolidays: BankHoliday[],
   staffList: Staff[],
   bagelServiceId: number,
   startDate: Date,
   endDate: Date
-): Activity[] {
+): TActivity[] {
   const bagelActivities: Activity[] = [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -37,16 +37,16 @@ export function generateBagelDays(
 
   // Map activities by date and staff_id for quick lookup
   const activityMap = new Map<string, number>(); // key: "YYYY-MM-DD_staffId", value: total_delivered
-  for (const a of activities) {
-    if (!a.staff_id || !a.date) continue;
-    const key = `${a.date}_${a.staff_id}`;
-    activityMap.set(key, (activityMap.get(key) || 0) + (a.delivered_count || 0));
+  for (const activity of activities) {
+    if (!activity.staff_id || !activity.date) continue;
+    const key = `${activity.date}_${activity.staff_id}`;
+    activityMap.set(key, (activityMap.get(key) || 0) + (activity.delivered_count || 0));
   }
 
   // Map bank holidays by region and date
   const holidayMap = new Set<string>(); // key: "YYYY-MM-DD_region"
-  for (const h of bankHolidays) {
-    holidayMap.add(`${h.date}_${h.region}`);
+  for (const holiday of bankHolidays) {
+    holidayMap.add(`${holiday.date}_${holiday.region}`);
   }
 
   const curr = new Date(startDate);
@@ -89,5 +89,5 @@ export function generateBagelDays(
     curr.setDate(curr.getDate() + 1);
   }
 
-  return bagelActivities;
+  return bagelActivities as TActivity[];
 }
