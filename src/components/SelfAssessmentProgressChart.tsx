@@ -77,6 +77,18 @@ function buildDayPoints(financialYear: FinancialYear): DayPoint[] {
   return points;
 }
 
+interface TooltipState {
+  visible: boolean;
+  x: number;
+  y: number;
+  teamId: number;
+  teamName: string;
+  color: string;
+  completed: number;
+  remaining: number;
+  target: number;
+}
+
 export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartProps> = ({
   teamProgress,
   financialYear,
@@ -84,6 +96,21 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   activeTeamId,
   onActiveTeamChange,
 }) => {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const svgRef = React.useRef<SVGSVGElement>(null);
+
+  const [tooltip, setTooltip] = React.useState<TooltipState>({
+    visible: false,
+    x: 0,
+    y: 0,
+    teamId: 0,
+    teamName: '',
+    color: '',
+    completed: 0,
+    remaining: 0,
+    target: 0,
+  });
+
   const today = React.useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -195,9 +222,9 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
         return (submittedPerMonth[dp.monthNumber] ?? 0) / monthWDs;
       });
 
-      // Build cumulative percent per day, only for days up to today
+      // Build cumulative percent and cumulative count per day, only for days up to today
       let cumSubmitted = 0;
-      const percents: Array<{ dateStr: string; percent: number; isVisible: boolean }> = dayPoints.map((dp, i) => {
+      const percents: Array<{ dateStr: string; percent: number; cumulativeCount: number; isVisible: boolean }> = dayPoints.map((dp, i) => {
         const isVisible = dp.dateStr <= todayStr;
         if (isVisible) {
           cumSubmitted += submittedPerWorkingDay[i] ?? 0;
@@ -205,6 +232,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
         return {
           dateStr: dp.dateStr,
           percent: isVisible && denominator > 0 ? Math.min((cumSubmitted / denominator) * 100, 100) : 0,
+          cumulativeCount: isVisible ? cumSubmitted : 0,
           isVisible,
         };
       });
@@ -216,6 +244,8 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
         percents,
         // The final visible percent should equal submitted/fullYearTarget * 100
         finalPercent: denominator > 0 ? (totalSubmitted / denominator) * 100 : 0,
+        totalSubmitted,
+        fullYearTarget: team.fullYearTarget,
       };
     });
   }, [visibleTeams, monthlyData, dayPoints, todayStr]);
@@ -253,9 +283,56 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   const todayDayIndex = dayPoints.findIndex(dp => dp.dateStr === todayStr);
   const todayX = todayDayIndex >= 0 ? getX(todayDayIndex) : null;
 
+  const handleLineMouseEnter = (
+    e: React.MouseEvent<SVGPathElement>,
+    team: typeof chartData[number]
+  ) => {
+    if (!svgRef.current || !containerRef.current) return;
+
+    const svgRect = svgRef.current.getBoundingClientRect();
+    const containerRect = containerRef.current.getBoundingClientRect();
+
+    const completed = Math.round(team.totalSubmitted);
+    const remaining = Math.max(0, team.fullYearTarget - completed);
+
+    const pixelX = e.clientX - containerRect.left;
+    const pixelY = e.clientY - containerRect.top;
+
+    void svgRect;
+
+    setTooltip({
+      visible: true,
+      x: pixelX,
+      y: pixelY,
+      teamId: team.team_id,
+      teamName: team.name,
+      color: team.color,
+      completed,
+      remaining,
+      target: team.fullYearTarget,
+    });
+  };
+
+  const handleLineMouseMove = (
+    e: React.MouseEvent<SVGPathElement>
+  ) => {
+    if (!containerRef.current) return;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    setTooltip((prev) => prev.visible ? {
+      ...prev,
+      x: e.clientX - containerRect.left,
+      y: e.clientY - containerRect.top,
+    } : prev);
+  };
+
+  const handleLineMouseLeave = () => {
+    setTooltip((prev) => ({ ...prev, visible: false }));
+  };
+
   return (
-    <div className="flex flex-col h-full">
+    <div ref={containerRef} className="flex flex-col h-full relative">
       <svg
+        ref={svgRef}
         viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
         className="w-full flex-1"
       >
@@ -380,21 +457,36 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
             .map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${getX(p.i)} ${getY(p.percent)}`)
             .join(' ');
 
+          const isDimmed = activeTeamId !== null && activeTeamId !== team.team_id;
+          const isActive = activeTeamId === team.team_id;
+
           return (
-            <path
-              key={team.team_id}
-              d={pathD}
-              fill="none"
-              stroke={
-                activeTeamId && activeTeamId !== team.team_id
-                  ? '#9CA3AF'
-                  : team.color
-              }
-              strokeWidth={activeTeamId === team.team_id ? 4.5 : 3}
-              opacity={activeTeamId && activeTeamId !== team.team_id ? 0.5 : 1}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+            <g key={team.team_id}>
+              {/* Invisible wider hit area for easier hovering */}
+              <path
+                d={pathD}
+                fill="none"
+                stroke="transparent"
+                strokeWidth={14}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
+                onMouseEnter={(e) => handleLineMouseEnter(e, team)}
+                onMouseMove={handleLineMouseMove}
+                onMouseLeave={handleLineMouseLeave}
+              />
+              {/* Visible line */}
+              <path
+                d={pathD}
+                fill="none"
+                stroke={isDimmed ? '#9CA3AF' : team.color}
+                strokeWidth={isActive ? 4.5 : 3}
+                opacity={isDimmed ? 0.5 : 1}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ pointerEvents: 'none' }}
+              />
+            </g>
           );
         })}
 
@@ -451,6 +543,69 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
             );
           })}
       </svg>
+
+      {/* Hover Tooltip */}
+      {tooltip.visible && (
+        <div
+          className="absolute z-50 pointer-events-none"
+          style={{
+            left: Math.min(
+              Math.max(tooltip.x, 130),
+              containerRef.current ? containerRef.current.offsetWidth - 130 : tooltip.x
+            ),
+            top: tooltip.y - 12,
+            transform: 'translate(-50%, -100%)',
+          }}
+        >
+          <div
+            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden"
+            style={{ minWidth: '220px', maxWidth: '280px' }}
+          >
+            {/* Header */}
+            <div
+              className="px-3 py-2 flex items-center gap-2"
+              style={{ backgroundColor: tooltip.color }}
+            >
+              <span className="w-2 h-2 rounded-full bg-white/80 inline-block" />
+              <span className="text-white text-xs font-bold uppercase tracking-wide truncate">
+                {tooltip.teamName}
+              </span>
+            </div>
+
+            {/* Stats */}
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              <div className="px-3 py-2 flex items-center justify-between gap-3">
+                <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                  Completed
+                </span>
+                <span className="text-sm font-bold text-[#001B47] dark:text-blue-300">
+                  {tooltip.completed.toLocaleString()}
+                </span>
+              </div>
+              <div className="px-3 py-2 flex items-center justify-between gap-3">
+                <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                  Remaining
+                </span>
+                <span className="text-sm font-bold text-[#FF8A2A]">
+                  {tooltip.remaining.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="bg-gray-50 dark:bg-gray-800/60 px-3 py-1.5 border-t border-gray-100 dark:border-gray-700">
+              <span className="text-[10px] text-gray-400">
+                Target: {tooltip.target.toLocaleString()} self assessments
+              </span>
+            </div>
+          </div>
+
+          {/* Arrow */}
+          <div className="flex justify-center">
+            <div className="w-3 h-3 bg-white dark:bg-gray-900 border-r border-b border-gray-200 dark:border-gray-700 rotate-45 -mt-1.5" />
+          </div>
+        </div>
+      )}
 
       {/* Legend */}
       <div className="mt-3 flex justify-center gap-3 flex-wrap">
