@@ -68,7 +68,7 @@ const ProtectedRoute: React.FC<{
 };
 
 const AppRoutes: React.FC = () => {
-  const { loading, hasPermission, isAuthenticated } = useAuth();
+  const { loading, hasPermission, isAuthenticated, error } = useAuth();
 
   if (loading) {
     return (
@@ -90,6 +90,11 @@ const AppRoutes: React.FC = () => {
 
   return (
     <Layout>
+      {error && (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md text-sm text-yellow-800">
+          ⚠️ {error}
+        </div>
+      )}
       <Routes>
         <Route path="/" element={<ProtectedRoute path="/" element={<Dashboard />} />} />
         <Route path="/team" element={<ProtectedRoute path="/team" element={<TeamView />} />} />
@@ -111,13 +116,13 @@ const App: React.FC = () => {
   return (
     <AppErrorBoundary>
       <ThemeProvider>
-        <AuthProvider>
-          <DateProvider>
-            <Router>
+        <Router>
+          <AuthProvider>
+            <DateProvider>
               <AppRoutes />
-            </Router>
-          </DateProvider>
-        </AuthProvider>
+            </DateProvider>
+          </AuthProvider>
+        </Router>
       </ThemeProvider>
     </AppErrorBoundary>
   );
