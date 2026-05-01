@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
 const rawSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() ?? '';
@@ -15,6 +15,8 @@ const invalid: string[] = [];
 if (rawSupabaseUrl && !isValidUrl) invalid.push('VITE_SUPABASE_URL (must be a valid https://*.supabase.co URL)');
 if (rawSupabasePublishableKey && !isValidKey) invalid.push('VITE_SUPABASE_PUBLISHABLE_KEY (must be a valid publishable/anon key)');
 
+let configError: string | null = null;
+
 if (missing.length > 0 || invalid.length > 0) {
   const parts: string[] = [];
   if (missing.length > 0) {
@@ -26,8 +28,10 @@ if (missing.length > 0 || invalid.length > 0) {
   parts.push(
     'Set these as build-time environment variables on the deployment host (Netlify/Vercel) and redeploy. Vite bakes VITE_* variables in at build time, so a local .env file alone is not sufficient for production.'
   );
-  throw new Error(`Supabase configuration error: ${parts.join(' ')}`);
+  configError = `Supabase configuration error: ${parts.join(' ')}`;
 }
+
+export const supabaseConfigError = configError;
 
 const getAuthStorage = () => {
   try {
@@ -37,10 +41,24 @@ const getAuthStorage = () => {
   }
 };
 
-export const supabase = createClient<Database>(rawSupabaseUrl, rawSupabasePublishableKey, {
-  auth: {
-    storage: getAuthStorage(),
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-});
+const createSupabaseClient = (): SupabaseClient<Database> => {
+  if (configError) {
+    return createClient<Database>('https://placeholder.invalid.supabase.co', 'placeholder-key-not-used', {
+      auth: {
+        storage: getAuthStorage(),
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
+  }
+
+  return createClient<Database>(rawSupabaseUrl, rawSupabasePublishableKey, {
+    auth: {
+      storage: getAuthStorage(),
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  });
+};
+
+export const supabase = createSupabaseClient();

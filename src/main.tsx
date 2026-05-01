@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { supabaseConfigError } from './supabase/client';
 import './index.css';
 
 const rootElement = document.getElementById('root');
@@ -27,6 +28,8 @@ const renderFatal = (message: string) => {
 if (!rootElement) {
   document.body.innerHTML =
     '<div style="padding:24px;font-family:system-ui,sans-serif;color:#111;">Root element not found.</div>';
+} else if (supabaseConfigError) {
+  renderFatal(supabaseConfigError);
 } else {
   try {
     ReactDOM.createRoot(rootElement).render(
