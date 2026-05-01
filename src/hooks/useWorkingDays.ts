@@ -48,6 +48,11 @@ export const useWorkingDays = (params: Params): Result => {
   const [error, setError] = useState<string | null>(null);
   const [showFallbackWarning, setShowFallbackWarning] = useState<boolean>(false);
 
+  const fyStart = params.financialYear.start;
+  const fyEnd = params.financialYear.end;
+  const month = params.month;
+  const staffId = params.staffId;
+
   useEffect(() => {
     const run = async () => {
       setLoading(true);
@@ -55,19 +60,16 @@ export const useWorkingDays = (params: Params): Result => {
       setShowFallbackWarning(false);
 
       try {
-        const { financialYear, month, staffId } = params;
-        const year = month >= 4 ? financialYear.start : financialYear.end;
+        const year = month >= 4 ? fyStart : fyEnd;
 
         const daysInMonth = new Date(year, month, 0).getDate();
 
-        // Use local date to avoid timezone issues with ISO string comparison
         const now = new Date();
         const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
         const startIso = startOfMonthISO(year, month);
         const endIso = endOfMonthISO(year, month);
 
-        // Determine the relationship between selected month and current month
         const selectedMonthStart = new Date(year, month - 1, 1);
         const nowMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -109,10 +111,6 @@ export const useWorkingDays = (params: Params): Result => {
           }
         });
 
-        // Calculate working days elapsed up to and including today
-        // For future months: 0
-        // For past months: full working days in month
-        // For current month: count working days from start of month up to and including today
         let teamWorkingToToday = 0;
 
         if (isFutureMonth) {
@@ -120,7 +118,6 @@ export const useWorkingDays = (params: Params): Result => {
         } else if (isPastMonth) {
           teamWorkingToToday = teamWorking;
         } else {
-          // Current month: count non-weekend, non-holiday days from 1st up to and including today
           for (let day = 1; day <= daysInMonth; day++) {
             const d = new Date(year, month - 1, day);
             const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -128,7 +125,6 @@ export const useWorkingDays = (params: Params): Result => {
             if (isWeekend(d)) continue;
             if (teamHolidayDates.has(dateStr)) continue;
 
-            // Include today itself — run rate is based on days elapsed including today
             if (dateStr <= todayIso) {
               teamWorkingToToday++;
             }
@@ -209,7 +205,7 @@ export const useWorkingDays = (params: Params): Result => {
     };
 
     run();
-  }, [params.financialYear, params.month, params.staffId]);
+  }, [fyStart, fyEnd, month, staffId]);
 
   return {
     teamWorkingDays,
