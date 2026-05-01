@@ -105,7 +105,6 @@ export const StaffTracker: React.FC = () => {
 
     const nextLocalValues: Record<string, string> = {};
 
-    // For team view, aggregate all accountants
     const staffIdsToFetch = isTeamView
       ? allStaff.filter((s) => !s.is_hidden && isAccountant(s.role)).map((s) => s.staff_id)
       : editableStaffIds;
@@ -360,8 +359,8 @@ export const StaffTracker: React.FC = () => {
 
       const monthData = getFinancialYearMonths();
       const monthCols = monthData.map(m => {
-        const year = m.number >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
-        return { key: `${m.name}_${year}`, month: m.number, year };
+        const colYear = m.number >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
+        return { key: `${m.name}_${colYear}`, month: m.number, year: colYear };
       });
 
       const rows: Record<string, string | number>[] = [];
@@ -393,11 +392,11 @@ export const StaffTracker: React.FC = () => {
       ];
 
       const baseCsv = unparse({ fields, data: rows });
-      
+
       const now = new Date();
-      const formattedDateTime = now.toLocaleString('en-GB', { 
-        day: '2-digit', month: 'short', year: 'numeric', 
-        hour: '2-digit', minute: '2-digit', second: '2-digit' 
+      const formattedDateTime = now.toLocaleString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
       });
       const fileDateTime = now.toISOString().replace(/T/, '_').replace(/:/g, '-').split('.')[0];
 
@@ -411,8 +410,8 @@ export const StaffTracker: React.FC = () => {
       a.download = `actuals_template_${selectedFinancialYear.label.replace('/', '-')}_${fileDateTime}.csv`;
       a.click();
       window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Failed to export template', err);
+    } catch {
+      // Export failed silently
     } finally {
       setIsExporting(false);
     }
