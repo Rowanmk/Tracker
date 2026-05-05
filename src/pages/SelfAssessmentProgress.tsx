@@ -337,10 +337,116 @@ export const SelfAssessmentProgress: React.FC = () => {
         </div>
       </div>
 
-      {/* Row 1: Full Year tile + Monthly tile side by side */}
+      {/* Row 1: Monthly tile (left) + Full Year tile (right) */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
-        {/* Full Year Data Tile */}
+        {/* Monthly Data Tile — now on the LEFT */}
+        <div className="bg-white rounded-xl shadow-md border tile-brand overflow-hidden flex flex-col">
+          <div className="tile-header px-4 py-1.5 flex items-center justify-between">
+            <span>Self Assessment Data — {monthlyTileData?.monthName ?? MONTH_NAMES[selectedMonth - 1]}</span>
+            <span className="text-white/70 text-xs font-normal">
+              Linked to dashboard month
+            </span>
+          </div>
+
+          {loadingMonthly ? (
+            <div className="flex-1 flex items-center justify-center text-gray-500 text-sm py-10">
+              Loading monthly data…
+            </div>
+          ) : !monthlyTileData || (monthlyTileData.submitted === 0 && monthlyTileData.target === 0) ? (
+            <div className="flex-1 flex items-center justify-center text-gray-500 text-sm py-10 px-6 text-center">
+              No Self Assessment data recorded for {MONTH_NAMES[selectedMonth - 1]}.
+            </div>
+          ) : (
+            <>
+              <div className="flex-1 overflow-auto">
+                <table className="w-full divide-y">
+                  <thead className="bg-gray-50 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-bold uppercase">Accountant</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold uppercase">Target</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold uppercase">Submitted</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold uppercase">% Complete</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold uppercase">Progress</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {monthlyTileData.perAccountant.map((entry, idx) => {
+                      const pct = entry.target > 0 ? (entry.submitted / entry.target) * 100 : 0;
+                      const isSelected = selectedName === entry.name;
+
+                      return (
+                        <tr
+                          key={entry.name}
+                          onClick={() => handleRowClick(entry.name)}
+                          className={`cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'bg-blue-100 ring-1 ring-inset ring-blue-400'
+                              : idx % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50 hover:bg-gray-100'
+                          }`}
+                        >
+                          <td className="px-4 py-3 font-medium text-gray-900">{entry.name}</td>
+                          <td className="px-4 py-3 text-center font-semibold text-gray-700">
+                            {entry.target}
+                          </td>
+                          <td className="px-4 py-3 text-center font-semibold text-gray-900">
+                            {entry.submitted}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span
+                              className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-bold ${getPctBadgeColor(pct, entry.target)}`}
+                            >
+                              {entry.target === 0 ? '—' : `${pct.toFixed(1)}%`}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden min-w-[80px]">
+                              <div
+                                className={`h-full rounded-full transition-all duration-300 ${getBarColor(pct)}`}
+                                style={{ width: `${Math.min(pct, 100)}%` }}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+
+                  <tfoot className="bg-gray-100 font-bold sticky bottom-0">
+                    <tr>
+                      <td className="px-4 py-3 text-gray-900">Total</td>
+                      <td className="px-4 py-3 text-center text-gray-900">{monthlyTileData.target}</td>
+                      <td className="px-4 py-3 text-center text-gray-900">{monthlyTileData.submitted}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span
+                          className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-bold ${getPctBadgeColor(monthlyTileData.pct, monthlyTileData.target)}`}
+                        >
+                          {monthlyTileData.target === 0 ? '—' : `${monthlyTileData.pct.toFixed(1)}%`}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="w-full h-2 bg-gray-300 rounded-full overflow-hidden min-w-[80px]">
+                          <div
+                            className={`h-full rounded-full transition-all duration-300 ${getBarColor(monthlyTileData.pct)}`}
+                            style={{ width: `${Math.min(monthlyTileData.pct, 100)}%` }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500">
+                Showing <span className="font-semibold text-gray-700">{monthlyTileData.monthName}</span>.
+                Change month using the dashboard month selector.
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Full Year Data Tile — now on the RIGHT */}
         <div className="bg-white rounded-xl shadow-md border tile-brand overflow-hidden flex flex-col">
           <div className="tile-header px-4 py-1.5">Self Assessment Data — Full Year</div>
 
@@ -476,112 +582,6 @@ export const SelfAssessmentProgress: React.FC = () => {
             </span>
             <span className="ml-auto text-gray-400 italic">Click a row to highlight across both tiles</span>
           </div>
-        </div>
-
-        {/* Monthly Data Tile */}
-        <div className="bg-white rounded-xl shadow-md border tile-brand overflow-hidden flex flex-col">
-          <div className="tile-header px-4 py-1.5 flex items-center justify-between">
-            <span>Self Assessment Data — {monthlyTileData?.monthName ?? MONTH_NAMES[selectedMonth - 1]}</span>
-            <span className="text-white/70 text-xs font-normal">
-              Linked to dashboard month
-            </span>
-          </div>
-
-          {loadingMonthly ? (
-            <div className="flex-1 flex items-center justify-center text-gray-500 text-sm py-10">
-              Loading monthly data…
-            </div>
-          ) : !monthlyTileData || (monthlyTileData.submitted === 0 && monthlyTileData.target === 0) ? (
-            <div className="flex-1 flex items-center justify-center text-gray-500 text-sm py-10 px-6 text-center">
-              No Self Assessment data recorded for {MONTH_NAMES[selectedMonth - 1]}.
-            </div>
-          ) : (
-            <>
-              <div className="flex-1 overflow-auto">
-                <table className="w-full divide-y">
-                  <thead className="bg-gray-50 sticky top-0 z-10">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-bold uppercase">Accountant</th>
-                      <th className="px-4 py-3 text-center text-xs font-bold uppercase">Target</th>
-                      <th className="px-4 py-3 text-center text-xs font-bold uppercase">Submitted</th>
-                      <th className="px-4 py-3 text-center text-xs font-bold uppercase">% Complete</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold uppercase">Progress</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {monthlyTileData.perAccountant.map((entry, idx) => {
-                      const pct = entry.target > 0 ? (entry.submitted / entry.target) * 100 : 0;
-                      const isSelected = selectedName === entry.name;
-
-                      return (
-                        <tr
-                          key={entry.name}
-                          onClick={() => handleRowClick(entry.name)}
-                          className={`cursor-pointer transition-colors ${
-                            isSelected
-                              ? 'bg-blue-100 ring-1 ring-inset ring-blue-400'
-                              : idx % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50 hover:bg-gray-100'
-                          }`}
-                        >
-                          <td className="px-4 py-3 font-medium text-gray-900">{entry.name}</td>
-                          <td className="px-4 py-3 text-center font-semibold text-gray-700">
-                            {entry.target}
-                          </td>
-                          <td className="px-4 py-3 text-center font-semibold text-gray-900">
-                            {entry.submitted}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span
-                              className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-bold ${getPctBadgeColor(pct, entry.target)}`}
-                            >
-                              {entry.target === 0 ? '—' : `${pct.toFixed(1)}%`}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden min-w-[80px]">
-                              <div
-                                className={`h-full rounded-full transition-all duration-300 ${getBarColor(pct)}`}
-                                style={{ width: `${Math.min(pct, 100)}%` }}
-                              />
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-
-                  <tfoot className="bg-gray-100 font-bold sticky bottom-0">
-                    <tr>
-                      <td className="px-4 py-3 text-gray-900">Total</td>
-                      <td className="px-4 py-3 text-center text-gray-900">{monthlyTileData.target}</td>
-                      <td className="px-4 py-3 text-center text-gray-900">{monthlyTileData.submitted}</td>
-                      <td className="px-4 py-3 text-center">
-                        <span
-                          className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-bold ${getPctBadgeColor(monthlyTileData.pct, monthlyTileData.target)}`}
-                        >
-                          {monthlyTileData.target === 0 ? '—' : `${monthlyTileData.pct.toFixed(1)}%`}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="w-full h-2 bg-gray-300 rounded-full overflow-hidden min-w-[80px]">
-                          <div
-                            className={`h-full rounded-full transition-all duration-300 ${getBarColor(monthlyTileData.pct)}`}
-                            style={{ width: `${Math.min(monthlyTileData.pct, 100)}%` }}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-
-              <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500">
-                Showing <span className="font-semibold text-gray-700">{monthlyTileData.monthName}</span>.
-                Change month using the dashboard month selector.
-              </div>
-            </>
-          )}
         </div>
       </div>
 
