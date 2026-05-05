@@ -55,6 +55,9 @@ export const StaffTracker: React.FC = () => {
   const year = selectedMonth >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
   const daysInMonth = new Date(year, selectedMonth, 0).getDate();
 
+  // PRE-FIX-1: previous behaviour — "All Accountants" mode allowed multi-staff edits
+  // The "all" / no selection branch returned every accountant, which let a single
+  // edit overwrite multiple staff rows on the same day/service. Removed entirely.
   const selectedAccountants = useMemo(() => {
     const visibleAccountants = allStaff.filter((staff) => !staff.is_hidden && isAccountant(staff.role));
 
@@ -62,8 +65,8 @@ export const StaffTracker: React.FC = () => {
       return visibleAccountants;
     }
 
-    if (selectedTeamId === "all" || !selectedTeamId) {
-      return visibleAccountants;
+    if (!selectedTeamId) {
+      return [];
     }
 
     return visibleAccountants.filter(
@@ -71,16 +74,30 @@ export const StaffTracker: React.FC = () => {
     );
   }, [allStaff, selectedTeamId, isTeamView]);
 
+  // PRE-FIX-1: previous behaviour — fell back to all accountant ids when no
+  // single staff was selected, enabling unsafe multi-staff edits.
   const editableStaffIds = useMemo(
-    () => (isTeamView ? [] : selectedAccountants.map((staff) => staff.staff_id)),
-    [selectedAccountants, isTeamView]
+    () => {
+      if (isTeamView) return [];
+      if (!selectedTeamId) return [];
+      const single = selectedAccountants.find(
+        (staff) => String(staff.staff_id) === selectedTeamId
+      );
+      return single ? [single.staff_id] : [];
+    },
+    [selectedAccountants, selectedTeamId, isTeamView]
   );
 
+  // PRE-FIX-1: previous behaviour — rendered "All Accountants" label and grid
+  // when no single staff was selected. Now hides the grid and shows a placeholder.
   const tableLabel = useMemo(() => {
     if (isTeamView) return "Team View";
-    if (selectedTeamId === "all" || !selectedTeamId) return "All Accountants";
+    if (!selectedTeamId) return "";
     return allStaff.find((staff) => String(staff.staff_id) === selectedTeamId)?.name || "Accountant";
   }, [selectedTeamId, allStaff, isTeamView]);
+
+  const hasSingleSelectedAccountant = !isTeamView && editableStaffIds.length === 1;
+  const showPlaceholder = !isTeamView && !hasSingleSelectedAccountant;
 
   const { staffWorkingDays, workingDaysUpToToday } = useWorkingDays({
     financialYear: selectedFinancialYear,
@@ -114,6 +131,9 @@ export const StaffTracker: React.FC = () => {
 
     const nextLocalValues: Record<string, string> = {};
 
+    // PRE-FIX-1: previous behaviour — team-view branch pulled every accountant's data
+    // even when the user had no single-accountant selection. Now only fetches when
+    // we have an explicit selection.
     const staffIdsToFetch = isTeamView
       ? allStaff.filter((s) => !s.is_hidden && isAccountant(s.role)).map((s) => s.staff_id)
       : editableStaffIds;
@@ -127,7 +147,7 @@ export const StaffTracker: React.FC = () => {
       return;
     }
 
-    let aggregatedTargets: Record<number, number> = {};
+    const aggregatedTargets: Record<number, number> = {};
     for (const staffId of staffIdsToFetch) {
       const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, staffId);
       Object.entries(perService).forEach(([sid, val]) => {
@@ -189,8 +209,18 @@ export const StaffTracker: React.FC = () => {
     }));
   };
 
+  // PRE-FIX-1: previous behaviour — multi-staff branch updated existingRows[0] and
+  // deleted other staff's rows, silently overwriting their data. Removed entirely.
+  // Now handler bails out unless exactly one explicit staff_id is selected.
   const handleInputBlur = async (serviceId: number, day: number, value: string) => {
-    if (isTeamView || editableStaffIds.length === 0 || !currentStaff) return;
+    if (isTeamView || !currentStaff) return;
+
+    if (editableStaffIds.length !== 1) {
+      console.error("Tracker save aborted: no single staff selected");
+      return;
+    }
+
+    const targetStaffId = editableStaffIds[0];
 
     const parsedValue = parseInt(value, 10);
     const numValue = Number.isNaN(parsedValue) ? 0 : Math.max(parsedValue, 0);
@@ -205,7 +235,7 @@ export const StaffTracker: React.FC = () => {
       .eq("day", day)
       .eq("month", selectedMonth)
       .eq("year", year)
-      .in("staff_id", editableStaffIds);
+      .eq("staff_id", targetStaffId);
 
     const existingTotal =
       existingRows?.reduce((sum, row) => sum + (row.delivered_count || 0), 0) || 0;
@@ -238,9 +268,8 @@ export const StaffTracker: React.FC = () => {
         }
       }
     } else if (numValue > 0) {
-      const primaryStaffId = editableStaffIds[0];
       await supabase.from("dailyactivity").insert({
-        staff_id: primaryStaffId,
+        staff_id: targetStaffId,
         service_id: serviceId,
         delivered_count: numValue,
         date,
@@ -254,7 +283,7 @@ export const StaffTracker: React.FC = () => {
       await logTrackerSheetUpdate({
         actorStaffId: currentStaff.staff_id,
         actorName: currentStaff.name,
-        subjectStaffIds: editableStaffIds,
+        subjectStaffIds: [targetStaffId],
         subjectStaffNames: selectedAccountants.map((staff) => staff.name),
         serviceId,
         serviceName: service.service_name,
@@ -439,6 +468,24 @@ export const StaffTracker: React.FC = () => {
   };
 
   if (loading) return <div className="py-6 text-center text-gray-500">Loading tracker…</div>;
+
+  if (showPlaceholder) {
+    return (
+      <div className="space-y-6">
+        <div className="page-header">
+          <h2 className="page-title">Tracker</h2>
+        </div>
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-10 text-center">
+          <p className="text-base font-semibold text-gray-700 dark:text-gray-200">
+            Select an accountant to view or edit their tracker.
+          </p>
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            Use the accountant dropdown in the header to choose an individual.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
