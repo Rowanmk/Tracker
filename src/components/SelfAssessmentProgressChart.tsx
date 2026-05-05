@@ -178,8 +178,10 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
   // ─────────────────────────────────────────────────────────────────────────────
   // targetLinePercents: grey dashed reference line.
-  // Past months: tracks team's actual cumulative %.
-  // Current + future months: climbs only on working days.
+  // PRE-SA-TARGET: previously past months tracked actual cumulative %, only current/future used planned
+  // Now: advances cumPlanned uniformly on working days across past, current, and future months,
+  // using each month's DB target. Teams ahead in past months sit visibly above the dashed line;
+  // teams behind sit below.
   // ─────────────────────────────────────────────────────────────────────────────
   const targetLinePercents = React.useMemo(() => {
     const teamCount = visibleTeams.length;
@@ -187,24 +189,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
     const totalDenominator = visibleTeams.reduce((s, t) => s + t.fullYearTarget, 0);
     if (totalDenominator <= 0) return dayPoints.map(() => 0);
-
-    const totalActualsByDate: Record<string, number> = {};
-    visibleTeams.forEach((team) => {
-      const td = dailyActuals[team.team_id] || {};
-      Object.keys(td).forEach((d) => {
-        totalActualsByDate[d] = (totalActualsByDate[d] || 0) + td[d];
-      });
-    });
-
-    const todayDate = new Date();
-    todayDate.setHours(0, 0, 0, 0);
-    const currentYear = todayDate.getFullYear();
-    const currentMonth = todayDate.getMonth() + 1;
-
-    const isPastMonth = (m: number) => {
-      const y = getCalendarYear(m, financialYear);
-      return y < currentYear || (y === currentYear && m < currentMonth);
-    };
 
     const wdPerMonth = SA_MONTHS.map((_, mi) =>
       dayPoints.filter(dp => dp.monthIndex === mi && dp.isWorkingDay).length
@@ -214,25 +198,16 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
       visibleTeams.reduce((s, t) => s + (monthlyData[t.team_id]?.[m]?.target ?? 0), 0)
     );
 
-    let cumActual = 0;
     let cumPlanned = 0;
 
     return dayPoints.map((dp) => {
-      cumActual += totalActualsByDate[dp.dateStr] || 0;
-
-      if (isPastMonth(dp.monthNumber)) {
-        return (cumActual / totalDenominator) * 100;
-      }
-
       if (dp.isWorkingDay) {
         const wd = wdPerMonth[dp.monthIndex] || 1;
         cumPlanned += plannedPerMonth[dp.monthIndex] / wd;
       }
-
-      const totalProjected = cumActual + cumPlanned;
-      return Math.min((totalProjected / totalDenominator) * 100, 100);
+      return Math.min((cumPlanned / totalDenominator) * 100, 100);
     });
-  }, [visibleTeams, dailyActuals, monthlyData, dayPoints, financialYear]);
+  }, [visibleTeams, monthlyData, dayPoints, financialYear]);
 
   const getX = (dayIndex: number) =>
     PADDING_LEFT + (CHART_WIDTH / Math.max(totalDays - 1, 1)) * dayIndex;
