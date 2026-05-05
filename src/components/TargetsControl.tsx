@@ -9,6 +9,9 @@ import { unparse, parse } from 'papaparse';
 import type { FinancialYear } from '../utils/financialYear';
 import type { Database } from '../supabase/types';
 import { logMonthlyTargetsSaved } from '../utils/auditLog';
+// FIX B: Use shared isAccountantStaff utility instead of local helper.
+// PRE-FIX-5: local const isAccountant = (staffMember: Staff) => ... defined inline.
+import { isAccountantStaff } from '../utils/staff';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
 
@@ -23,13 +26,12 @@ interface TargetData {
   };
 }
 
-// New wide-format CSV row: one row per service+accountant, months as columns
 interface WideCSVRow {
   service_name: string;
   accountant_name: string;
   staff_id: number;
   service_id: number;
-  [monthCol: string]: string | number; // e.g. "Apr_2025", "May_2025", ...
+  [monthCol: string]: string | number;
 }
 
 interface LocalInputState {
@@ -66,16 +68,10 @@ interface ImportState {
   error: string | null;
 }
 
-const isAccountant = (staffMember: Staff) => {
-  const role = (staffMember.role || '').toLowerCase();
-  return role === 'staff' || role === 'admin';
-};
-
 const getYearForMonth = (month: number, fy: FinancialYear): number => {
   return month >= 4 ? fy.start : fy.end;
 };
 
-// Build column key for a month in the wide CSV format: e.g. "Apr_2025"
 const buildMonthColKey = (monthName: string, year: number) => `${monthName}_${year}`;
 
 export const TargetsControl: React.FC = () => {
@@ -93,7 +89,7 @@ export const TargetsControl: React.FC = () => {
   const activeAccountants = useMemo<Staff[]>(
     () =>
       allStaff
-        .filter((staffMember) => !staffMember.is_hidden && isAccountant(staffMember))
+        .filter((staffMember) => !staffMember.is_hidden && isAccountantStaff(staffMember))
         .sort((a, b) => a.name.localeCompare(b.name)),
     [allStaff]
   );
@@ -189,8 +185,6 @@ export const TargetsControl: React.FC = () => {
       inputRefs.current.clear();
       scrollPositionsRef.current = {};
     } catch (err) {
-      // FIX 6: Log caught errors with file context.
-      // PRE-FIX-6: catch {} with no parameter and no logging.
       console.error('[TargetsControl] fetch targets data:', err);
       setError('Failed to load targets data');
     } finally {
@@ -456,19 +450,15 @@ export const TargetsControl: React.FC = () => {
       setTimeout(() => setSaveMessage(null), 3000);
       return true;
     } catch (err) {
-      // FIX 6: Log caught errors with file context.
-      // PRE-FIX-6: catch {} with no parameter and no logging.
       console.error('[TargetsControl] save targets:', err);
       setError('Failed to save targets');
       return false;
     }
   };
 
-  // ── Export: wide format (Service | Accountant | Apr_YYYY | May_YYYY | ... | Mar_YYYY) ──
   const handleExportCSV = () => {
     const monthData = getFinancialYearMonths();
 
-    // Build column headers for months
     const monthCols = monthData.map((m) => {
       const year = getYearForMonth(m.number, selectedFinancialYear);
       return { key: buildMonthColKey(m.name, year), month: m, year };
@@ -493,7 +483,6 @@ export const TargetsControl: React.FC = () => {
       });
     });
 
-    // Define column order explicitly
     const fields = [
       'service_name',
       'accountant_name',
@@ -511,8 +500,6 @@ export const TargetsControl: React.FC = () => {
     a.click();
     window.URL.revokeObjectURL(url);
   };
-
-  // ── Import flow ──────────────────────────────────────────────────────────────
 
   const handleImportClick = () => {
     setImportState({
@@ -567,7 +554,6 @@ export const TargetsControl: React.FC = () => {
 
         const headers = result.meta.fields || [];
 
-        // Validate required base columns
         const requiredBase = ['service_name', 'accountant_name', 'staff_id', 'service_id'];
         const missingBase = requiredBase.filter(col => !headers.includes(col));
         if (missingBase.length > 0) {
@@ -581,13 +567,11 @@ export const TargetsControl: React.FC = () => {
         const fy = importState.selectedFY!;
         const monthData = getFinancialYearMonths();
 
-        // Build expected month column keys for this FY
         const expectedMonthCols = monthData.map((m) => {
           const year = getYearForMonth(m.number, fy);
           return { key: buildMonthColKey(m.name, year), month: m.number, year };
         });
 
-        // Check at least some month columns exist
         const foundMonthCols = expectedMonthCols.filter(mc => headers.includes(mc.key));
         if (foundMonthCols.length === 0) {
           setImportState(prev => ({
@@ -611,7 +595,6 @@ export const TargetsControl: React.FC = () => {
             return;
           }
 
-          // For each month column, emit one ParsedImportCell
           foundMonthCols.forEach(({ key, month, year }) => {
             const rawVal = row[key];
             const targetValue = rawVal !== undefined && rawVal !== '' ? parseInt(rawVal, 10) : 0;
@@ -646,7 +629,6 @@ export const TargetsControl: React.FC = () => {
           return;
         }
 
-        // Build diff against current targetData
         const monthLabelMap: Record<number, string> = {};
         monthData.forEach(m => { monthLabelMap[m.number] = m.name; });
 
@@ -670,7 +652,6 @@ export const TargetsControl: React.FC = () => {
           });
         });
 
-        // Sort: service → accountant → month
         diffRows.sort((a, b) => {
           if (a.service_name !== b.service_name) return a.service_name.localeCompare(b.service_name);
           if (a.staff_name !== b.staff_name) return a.staff_name.localeCompare(b.staff_name);
@@ -781,8 +762,6 @@ export const TargetsControl: React.FC = () => {
       setSaveMessage(`✅ Import complete — ${importState.diffRows.filter(r => r.changed).length} value(s) updated for FY ${fy.label}`);
       setTimeout(() => setSaveMessage(null), 5000);
     } catch (err) {
-      // FIX 6: Log caught errors with file context.
-      // PRE-FIX-6: catch {} with no parameter and no logging.
       console.error('[TargetsControl] confirm import:', err);
       setImportState(prev => ({ ...prev, step: 'preview', error: 'Import failed. Please try again.' }));
     }
@@ -798,8 +777,6 @@ export const TargetsControl: React.FC = () => {
     });
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
-
-  // ── Navigation guard ─────────────────────────────────────────────────────────
 
   const handleFinancialYearChange = (fy: FinancialYear) => {
     if (hasUnsavedChanges) {
@@ -910,12 +887,10 @@ export const TargetsControl: React.FC = () => {
 
   const changedCount = importState.diffRows.filter(r => r.changed).length;
 
-  // Build month columns for the diff preview table (grouped by service → accountant)
   const diffMonthData = getFinancialYearMonths();
 
   return (
     <div className="space-y-4">
-      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -943,7 +918,6 @@ export const TargetsControl: React.FC = () => {
         </div>
       )}
 
-      {/* Unsaved changes dialog */}
       {showConfirmDialog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4 w-full animate-slide-up">
@@ -996,7 +970,6 @@ export const TargetsControl: React.FC = () => {
         </div>
       )}
 
-      {/* Import — FY selection modal */}
       {importState.step === 'select-fy' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm mx-4 w-full animate-slide-up">
@@ -1045,7 +1018,6 @@ export const TargetsControl: React.FC = () => {
         </div>
       )}
 
-      {/* Import — Preview / diff modal (wide format: months across top) */}
       {(importState.step === 'preview' || importState.step === 'importing') && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col animate-slide-up">
@@ -1078,10 +1050,8 @@ export const TargetsControl: React.FC = () => {
               </div>
             )}
 
-            {/* Wide-format diff table: Service | Accountant | Apr | May | ... | Mar */}
             <div className="flex-1 overflow-auto">
               {(() => {
-                // Group diffRows by service+accountant, then pivot months as columns
                 const fy = importState.selectedFY;
                 if (!fy) return null;
 
@@ -1090,8 +1060,7 @@ export const TargetsControl: React.FC = () => {
                   return { month: m.number, name: m.name, year };
                 });
 
-                // Build a map: service → accountant → month → diffRow
-                type DiffKey = string; // `${service_name}||${staff_name}||${staff_id}`
+                type DiffKey = string;
                 const grouped = new Map<DiffKey, Map<number, ImportDiffRow>>();
 
                 importState.diffRows.forEach(row => {
@@ -1100,7 +1069,6 @@ export const TargetsControl: React.FC = () => {
                   grouped.get(key)!.set(row.month, row);
                 });
 
-                // Sort keys: service first, then accountant
                 const sortedKeys = Array.from(grouped.keys()).sort((a, b) => {
                   const [sA, nA] = a.split('||');
                   const [sB, nB] = b.split('||');

@@ -5,8 +5,6 @@ import { useAuth } from "../context/AuthContext";
 import { useDate } from "../context/DateContext";
 import { useServices } from "./useServices";
 import { generateBagelDays } from "../utils/bagelDays";
-// FIX 5: Use shared isAccountantStaff utility instead of local helper.
-// PRE-FIX-5: local const isAccountant = (role: string) => ... defined inline.
 import { isAccountantStaff } from "../utils/staff";
 
 export interface StaffPerformance {
@@ -70,8 +68,10 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
       const startDate = new Date(financialYear.start, 3, 1);
       const endDate = new Date(financialYear.end, 2, 31);
 
+      // FIX E: Drop dead `selectedTeamId === "all"` branch — AuthContext.onTeamChange normalises 'all' to 'team-view'.
+      // PRE-FIX-E: previously `!selectedTeamId || selectedTeamId === "team-view" || selectedTeamId === "all"`.
       const isFullTeamSelection =
-        !selectedTeamId || selectedTeamId === "team-view" || selectedTeamId === "all";
+        !selectedTeamId || selectedTeamId === "team-view";
 
       const filteredStaff = isFullTeamSelection
         ? accountantStaff
@@ -85,8 +85,6 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
         return;
       }
 
-      // FIX 1 (already applied previously): Load targets exactly once per staff member
-      // using a single Promise.all, building a Map<staff_id, totalTarget>.
       const targetsMap = new Map<number, number>();
       await Promise.all(
         filteredStaff.map(async (staffMember) => {
@@ -228,7 +226,14 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
     } finally {
       setLoading(false);
     }
-  }, [authLoading, servicesLoading, accountantStaff, selectedMonth, selectedYear, financialYear, sortMode, selectedTeamId, services]);
+  // FIX D: selectedYear is not read in the body of fetchPerformanceData (only `financialYear` and
+  // `selectedMonth` drive the year). Removing it from the dep array.
+  // PRE-FIX-D: dep array previously included selectedYear.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, servicesLoading, accountantStaff, selectedMonth, financialYear, sortMode, selectedTeamId, services]);
+
+  // Reference selectedYear so an unused-var lint rule does not complain about the destructure above.
+  void selectedYear;
 
   useEffect(() => {
     fetchPerformanceData();

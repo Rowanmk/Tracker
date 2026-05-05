@@ -5,6 +5,10 @@ import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
 import { getFinancialYearDateRange, getFinancialYearMonths } from '../utils/financialYear';
 import { generateBagelDays } from '../utils/bagelDays';
+// FIX B: Use shared isAccountantStaff utility instead of local helper.
+// PRE-FIX-5: local const isAccountant = (role: string) => ... defined inline; call sites passed staff.role.
+// Now passes the staff object to isAccountantStaff(staff) at the call site.
+import { isAccountantStaff } from '../utils/staff';
 
 interface AnnualStaffData {
   staff_id: number;
@@ -18,11 +22,6 @@ interface AnnualStaffData {
   totalDeliveries: number;
 }
 
-const isAccountant = (role: string) => {
-  const normalizedRole = (role || '').toLowerCase();
-  return normalizedRole === 'staff' || normalizedRole === 'admin';
-};
-
 export const AnnualSummary: React.FC = () => {
   const { selectedFinancialYear } = useDate();
   const { allStaff, selectedTeamId } = useAuth();
@@ -35,9 +34,11 @@ export const AnnualSummary: React.FC = () => {
     const { startDate, endDate } = getFinancialYearDateRange(selectedFinancialYear);
     const monthData = getFinancialYearMonths();
 
-    const visibleAccountants = allStaff.filter(s => !s.is_hidden && isAccountant(s.role));
+    const visibleAccountants = allStaff.filter(s => !s.is_hidden && isAccountantStaff(s));
 
-    const filteredStaff = selectedTeamId === "all" || !selectedTeamId
+    // FIX E: Drop dead `selectedTeamId === "all"` branch — AuthContext.onTeamChange normalises 'all' to 'team-view'.
+    // PRE-FIX-E: filter previously was `selectedTeamId === "all" || !selectedTeamId ? all : filtered`.
+    const filteredStaff = !selectedTeamId
       ? visibleAccountants
       : visibleAccountants.filter(s => String(s.staff_id) === selectedTeamId);
 

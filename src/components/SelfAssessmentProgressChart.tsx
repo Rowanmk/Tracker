@@ -178,9 +178,8 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
   // ─────────────────────────────────────────────────────────────────────────────
   // targetLinePercents: grey dashed reference line.
-  // Past months: tracks team's actual cumulative % (overlaps actuals historically).
-  // Current + future months: climbs only on working days by monthPlannedTarget/workingDaysInMonth.
-  // Ends at exactly 100% on 31 Jan.
+  // Past months: tracks team's actual cumulative %.
+  // Current + future months: climbs only on working days.
   // ─────────────────────────────────────────────────────────────────────────────
   const targetLinePercents = React.useMemo(() => {
     const teamCount = visibleTeams.length;
@@ -189,7 +188,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
     const totalDenominator = visibleTeams.reduce((s, t) => s + t.fullYearTarget, 0);
     if (totalDenominator <= 0) return dayPoints.map(() => 0);
 
-    // Aggregate all teams' daily actuals
     const totalActualsByDate: Record<string, number> = {};
     visibleTeams.forEach((team) => {
       const td = dailyActuals[team.team_id] || {};
@@ -208,12 +206,10 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
       return y < currentYear || (y === currentYear && m < currentMonth);
     };
 
-    // Working days per SA month index
     const wdPerMonth = SA_MONTHS.map((_, mi) =>
       dayPoints.filter(dp => dp.monthIndex === mi && dp.isWorkingDay).length
     );
 
-    // Planned target per SA month (sum across all visible teams, using DB targets)
     const plannedPerMonth = SA_MONTHS.map((m) =>
       visibleTeams.reduce((s, t) => s + (monthlyData[t.team_id]?.[m]?.target ?? 0), 0)
     );
@@ -225,11 +221,9 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
       cumActual += totalActualsByDate[dp.dateStr] || 0;
 
       if (isPastMonth(dp.monthNumber)) {
-        // Past months: target line tracks actual cumulative %
         return (cumActual / totalDenominator) * 100;
       }
 
-      // Current and future months: advance only on working days
       if (dp.isWorkingDay) {
         const wd = wdPerMonth[dp.monthIndex] || 1;
         cumPlanned += plannedPerMonth[dp.monthIndex] / wd;
@@ -246,12 +240,10 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   const getY = (p: number) =>
     VIEWBOX_HEIGHT - PADDING_BOTTOM - (p / 100) * CHART_HEIGHT;
 
-  // Target polyline — all days
   const targetPolylinePoints = targetLinePercents
     .map((p, i) => `${getX(i)},${getY(p)}`)
     .join(' ');
 
-  // Month boundary x positions and labels
   const monthBoundaries = React.useMemo(() => {
     const boundaries: Array<{ x: number; label: string; monthNumber: number }> = [];
     SA_MONTHS.forEach((monthNumber, monthIndex) => {
@@ -269,11 +261,9 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
     return boundaries;
   }, [dayPoints, financialYear]);
 
-  // Today marker
   const todayDayIndex = dayPoints.findIndex(dp => dp.dateStr === todayStr);
   const todayX = todayDayIndex >= 0 ? getX(todayDayIndex) : null;
 
-  // Calculate the target line % at today's position for the label
   const todayTargetPercent = React.useMemo(() => {
     if (todayDayIndex < 0) return null;
     const pct = targetLinePercents[todayDayIndex];
@@ -421,7 +411,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           </g>
         )}
 
-        {/* Target line — dotted grey, advances only on working days for future months */}
+        {/* Target line — dotted grey */}
         <polyline
           points={targetPolylinePoints}
           fill="none"
@@ -442,7 +432,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           Target
         </text>
 
-        {/* Actual lines — only plot points up to today, step-function on real activity days */}
+        {/* Actual lines — only plot points up to today */}
         {chartData.map(team => {
           const visiblePoints = team.percents
             .map((p, i) => ({ ...p, i }))
@@ -459,7 +449,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
           return (
             <g key={team.team_id}>
-              {/* Invisible wider hit area for easier hovering */}
+              {/* Invisible wider hit area */}
               <path
                 d={pathD}
                 fill="none"
@@ -603,24 +593,10 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
         </div>
       )}
 
-      {/* Legend */}
+      {/* Legend — accountant name buttons only */}
+      {/* PRE-FIX-A: previously included two redundant pills (Target dashed line + Today % marker)
+          here in the legend container. Those pills duplicated the in-SVG labels and have been removed. */}
       <div className="mt-3 flex justify-center gap-3 flex-wrap">
-        {/* Target line legend item */}
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-500">
-          <svg width="24" height="10">
-            <line x1="0" y1="5" x2="24" y2="5" stroke="#9CA3AF" strokeWidth="2" strokeDasharray="5 3" />
-          </svg>
-          <span>Target (working days only)</span>
-        </div>
-
-        {/* Today marker legend */}
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-orange-200 bg-orange-50 text-sm text-orange-600">
-          <svg width="12" height="10">
-            <line x1="6" y1="0" x2="6" y2="10" stroke="#FF8A2A" strokeWidth="1.5" strokeDasharray="3 2" />
-          </svg>
-          <span>Today{todayTargetPercent !== null ? ` (${todayTargetPercent}% of target)` : ''}</span>
-        </div>
-
         {chartData.map(team => (
           <button
             key={team.team_id}

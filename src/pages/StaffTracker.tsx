@@ -12,8 +12,6 @@ import { loadTargets } from "../utils/loadTargets";
 import { logTrackerSheetUpdate } from "../utils/auditLog";
 import { unparse } from "papaparse";
 import { getFinancialYearMonths } from "../utils/financialYear";
-// FIX 5: Use shared isAccountantStaff utility instead of local helper.
-// PRE-FIX-5: local const isAccountant = (role: string) => ... defined inline.
 import { isAccountantStaff } from "../utils/staff";
 
 interface DailyEntry {
@@ -22,7 +20,6 @@ interface DailyEntry {
   services: Record<string, number>;
 }
 
-// FIX 4: CSV formula-injection sanitization helper.
 const sanitizeCsvCell = (v: unknown): string => {
   if (v === null || v === undefined) return '';
   const s = String(v);
@@ -133,8 +130,6 @@ export const StaffTracker: React.FC = () => {
       return;
     }
 
-    // FIX 2: Batch sequential loadTargets calls into a single Promise.all.
-    // PRE-FIX-2: sequential for-of loop awaiting loadTargets per staffId.
     const targetResults = await Promise.all(
       staffIdsToFetch.map((staffId) => loadTargets(selectedMonth, selectedFinancialYear, staffId))
     );
@@ -267,11 +262,15 @@ export const StaffTracker: React.FC = () => {
     }
 
     if (existingTotal !== numValue && service) {
+      // FIX C: Audit-log subject names should match the edited staff, not the full
+      // selectedAccountants list.
+      // PRE-FIX-C: previously logged all selectedAccountants names regardless of who was edited.
+      const targetStaff = selectedAccountants.find((s) => s.staff_id === targetStaffId);
       await logTrackerSheetUpdate({
         actorStaffId: currentStaff.staff_id,
         actorName: currentStaff.name,
         subjectStaffIds: [targetStaffId],
-        subjectStaffNames: selectedAccountants.map((staff) => staff.name),
+        subjectStaffNames: targetStaff ? [targetStaff.name] : [],
         serviceId,
         serviceName: service.service_name,
         date,

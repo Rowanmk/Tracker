@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
 import type { FinancialYear } from '../utils/financialYear';
+// FIX B: Use shared isAccountantStaff utility instead of local helper.
+// PRE-FIX-5: local const isAccountant = (staffMember: Staff) => ... defined inline.
+import { isAccountantStaff } from '../utils/staff';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
 type Team = Database['public']['Tables']['teams']['Row'];
@@ -16,11 +19,6 @@ export interface TeamProgressData {
   submitted: number;
   leftToDo: number;
 }
-
-const isAccountant = (staffMember: Staff) => {
-  const role = (staffMember.role || '').toLowerCase();
-  return role === 'staff' || role === 'admin';
-};
 
 export const useSelfAssessmentProgress = (
   financialYear: FinancialYear,
@@ -64,9 +62,8 @@ export const useSelfAssessmentProgress = (
         const deliveryStartIso = deliveryStartDate.toISOString().slice(0, 10);
         const deliveryEndIso = deliveryEndDate.toISOString().slice(0, 10);
 
-        // Fetch all accountant staff
         const accountantStaff = allStaff.filter(
-          (s) => !s.is_hidden && isAccountant(s)
+          (s) => !s.is_hidden && isAccountantStaff(s)
         );
 
         if (accountantStaff.length === 0) {
@@ -77,7 +74,6 @@ export const useSelfAssessmentProgress = (
 
         const accountantStaffIds = accountantStaff.map((s) => s.staff_id);
 
-        // Fetch activities for all accountants
         const { data: activities, error: activitiesError } = await supabase
           .from('dailyactivity')
           .select('staff_id, delivered_count, date')
@@ -95,7 +91,6 @@ export const useSelfAssessmentProgress = (
 
         const safeActivities: DailyActivity[] = (activities ?? []) as DailyActivity[];
 
-        // Fetch targets by staff_id (not team_id) for all accountants
         const { data: targets, error: targetsError } = await supabase
           .from('monthlytargets')
           .select('staff_id, team_id, month, year, target_value')
@@ -112,7 +107,6 @@ export const useSelfAssessmentProgress = (
 
         const safeTargets: MonthlyTarget[] = (targets ?? []) as MonthlyTarget[];
 
-        // Pre-calculate actuals and targets per staff per month
         const actualsByStaffAndMonth: Record<number, Record<string, number>> = {};
         safeActivities.forEach((a) => {
           if (a.staff_id == null || !a.date) return;
@@ -120,7 +114,7 @@ export const useSelfAssessmentProgress = (
           const m = dateObj.getMonth() + 1;
           const y = dateObj.getFullYear();
           const expectedYear = m >= 4 ? deliveryStartYear : deliveryEndYear;
-          if (y !== expectedYear) return; // Only count activities in the correct FY year for that month
+          if (y !== expectedYear) return;
 
           const key = `${y}-${m}`;
           if (!actualsByStaffAndMonth[a.staff_id]) actualsByStaffAndMonth[a.staff_id] = {};
@@ -138,7 +132,6 @@ export const useSelfAssessmentProgress = (
           targetsByStaffAndMonth[t.staff_id][key] = (targetsByStaffAndMonth[t.staff_id][key] || 0) + (t.target_value || 0);
         });
 
-        // Determine which accountants have any data (activities or targets)
         const staffWithData = new Set<number>();
 
         safeActivities.forEach((a: DailyActivity) => {
@@ -153,7 +146,6 @@ export const useSelfAssessmentProgress = (
         const currentYear = today.getFullYear();
         const currentMonth = today.getMonth() + 1;
 
-        // Build per-staff results (each accountant is their own "row")
         const results: TeamProgressData[] = [];
 
         staffWithData.forEach((staffId: number) => {
@@ -180,10 +172,8 @@ export const useSelfAssessmentProgress = (
             const key = `${y}-${m}`;
 
             if (isPastMonth) {
-              // Use actuals for past months
               fullYearTarget += (actualsByStaffAndMonth[staffId]?.[key] || 0);
             } else {
-              // Use targets for current and future months
               fullYearTarget += (targetsByStaffAndMonth[staffId]?.[key] || 0);
             }
           });
@@ -191,7 +181,7 @@ export const useSelfAssessmentProgress = (
           const leftToDo = Math.max(0, fullYearTarget - submitted);
 
           results.push({
-            team_id: staffId, // use staff_id as the unique identifier for chart lines
+            team_id: staffId,
             name: staffMember.name,
             fullYearTarget,
             submitted,
@@ -202,8 +192,6 @@ export const useSelfAssessmentProgress = (
         results.sort((a, b) => a.name.localeCompare(b.name));
         setTeamProgress(results);
       } catch (err) {
-        // FIX 6: Log caught errors with file context.
-        // PRE-FIX-6: catch {} with no parameter and no logging.
         console.error('[useSelfAssessmentProgress] fetch data:', err);
         setError('Failed to load Self Assessment progress');
         setTeamProgress([]);

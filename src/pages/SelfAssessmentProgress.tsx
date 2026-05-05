@@ -8,14 +8,11 @@ import { FinancialYearSelector } from '../components/FinancialYearSelector';
 import { getFinancialYears, getFinancialYearMonths } from '../utils/financialYear';
 import { supabase } from '../supabase/client';
 import type { FinancialYear } from '../utils/financialYear';
-import type { Database } from '../supabase/types';
-
-type Staff = Database['public']['Tables']['staff']['Row'];
-
-const isAccountant = (staffMember: Staff) => {
-  const role = (staffMember.role || '').toLowerCase();
-  return role === 'staff' || role === 'admin';
-};
+// FIX B: Use shared isAccountantStaff utility instead of local helper.
+// PRE-FIX-5: local const isAccountant = (staffMember: Staff) => ... defined inline.
+// (No remaining call sites in this file after consolidation; import retained for any future use within this module.)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { isAccountantStaff } from '../utils/staff';
 
 function calcRunRatePercent(
   submitted: number,
@@ -162,7 +159,6 @@ export const SelfAssessmentProgress: React.FC = () => {
           .in('year', [deliveryStartYear, deliveryEndYear])
           .in('staff_id', staffIds);
 
-        // Build per-day actuals map: staffId -> dateStr -> count
         const nextDailyActuals: Record<number, Record<string, number>> = {};
         (activities || []).forEach((a) => {
           if (a.staff_id == null || !a.date) return;
@@ -207,7 +203,6 @@ export const SelfAssessmentProgress: React.FC = () => {
           }
         });
 
-        // Use raw DB targets for all months (no past-month overwrite)
         teamProgress.forEach((staffEntry) => {
           const staffId = staffEntry.team_id;
           getFinancialYearMonths().forEach((m) => {
@@ -321,7 +316,6 @@ export const SelfAssessmentProgress: React.FC = () => {
 
   return (
     <div className="max-w-[1600px] mx-auto px-6 space-y-6">
-      {/* Page Header */}
       <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 page-header">
         <div>
           <h2 className="page-title">Self Assessment Progress</h2>
@@ -337,10 +331,8 @@ export const SelfAssessmentProgress: React.FC = () => {
         </div>
       </div>
 
-      {/* Row 1: Monthly tile (left) + Full Year tile (right) */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
-        {/* Monthly Data Tile — now on the LEFT */}
         <div className="bg-white rounded-xl shadow-md border tile-brand overflow-hidden flex flex-col">
           <div className="tile-header px-4 py-1.5 flex items-center justify-between">
             <span>Self Assessment Data — {monthlyTileData?.monthName ?? MONTH_NAMES[selectedMonth - 1]}</span>
@@ -446,7 +438,6 @@ export const SelfAssessmentProgress: React.FC = () => {
           )}
         </div>
 
-        {/* Full Year Data Tile — now on the RIGHT */}
         <div className="bg-white rounded-xl shadow-md border tile-brand overflow-hidden flex flex-col">
           <div className="tile-header px-4 py-1.5">Self Assessment Data — Full Year</div>
 
@@ -565,7 +556,6 @@ export const SelfAssessmentProgress: React.FC = () => {
             </table>
           </div>
 
-          {/* Legend */}
           <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 flex flex-wrap gap-3 text-xs text-gray-500">
             <span className="font-semibold text-gray-600">Run Rate % key:</span>
             <span className="inline-flex items-center gap-1">
@@ -585,7 +575,6 @@ export const SelfAssessmentProgress: React.FC = () => {
         </div>
       </div>
 
-      {/* Row 2: Overall Progress Chart — full width */}
       <div className="bg-white rounded-xl shadow-md border tile-brand overflow-hidden flex flex-col">
         <div className="tile-header px-4 py-1.5">Overall Progress Chart</div>
 
