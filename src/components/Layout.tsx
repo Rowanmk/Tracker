@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { DashboardViewProvider } from "../context/DashboardViewContext";
+import { supabase } from "../supabase/client";
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
   const { currentStaff, accountantStaff, onTeamChange, selectedTeamId, hasPermission, signOut } = useAuth();
@@ -9,6 +10,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [staffWithTargets, setStaffWithTargets] = useState<Set<number>>(new Set());
 
   const allNavigationLinks = [
     { path: "/", label: "Dashboard" },
@@ -33,10 +35,41 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Fetch which accountants have any targets set (any month, any year)
+  useEffect(() => {
+    const fetchStaffWithTargets = async () => {
+      if (accountantStaff.length === 0) return;
+
+      const staffIds = accountantStaff.map(s => s.staff_id);
+
+      const { data } = await supabase
+        .from("monthlytargets")
+        .select("staff_id, target_value")
+        .in("staff_id", staffIds)
+        .gt("target_value", 0);
+
+      if (data && data.length > 0) {
+        const ids = new Set<number>(
+          data
+            .filter(row => row.staff_id != null)
+            .map(row => row.staff_id as number)
+        );
+        setStaffWithTargets(ids);
+      } else {
+        setStaffWithTargets(new Set());
+      }
+    };
+
+    void fetchStaffWithTargets();
+  }, [accountantStaff]);
+
   const accountantOptions = useMemo(() => {
     const currentStaffId = currentStaff?.staff_id;
-    return accountantStaff.filter(staffMember => staffMember.staff_id !== currentStaffId);
-  }, [accountantStaff, currentStaff?.staff_id]);
+    return accountantStaff.filter(staffMember => {
+      if (staffMember.staff_id === currentStaffId) return false;
+      return staffWithTargets.has(staffMember.staff_id);
+    });
+  }, [accountantStaff, currentStaff?.staff_id, staffWithTargets]);
 
   const handleSelectOption = (value: number | "team-view") => {
     onTeamChange(value);
