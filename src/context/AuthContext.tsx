@@ -215,6 +215,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setShowFallbackWarning(false);
       setLoadFailed(false);
     } catch (err) {
+      // FIX 6: Log caught errors with file context.
+      // PRE-FIX-6: catch (err) block existed but only used err for message extraction; now also logs.
+      console.error('[AuthContext] fetch staff:', err);
       setAllStaff([]);
       setStaff([]);
       setTeams([]);
@@ -293,7 +296,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       applyCurrentStaff(matchedStaff, allStaff);
       setError(null);
       return {};
-    } catch {
+    } catch (err) {
+      // FIX 6: Log caught errors with file context.
+      // PRE-FIX-6: catch {} with no parameter and no logging.
+      console.error('[AuthContext] sign in with email:', err);
       return { error: 'Unable to sign in right now.' };
     }
   };

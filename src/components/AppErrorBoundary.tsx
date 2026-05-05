@@ -25,6 +25,9 @@ export class AppErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: unknown) {
+    // FIX 6: Log caught errors with file context instead of swallowing silently.
+    // PRE-FIX-6: catch block had no parameter and no logging.
+    console.error('[AppErrorBoundary] render error:', error);
     if (error instanceof Error) {
       this.setState({
         hasError: true,
@@ -42,7 +45,8 @@ export class AppErrorBoundary extends React.Component<
     try {
       localStorage.removeItem('crew_tracker_logged_in_staff_id');
       localStorage.removeItem('crew_tracker_team_id');
-    } catch {
+    } catch (err) {
+      console.error('[AppErrorBoundary] reset session:', err);
       return;
     }
     window.location.href = '/login';

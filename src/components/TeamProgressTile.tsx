@@ -112,7 +112,10 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
         setSelectedTarget(totalTarget);
         setServiceTargets(nextServiceTargets);
         setPerStaffServiceTargets(nextPerStaffServiceTargets);
-      } catch {
+      } catch (err) {
+        // FIX 6: Log caught errors with file context.
+        // PRE-FIX-6: catch {} with no parameter and no logging.
+        console.error('[TeamProgressTile] fetch selected targets:', err);
         setSelectedTarget(0);
         setServiceTargets({});
         setPerStaffServiceTargets({});

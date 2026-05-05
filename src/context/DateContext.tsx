@@ -9,6 +9,8 @@ interface DateContextType {
   financialYear: FinancialYear;
   selectedFinancialYear: FinancialYear;
   setSelectedFinancialYear: (fy: FinancialYear) => void;
+  // FIX 3: derivedFinancialYear kept in interface for backward compatibility but
+  // is now an alias for financialYear — both are computed identically.
   derivedFinancialYear: FinancialYear;
 }
 
@@ -92,10 +94,9 @@ export const DateProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     [selectedMonth, selectedYear]
   );
 
-  const derivedFinancialYear = useMemo(
-    () => getFinancialYearFromMonth(selectedMonth, selectedYear),
-    [selectedMonth, selectedYear]
-  );
+  // FIX 3: Remove the duplicate derivedFinancialYear useMemo.
+  // PRE-FIX-3: derivedFinancialYear was a separate useMemo with identical deps and logic.
+  // Now derivedFinancialYear is simply an alias for financialYear in the provider value.
 
   return (
     <DateContext.Provider
@@ -107,7 +108,7 @@ export const DateProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         financialYear,
         selectedFinancialYear,
         setSelectedFinancialYear,
-        derivedFinancialYear,
+        derivedFinancialYear: financialYear,
       }}
     >
       {children}

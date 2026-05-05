@@ -66,7 +66,10 @@ export const ServicePerformanceTiles: React.FC<ServicePerformanceTilesProps> = (
         }
 
         setServiceTargets(targetMap);
-      } catch {
+      } catch (err) {
+        // FIX 6: Log caught errors with file context.
+        // PRE-FIX-6: catch {} with no parameter and no logging.
+        console.error('[ServicePerformanceTiles] fetch service targets:', err);
         setServiceTargets({});
       } finally {
         setLoading(false);

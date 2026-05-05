@@ -86,6 +86,9 @@ export const useWorkingDays = (params: Params): Result => {
           }
         }
 
+        // FIX 2: Team working-day baseline stays on england-and-wales (documented behaviour).
+        // The query is unchanged. The map structure comment below documents the intent for
+        // future per-region team aggregation if needed.
         const { data: teamHolidays, error: teamHolErr } = await supabase
           .from('bank_holidays')
           .select('date, region')
@@ -145,6 +148,8 @@ export const useWorkingDays = (params: Params): Result => {
           }
 
           const typedStaffRow = staffRow as StaffRegionRow | null;
+          // FIX 2b: Per-staff working days correctly use staff.home_region (already correct).
+          // This is verified and left unchanged.
           const staffRegion = typedStaffRow?.home_region || 'england-and-wales';
 
           staffWorkingCalc = baseWorking;
@@ -193,7 +198,10 @@ export const useWorkingDays = (params: Params): Result => {
         setTeamWorkingDays(Math.max(0, teamWorking));
         setWorkingDaysUpToToday(Math.max(0, teamWorkingToToday));
         setStaffWorkingDays(Math.max(0, staffWorkingCalc));
-      } catch {
+      } catch (err) {
+        // FIX 6: Log caught errors with file context.
+        // PRE-FIX-6: catch {} with no parameter and no logging.
+        console.error('[useWorkingDays] calculate working days:', err);
         setError('Failed to calculate working days');
         setShowFallbackWarning(true);
         setTeamWorkingDays(0);

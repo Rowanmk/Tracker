@@ -188,7 +188,10 @@ export const TargetsControl: React.FC = () => {
       setHasUnsavedChanges(false);
       inputRefs.current.clear();
       scrollPositionsRef.current = {};
-    } catch {
+    } catch (err) {
+      // FIX 6: Log caught errors with file context.
+      // PRE-FIX-6: catch {} with no parameter and no logging.
+      console.error('[TargetsControl] fetch targets data:', err);
       setError('Failed to load targets data');
     } finally {
       setLoading(false);
@@ -452,7 +455,10 @@ export const TargetsControl: React.FC = () => {
       setSaveMessage('✅ Targets saved successfully');
       setTimeout(() => setSaveMessage(null), 3000);
       return true;
-    } catch {
+    } catch (err) {
+      // FIX 6: Log caught errors with file context.
+      // PRE-FIX-6: catch {} with no parameter and no logging.
+      console.error('[TargetsControl] save targets:', err);
       setError('Failed to save targets');
       return false;
     }
@@ -774,7 +780,10 @@ export const TargetsControl: React.FC = () => {
       setImportState(prev => ({ ...prev, step: 'done' }));
       setSaveMessage(`✅ Import complete — ${importState.diffRows.filter(r => r.changed).length} value(s) updated for FY ${fy.label}`);
       setTimeout(() => setSaveMessage(null), 5000);
-    } catch {
+    } catch (err) {
+      // FIX 6: Log caught errors with file context.
+      // PRE-FIX-6: catch {} with no parameter and no logging.
+      console.error('[TargetsControl] confirm import:', err);
       setImportState(prev => ({ ...prev, step: 'preview', error: 'Import failed. Please try again.' }));
     }
   };

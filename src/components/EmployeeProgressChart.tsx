@@ -140,7 +140,10 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
         }
         setStaffTargets({});
         setTeamTargets({});
-      } catch {
+      } catch (err) {
+        // FIX 6: Log caught errors with file context.
+        // PRE-FIX-6: catch {} with no parameter and no logging.
+        console.error('[EmployeeProgressChart] fetch targets:', err);
         setServiceTargets({});
         setStaffTargets({});
         setTeamTargets({});

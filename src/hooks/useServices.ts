@@ -71,7 +71,10 @@ export const useServices = () => {
           }
           setServices(sortServices(fetchedServices));
         }
-      } catch {
+      } catch (err) {
+        // FIX 6: Log caught errors with file context.
+        // PRE-FIX-6: catch {} with no parameter and no logging.
+        console.error('[useServices] fetch services:', err);
         setError('Failed to connect to database');
         setShowFallbackWarning(true);
 

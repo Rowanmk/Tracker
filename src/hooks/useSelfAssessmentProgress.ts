@@ -201,7 +201,10 @@ export const useSelfAssessmentProgress = (
 
         results.sort((a, b) => a.name.localeCompare(b.name));
         setTeamProgress(results);
-      } catch {
+      } catch (err) {
+        // FIX 6: Log caught errors with file context.
+        // PRE-FIX-6: catch {} with no parameter and no logging.
+        console.error('[useSelfAssessmentProgress] fetch data:', err);
         setError('Failed to load Self Assessment progress');
         setTeamProgress([]);
       } finally {

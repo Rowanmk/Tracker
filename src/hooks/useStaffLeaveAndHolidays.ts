@@ -56,7 +56,10 @@ export const useStaffLeaveAndHolidays = ({
         } else {
           setBankHolidays(holidayData || []);
         }
-      } catch {
+      } catch (err) {
+        // FIX 6: Log caught errors with file context.
+        // PRE-FIX-6: catch {} with no parameter and no logging.
+        console.error('[useStaffLeaveAndHolidays] fetch data:', err);
         setError('Failed to connect to database');
       } finally {
         setLoading(false);

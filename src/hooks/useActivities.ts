@@ -35,7 +35,10 @@ export const useActivities = (month: number, year: number) => {
       } else {
         setActivities(data || []);
       }
-    } catch {
+    } catch (err) {
+      // FIX 6: Log caught errors with file context.
+      // PRE-FIX-6: catch {} with no parameter and no logging.
+      console.error('[useActivities] fetch activities:', err);
       setError('Failed to connect to database');
       setActivities([]);
     } finally {

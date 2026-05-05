@@ -24,6 +24,15 @@ const isAccountant = (role: string) => {
   return normalizedRole === 'staff' || normalizedRole === 'admin';
 };
 
+// FIX 4: CSV formula-injection sanitization helper.
+// Cells starting with =, +, -, @, tab, or carriage return are prefixed with a
+// leading apostrophe so Excel renders them literally instead of executing them.
+const sanitizeCsvCell = (v: unknown): string => {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+};
+
 export const StaffTracker: React.FC = () => {
   const { selectedMonth, selectedFinancialYear } = useDate();
   const { currentStaff, selectedTeamId, allStaff, isAdmin } = useAuth();
@@ -365,11 +374,13 @@ export const StaffTracker: React.FC = () => {
 
       const rows: Record<string, string | number>[] = [];
 
+      // FIX 4: Apply sanitizeCsvCell to all user-derived string values before export.
+      // PRE-FIX-4: service_name and accountant_name were passed raw without sanitization.
       targetableServices.forEach(service => {
         accountants.forEach(staff => {
           const row: Record<string, string | number> = {
-            service_name: service.service_name,
-            accountant_name: staff.name,
+            service_name: sanitizeCsvCell(service.service_name),
+            accountant_name: sanitizeCsvCell(staff.name),
             staff_id: staff.staff_id,
             service_id: service.service_id,
           };
@@ -410,8 +421,8 @@ export const StaffTracker: React.FC = () => {
       a.download = `actuals_template_${selectedFinancialYear.label.replace('/', '-')}_${fileDateTime}.csv`;
       a.click();
       window.URL.revokeObjectURL(url);
-    } catch {
-      // Export failed silently
+    } catch (err) {
+      console.error('[StaffTracker] export CSV:', err);
     } finally {
       setIsExporting(false);
     }

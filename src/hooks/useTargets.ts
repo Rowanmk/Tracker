@@ -34,7 +34,10 @@ export const useTargets = (month: number, year: number) => {
       } else {
         setTargets(data || []);
       }
-    } catch {
+    } catch (err) {
+      // FIX 6: Log caught errors with file context.
+      // PRE-FIX-6: catch {} with no parameter and no logging.
+      console.error('[useTargets] fetch targets:', err);
       setError('Failed to connect to database');
       setTargets([]);
     } finally {
