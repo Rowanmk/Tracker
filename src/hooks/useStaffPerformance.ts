@@ -5,6 +5,9 @@ import { useAuth } from "../context/AuthContext";
 import { useDate } from "../context/DateContext";
 import { useServices } from "./useServices";
 import { generateBagelDays } from "../utils/bagelDays";
+// FIX 5: Use shared isAccountantStaff utility instead of local helper.
+// PRE-FIX-5: local const isAccountant = (role: string) => ... defined inline.
+import { isAccountantStaff } from "../utils/staff";
 
 export interface StaffPerformance {
   staff_id: number;
@@ -37,11 +40,6 @@ interface UseStaffPerformanceResult {
   refetch: () => void;
 }
 
-const isAccountant = (role: string) => {
-  const normalizedRole = (role || '').toLowerCase();
-  return normalizedRole === 'staff' || normalizedRole === 'admin';
-};
-
 export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResult => {
   const { selectedMonth, selectedYear, financialYear } = useDate();
   const { allStaff, loading: authLoading, selectedTeamId } = useAuth();
@@ -55,7 +53,7 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
   const [error, setError] = useState<string | null>(null);
 
   const accountantStaff = useMemo(
-    () => allStaff.filter(s => !s.is_hidden && isAccountant(s.role)),
+    () => allStaff.filter(s => !s.is_hidden && isAccountantStaff(s)),
     [allStaff]
   );
 
@@ -87,9 +85,8 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
         return;
       }
 
-      // FIX 1: Load targets exactly once per staff member using a single Promise.all,
-      // building a Map<staff_id, totalTarget> to avoid duplicate loadTargets calls.
-      // PRE-FIX-1: was a sequential for loop followed by another loadTargets call inside the staffResults Promise.all
+      // FIX 1 (already applied previously): Load targets exactly once per staff member
+      // using a single Promise.all, building a Map<staff_id, totalTarget>.
       const targetsMap = new Map<number, number>();
       await Promise.all(
         filteredStaff.map(async (staffMember) => {
@@ -107,8 +104,6 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
       const bagelService = services.find(s => s.service_name === 'Bagel Days');
       const bagelServiceId = bagelService?.service_id;
 
-      // FIX 7: Use FY-derived year for activity query instead of selectedYear directly.
-      // PRE-FIX-7: was .eq("year", selectedYear) which could pull wrong year for Jan/Feb/Mar
       const yearForSelectedMonth = selectedMonth >= 4 ? financialYear.start : financialYear.end;
 
       const { data: activities, error: activitiesError } = await supabase
@@ -144,8 +139,6 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
         finalHistorical = [...finalHistorical, ...bagels];
       }
 
-      // FIX 7: Derive previousYear from FY logic, not from selectedYear.
-      // PRE-FIX-7: was const previousYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
       const previousMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
       const previousYear = selectedMonth === 1
         ? (yearForSelectedMonth - 1)
@@ -185,8 +178,6 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
           }
         });
 
-        // FIX 1: Read totalTarget from the pre-built map instead of calling loadTargets again.
-        // PRE-FIX-1: was const { totalTarget } = await loadTargets(selectedMonth, financialYear, staff.staff_id);
         const totalTarget = targetsMap.get(staff.staff_id) ?? 0;
 
         const staffHistorical = finalHistorical.filter(a => a.staff_id === staff.staff_id);

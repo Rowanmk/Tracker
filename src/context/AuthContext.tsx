@@ -2,6 +2,13 @@ import React, { createContext, useContext, useEffect, useState, ReactNode, useCa
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
+// FIX 5: Use shared isAccountantStaff utility instead of local helper.
+// PRE-FIX-5: local isAccountant included a normalizedName.includes('accountant') fallback
+// that no other copy had. The role-only definition is canonical (used 7-to-1 across the app).
+// CALLOUT: Anyone previously matched only via the name-includes-'accountant' fallback will
+// no longer be treated as an accountant in AuthContext. Sanity-check seeded data where role
+// is not 'staff'/'admin' but the name contains "accountant".
+import { isAccountantStaff } from '../utils/staff';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
 type Team = Database['public']['Tables']['teams']['Row'];
@@ -36,13 +43,6 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 const normalizeFirstName = (name?: string | null): string => (name || '').split(' ')[0]?.trim().toLowerCase() || '';
 
-const isAccountant = (staffMember: Staff): boolean => {
-  const role = (staffMember.role || '').toLowerCase();
-  const normalizedName = (staffMember.name || '').toLowerCase();
-
-  return role === 'staff' || role === 'admin' || normalizedName.includes('accountant');
-};
-
 const enforceKnownAdminRole = (staffMember: Staff): Staff => {
   const firstName = normalizeFirstName(staffMember.name);
   const normalizedRole = (staffMember.role || '').toLowerCase();
@@ -73,7 +73,7 @@ const normalizeStoredTeamSelection = (
   const selectedStaffExists = availableStaff.some(
     (availableStaffMember) =>
       !availableStaffMember.is_hidden &&
-      isAccountant(availableStaffMember) &&
+      isAccountantStaff(availableStaffMember) &&
       String(availableStaffMember.staff_id) === storedTeamId
   );
 
@@ -215,8 +215,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setShowFallbackWarning(false);
       setLoadFailed(false);
     } catch (err) {
-      // FIX 6: Log caught errors with file context.
-      // PRE-FIX-6: catch (err) block existed but only used err for message extraction; now also logs.
       console.error('[AuthContext] fetch staff:', err);
       setAllStaff([]);
       setStaff([]);
@@ -297,8 +295,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setError(null);
       return {};
     } catch (err) {
-      // FIX 6: Log caught errors with file context.
-      // PRE-FIX-6: catch {} with no parameter and no logging.
       console.error('[AuthContext] sign in with email:', err);
       return { error: 'Unable to sign in right now.' };
     }
@@ -361,7 +357,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const accountantStaff = useMemo(
     () =>
       allStaff
-        .filter((staffMember) => !staffMember.is_hidden && isAccountant(staffMember))
+        .filter((staffMember) => !staffMember.is_hidden && isAccountantStaff(staffMember))
         .sort((a, b) => a.name.localeCompare(b.name)),
     [allStaff]
   );

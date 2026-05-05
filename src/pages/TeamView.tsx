@@ -3,6 +3,9 @@ import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
 import { generateBagelDays } from '../utils/bagelDays';
+// FIX 5: Use shared isAccountantStaff utility instead of local helper.
+// PRE-FIX-5: local const isAccountant = (role: string) => ... defined inline.
+import { isAccountantStaff } from '../utils/staff';
 
 interface MonthlyData {
   year: number;
@@ -51,11 +54,6 @@ type StaffForBagels = {
 };
 
 type HeatmapData = Record<string, { total: number; byService: Record<number, number> }>;
-
-const isAccountant = (role: string) => {
-  const normalizedRole = (role || '').toLowerCase();
-  return normalizedRole === 'staff' || normalizedRole === 'admin';
-};
 
 const getMonthKey = (year: number, month: number) => `${year}-${month}`;
 
@@ -133,7 +131,7 @@ export const TeamView: React.FC = () => {
   const [statsData, setStatsData] = useState<ServiceStats[]>([]);
   const [activeServiceId, setActiveServiceId] = useState<number | null>(null);
   const [accountantRankings, setAccountantRankings] = useState<AccountantRankingRow[]>([]);
-  
+
   const [heatmapData, setHeatmapData] = useState<HeatmapData>({});
   const [heatmapMonths, setHeatmapMonths] = useState<Array<{ year: number; month: number }>>([]);
 
@@ -156,8 +154,7 @@ export const TeamView: React.FC = () => {
 
       try {
         const today = new Date();
-        
-        // We need 24 months ending in the CURRENT month for the rolling average and charts.
+
         const all24Months: Array<{ year: number; month: number }> = [];
         const startMonth = new Date(today.getFullYear(), today.getMonth() - 23, 1);
 
@@ -167,7 +164,7 @@ export const TeamView: React.FC = () => {
           curr.setMonth(curr.getMonth() + 1);
         }
 
-        const heatmapMonthsList = all24Months.slice(12, 24); // 12 months ending in current month
+        const heatmapMonthsList = all24Months.slice(12, 24);
 
         const firstMonth = all24Months[0];
         const lastMonth = all24Months[23];
@@ -176,7 +173,7 @@ export const TeamView: React.FC = () => {
         const lastDayOfEndMonth = new Date(lastMonth.year, lastMonth.month, 0).getDate();
         const endDateStr = `${lastMonth.year}-${String(lastMonth.month).padStart(2, '0')}-${String(lastDayOfEndMonth).padStart(2, '0')}`;
 
-        const visibleAccountants = allStaff.filter((s) => !s.is_hidden && isAccountant(s.role));
+        const visibleAccountants = allStaff.filter((s) => !s.is_hidden && isAccountantStaff(s));
 
         const filteredStaff =
           selectedTeamId === 'team-view' || selectedTeamId === 'all' || !selectedTeamId
@@ -293,7 +290,6 @@ export const TeamView: React.FC = () => {
           finalRankingActivities = [...finalRankingActivities, ...rankingBagels];
         }
 
-        // Build Heatmap Data
         const dailyTotals: HeatmapData = {};
         finalActivities.forEach((activity) => {
           if (!activity.date) return;
@@ -302,7 +298,7 @@ export const TeamView: React.FC = () => {
           }
           const count = activity.delivered_count || 0;
           const service = services.find((s) => s.service_id === activity.service_id);
-          
+
           if (service && service.service_name !== 'Bagel Days') {
             dailyTotals[activity.date].total += count;
           }
@@ -524,7 +520,10 @@ export const TeamView: React.FC = () => {
         setAccountantRankings(rankingRows);
         setHeatmapData(dailyTotals);
         setHeatmapMonths(heatmapMonthsList);
-      } catch {
+      } catch (err) {
+        // FIX 3: Surface silent catch with logged context.
+        // PRE-FIX-3: catch {} with no parameter and no logging.
+        console.error('TeamView fetch failed', err);
         setError('Failed to load Stats and Figures');
       } finally {
         setLoading(false);
@@ -532,7 +531,11 @@ export const TeamView: React.FC = () => {
     };
 
     void fetchStatsData();
-  }, [allStaff, services, selectedTeamId, authLoading, servicesLoading, activeServiceId]);
+    // FIX 3: Removed activeServiceId from dep array — clicking a service tile must not
+    // trigger a Supabase round-trip. The data fetch only runs on month/staff/services changes.
+    // PRE-FIX-3: dep array previously included activeServiceId, causing redundant fetches.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allStaff, services, selectedTeamId, authLoading, servicesLoading]);
 
   useEffect(() => {
     if (statsData.length > 0) {

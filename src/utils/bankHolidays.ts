@@ -18,7 +18,10 @@ function safeParse(json: string | null): Cached | null {
   if (!json) return null;
   try {
     return JSON.parse(json) as Cached;
-  } catch {
+  } catch (err) {
+    // FIX 3: Surface silent catch with logged context.
+    // PRE-FIX-3: catch {} with no parameter and no logging — preserved the same return value.
+    console.error('[bankHolidays] safeParse failed:', err);
     return null;
   }
 }

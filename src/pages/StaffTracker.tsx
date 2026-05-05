@@ -12,6 +12,9 @@ import { loadTargets } from "../utils/loadTargets";
 import { logTrackerSheetUpdate } from "../utils/auditLog";
 import { unparse } from "papaparse";
 import { getFinancialYearMonths } from "../utils/financialYear";
+// FIX 5: Use shared isAccountantStaff utility instead of local helper.
+// PRE-FIX-5: local const isAccountant = (role: string) => ... defined inline.
+import { isAccountantStaff } from "../utils/staff";
 
 interface DailyEntry {
   date: string;
@@ -19,14 +22,7 @@ interface DailyEntry {
   services: Record<string, number>;
 }
 
-const isAccountant = (role: string) => {
-  const normalizedRole = (role || '').toLowerCase();
-  return normalizedRole === 'staff' || normalizedRole === 'admin';
-};
-
 // FIX 4: CSV formula-injection sanitization helper.
-// Cells starting with =, +, -, @, tab, or carriage return are prefixed with a
-// leading apostrophe so Excel renders them literally instead of executing them.
 const sanitizeCsvCell = (v: unknown): string => {
   if (v === null || v === undefined) return '';
   const s = String(v);
@@ -55,11 +51,8 @@ export const StaffTracker: React.FC = () => {
   const year = selectedMonth >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
   const daysInMonth = new Date(year, selectedMonth, 0).getDate();
 
-  // PRE-FIX-1: previous behaviour — "All Accountants" mode allowed multi-staff edits
-  // The "all" / no selection branch returned every accountant, which let a single
-  // edit overwrite multiple staff rows on the same day/service. Removed entirely.
   const selectedAccountants = useMemo(() => {
-    const visibleAccountants = allStaff.filter((staff) => !staff.is_hidden && isAccountant(staff.role));
+    const visibleAccountants = allStaff.filter((staff) => !staff.is_hidden && isAccountantStaff(staff));
 
     if (isTeamView) {
       return visibleAccountants;
@@ -74,8 +67,6 @@ export const StaffTracker: React.FC = () => {
     );
   }, [allStaff, selectedTeamId, isTeamView]);
 
-  // PRE-FIX-1: previous behaviour — fell back to all accountant ids when no
-  // single staff was selected, enabling unsafe multi-staff edits.
   const editableStaffIds = useMemo(
     () => {
       if (isTeamView) return [];
@@ -88,8 +79,6 @@ export const StaffTracker: React.FC = () => {
     [selectedAccountants, selectedTeamId, isTeamView]
   );
 
-  // PRE-FIX-1: previous behaviour — rendered "All Accountants" label and grid
-  // when no single staff was selected. Now hides the grid and shows a placeholder.
   const tableLabel = useMemo(() => {
     if (isTeamView) return "Team View";
     if (!selectedTeamId) return "";
@@ -131,11 +120,8 @@ export const StaffTracker: React.FC = () => {
 
     const nextLocalValues: Record<string, string> = {};
 
-    // PRE-FIX-1: previous behaviour — team-view branch pulled every accountant's data
-    // even when the user had no single-accountant selection. Now only fetches when
-    // we have an explicit selection.
     const staffIdsToFetch = isTeamView
-      ? allStaff.filter((s) => !s.is_hidden && isAccountant(s.role)).map((s) => s.staff_id)
+      ? allStaff.filter((s) => !s.is_hidden && isAccountantStaff(s)).map((s) => s.staff_id)
       : editableStaffIds;
 
     if (staffIdsToFetch.length === 0) {
@@ -147,13 +133,17 @@ export const StaffTracker: React.FC = () => {
       return;
     }
 
+    // FIX 2: Batch sequential loadTargets calls into a single Promise.all.
+    // PRE-FIX-2: sequential for-of loop awaiting loadTargets per staffId.
+    const targetResults = await Promise.all(
+      staffIdsToFetch.map((staffId) => loadTargets(selectedMonth, selectedFinancialYear, staffId))
+    );
     const aggregatedTargets: Record<number, number> = {};
-    for (const staffId of staffIdsToFetch) {
-      const { perService } = await loadTargets(selectedMonth, selectedFinancialYear, staffId);
+    targetResults.forEach(({ perService }) => {
       Object.entries(perService).forEach(([sid, val]) => {
         aggregatedTargets[Number(sid)] = (aggregatedTargets[Number(sid)] || 0) + val;
       });
-    }
+    });
 
     const { data: activities } = await supabase
       .from("dailyactivity")
@@ -209,9 +199,6 @@ export const StaffTracker: React.FC = () => {
     }));
   };
 
-  // PRE-FIX-1: previous behaviour — multi-staff branch updated existingRows[0] and
-  // deleted other staff's rows, silently overwriting their data. Removed entirely.
-  // Now handler bails out unless exactly one explicit staff_id is selected.
   const handleInputBlur = async (serviceId: number, day: number, value: string) => {
     if (isTeamView || !currentStaff) return;
 
@@ -375,7 +362,7 @@ export const StaffTracker: React.FC = () => {
 
     try {
       const targetableServices = services.filter(s => s.service_name !== 'Bagel Days');
-      const accountants = allStaff.filter(s => !s.is_hidden && isAccountant(s.role));
+      const accountants = allStaff.filter(s => !s.is_hidden && isAccountantStaff(s));
       const staffIds = accountants.map(a => a.staff_id);
 
       const { data: activities, error } = await supabase
@@ -403,8 +390,6 @@ export const StaffTracker: React.FC = () => {
 
       const rows: Record<string, string | number>[] = [];
 
-      // FIX 4: Apply sanitizeCsvCell to all user-derived string values before export.
-      // PRE-FIX-4: service_name and accountant_name were passed raw without sanitization.
       targetableServices.forEach(service => {
         accountants.forEach(staff => {
           const row: Record<string, string | number> = {

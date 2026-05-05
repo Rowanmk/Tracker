@@ -25,7 +25,8 @@ export const calculateRunRateDelta = (
   const expectedRaw = calculateExpectedRaw(target, workingDays, workingDaysElapsed);
   const roundedDelivered = Math.round(delivered);
   const roundedExpected = Math.round(expectedRaw);
-  const variance = roundedDelivered - roundedExpected;
+  // PRE-FIX-4: variance = Math.round(delivered) - Math.round(expectedRaw) — could drift by ±1 due to double-rounding
+  const variance = Math.round(delivered - expectedRaw);
 
   return {
     delivered,

@@ -92,11 +92,18 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
       setLoading(true);
       try {
         if (isAllTeams) {
+          // FIX 2: Batch sequential loadTargets calls into a single Promise.all.
+          // PRE-FIX-2: sequential for-of loop awaiting loadTargets per team.
+          const teamResults = await Promise.all(
+            teams.map(async (team) => {
+              const { totalTarget } = await loadTargets(month, financialYear, undefined, team.id);
+              return { teamId: team.id, totalTarget };
+            })
+          );
           const nextTeamTargets: Record<number, number> = {};
-          for (const team of teams) {
-            const { totalTarget } = await loadTargets(month, financialYear, undefined, team.id);
-            nextTeamTargets[team.id] = totalTarget;
-          }
+          teamResults.forEach(({ teamId, totalTarget }) => {
+            nextTeamTargets[teamId] = totalTarget;
+          });
           setTeamTargets(nextTeamTargets);
           setStaffTargets({});
           setServiceTargets({});
@@ -105,13 +112,20 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
         }
 
         if (isTeamView) {
+          // FIX 2: Batch sequential loadTargets calls into a single Promise.all.
+          // PRE-FIX-2: sequential for-of loop awaiting loadTargets per staff member.
+          const staffResults = await Promise.all(
+            staffPerformance.map(async (staff) => {
+              const { totalTarget, perService } = await loadTargets(month, financialYear, staff.staff_id);
+              return { staffId: staff.staff_id, totalTarget, perService };
+            })
+          );
           const nextStaffTargets: Record<number, number> = {};
           const nextPerStaffServiceTargets: Record<number, Record<number, number>> = {};
-          for (const staff of staffPerformance) {
-            const { totalTarget, perService } = await loadTargets(month, financialYear, staff.staff_id);
-            nextStaffTargets[staff.staff_id] = totalTarget;
-            nextPerStaffServiceTargets[staff.staff_id] = perService;
-          }
+          staffResults.forEach(({ staffId, totalTarget, perService }) => {
+            nextStaffTargets[staffId] = totalTarget;
+            nextPerStaffServiceTargets[staffId] = perService;
+          });
           setStaffTargets(nextStaffTargets);
           setTeamTargets({});
           setServiceTargets({});
@@ -125,24 +139,29 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
           setServiceTargets(perService);
           setPerStaffServiceTargets({ [selectedStaffId]: perService });
         } else {
+          // FIX 2: Batch sequential loadTargets calls into a single Promise.all.
+          // PRE-FIX-2: sequential for-of loop awaiting loadTargets per staff member.
+          const staffResults = await Promise.all(
+            staffPerformance.map(async (staff) => {
+              const { perService } = await loadTargets(month, financialYear, staff.staff_id);
+              return { staffId: staff.staff_id, perService };
+            })
+          );
           const nextPerStaffServiceTargets: Record<number, Record<number, number>> = {};
           const nextServiceTargets: Record<number, number> = {};
-          for (const staff of staffPerformance) {
-            const { perService } = await loadTargets(month, financialYear, staff.staff_id);
-            nextPerStaffServiceTargets[staff.staff_id] = perService;
+          staffResults.forEach(({ staffId, perService }) => {
+            nextPerStaffServiceTargets[staffId] = perService;
             Object.entries(perService).forEach(([sid, val]) => {
               const numSid = Number(sid);
               nextServiceTargets[numSid] = (nextServiceTargets[numSid] || 0) + val;
             });
-          }
+          });
           setServiceTargets(nextServiceTargets);
           setPerStaffServiceTargets(nextPerStaffServiceTargets);
         }
         setStaffTargets({});
         setTeamTargets({});
       } catch (err) {
-        // FIX 6: Log caught errors with file context.
-        // PRE-FIX-6: catch {} with no parameter and no logging.
         console.error('[EmployeeProgressChart] fetch targets:', err);
         setServiceTargets({});
         setStaffTargets({});
