@@ -102,7 +102,6 @@ export const SelfAssessmentProgress: React.FC = () => {
   const { services, loading: servicesLoading } = useServices();
 
   const [activeTeamId, setActiveTeamId] = useState<number | null>(null);
-  // selectedName tracks which accountant row is highlighted across both tiles
   const [selectedName, setSelectedName] = useState<string | null>(null);
 
   const defaultFinancialYear = useMemo(() => {
@@ -228,7 +227,7 @@ export const SelfAssessmentProgress: React.FC = () => {
 
   const visibleTeams = teamProgress.filter((t) => t.fullYearTarget > 0 || t.submitted > 0);
 
-  // Sort full year data by % complete high to low
+  // Sort full year data by % complete high to low for the TABLE display
   const sortedVisibleTeams = useMemo(() => {
     return [...visibleTeams].sort((a, b) => {
       const percentA = a.fullYearTarget > 0 ? (a.submitted / a.fullYearTarget) * 100 : 0;
@@ -236,6 +235,11 @@ export const SelfAssessmentProgress: React.FC = () => {
       return percentB - percentA;
     });
   }, [visibleTeams]);
+
+  // Pass the UNSORTED visibleTeams to the chart so the chart's internal
+  // name-based sort and colour assignment are self-consistent.
+  // The chart sorts by name internally, so colours always match the legend.
+  const chartTeamProgress = useMemo(() => visibleTeams, [visibleTeams]);
 
   const totals = sortedVisibleTeams.reduce(
     (acc, t) => {
@@ -271,7 +275,6 @@ export const SelfAssessmentProgress: React.FC = () => {
 
     const monthPct = monthTarget > 0 ? (monthSubmitted / monthTarget) * 100 : 0;
 
-    // Build per-accountant data sorted by % complete high to low
     const perAccountantRaw = sortedVisibleTeams.map(entry => ({
       name: entry.name,
       submitted: monthlyData[entry.team_id]?.[selectedMonth]?.submitted || 0,
@@ -300,8 +303,7 @@ export const SelfAssessmentProgress: React.FC = () => {
 
   const handleRowClick = (name: string) => {
     setSelectedName(prev => prev === name ? null : name);
-    // Also sync the chart active team
-    const entry = sortedVisibleTeams.find(t => t.name === name);
+    const entry = visibleTeams.find(t => t.name === name);
     if (entry) {
       setActiveTeamId(prev => prev === entry.team_id ? null : entry.team_id);
     }
@@ -596,7 +598,7 @@ export const SelfAssessmentProgress: React.FC = () => {
             </div>
           ) : (
             <SelfAssessmentProgressChart
-              teamProgress={sortedVisibleTeams}
+              teamProgress={chartTeamProgress}
               financialYear={localFinancialYear}
               monthlyData={chartMonthlyData}
               activeTeamId={activeTeamId}
@@ -605,7 +607,7 @@ export const SelfAssessmentProgress: React.FC = () => {
                 if (id === null) {
                   setSelectedName(null);
                 } else {
-                  const entry = sortedVisibleTeams.find(t => t.team_id === id);
+                  const entry = visibleTeams.find(t => t.team_id === id);
                   setSelectedName(entry?.name ?? null);
                 }
               }}
