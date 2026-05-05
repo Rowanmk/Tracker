@@ -149,10 +149,8 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
   const totalWorkingDays = cumulativeWorkingDays[cumulativeWorkingDays.length - 1] ?? 0;
 
-  // Build target line: advances only on working days, proportional to monthly targets
-  // The end-of-month target % is determined by cumulative monthly targets
+  // Build target line percents
   const targetLinePercents = React.useMemo(() => {
-    // Sum monthly targets across all visible teams for each SA month
     const monthlyTargetTotals = SA_MONTHS.map(m => {
       return visibleTeams.reduce((sum, team) => {
         return sum + (monthlyData[team.team_id]?.[m]?.target ?? 0);
@@ -162,21 +160,16 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
     const trueTotalTarget = monthlyTargetTotals.reduce((a, b) => a + b, 0);
 
     if (trueTotalTarget <= 0 || totalWorkingDays === 0) {
-      // Fallback: linear across working days
       return dayPoints.map((_, i) => {
         const wd = cumulativeWorkingDays[i];
         return (wd / Math.max(totalWorkingDays, 1)) * 100;
       });
     }
 
-    // For each day, compute what % of the total target should be reached
-    // by distributing each month's target evenly across its working days
     const workingDaysPerMonth = SA_MONTHS.map((monthNumber, monthIndex) => {
       return dayPoints.filter(dp => dp.monthIndex === monthIndex && dp.isWorkingDay).length;
     });
 
-    // Build cumulative target per working day
-    // For each working day in month i, it contributes monthlyTargetTotals[i] / workingDaysPerMonth[i]
     const targetPerWorkingDay: number[] = [];
     SA_MONTHS.forEach((_, monthIndex) => {
       const monthWD = workingDaysPerMonth[monthIndex];
@@ -189,7 +182,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
         });
     });
 
-    // Build cumulative target percents per day
     let cumTarget = 0;
     return dayPoints.map((_, i) => {
       cumTarget += targetPerWorkingDay[i] ?? 0;
@@ -198,31 +190,22 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   }, [visibleTeams, monthlyData, dayPoints, cumulativeWorkingDays, totalWorkingDays]);
 
   // For each team, build cumulative submitted % per day (only up to today)
-  // KEY FIX: Use fullYearTarget (from teamProgress) as the denominator, not the sum of monthly targets.
-  // This ensures the chart line's final value matches the % Complete shown in the full year tile.
   const chartData = React.useMemo(() => {
     return visibleTeams.map((team, idx) => {
-      // Build submitted per month from monthlyData
       const submittedPerMonth: Record<number, number> = {};
       SA_MONTHS.forEach(m => {
         submittedPerMonth[m] = monthlyData[team.team_id]?.[m]?.submitted ?? 0;
       });
 
-      // Use fullYearTarget as the denominator — same as the full year tile
       const denominator = team.fullYearTarget > 0 ? team.fullYearTarget : 1;
-
-      // Total submitted across all SA months (should equal team.submitted)
       const totalSubmitted = SA_MONTHS.reduce((sum, m) => sum + (submittedPerMonth[m] ?? 0), 0);
 
-      // Distribute each month's submitted evenly across its working days
-      // so the line progresses smoothly, but the final value = totalSubmitted / denominator
       const submittedPerWorkingDay: number[] = dayPoints.map(dp => {
         const monthWDs = dayPoints.filter(d => d.monthIndex === dp.monthIndex && d.isWorkingDay).length;
         if (!dp.isWorkingDay || monthWDs === 0) return 0;
         return (submittedPerMonth[dp.monthNumber] ?? 0) / monthWDs;
       });
 
-      // Build cumulative percent and cumulative count per day, only for days up to today
       let cumSubmitted = 0;
       const percents: Array<{ dateStr: string; percent: number; cumulativeCount: number; isVisible: boolean }> = dayPoints.map((dp, i) => {
         const isVisible = dp.dateStr <= todayStr;
@@ -242,7 +225,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
         name: team.name,
         color: colours[idx % colours.length],
         percents,
-        // The final visible percent should equal submitted/fullYearTarget * 100
         finalPercent: denominator > 0 ? (totalSubmitted / denominator) * 100 : 0,
         totalSubmitted,
         fullYearTarget: team.fullYearTarget,
@@ -282,6 +264,14 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   // Today marker
   const todayDayIndex = dayPoints.findIndex(dp => dp.dateStr === todayStr);
   const todayX = todayDayIndex >= 0 ? getX(todayDayIndex) : null;
+
+  // Calculate the target line % at today's position for the label
+  const todayTargetPercent = React.useMemo(() => {
+    if (todayDayIndex < 0) return null;
+    const pct = targetLinePercents[todayDayIndex];
+    if (pct === undefined) return null;
+    return Math.round(pct * 10) / 10;
+  }, [todayDayIndex, targetLinePercents]);
 
   const handleLineMouseEnter = (
     e: React.MouseEvent<SVGPathElement>,
@@ -419,7 +409,9 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
               fontSize="10"
               fontWeight="bold"
             >
-              Today
+              {todayTargetPercent !== null
+                ? `Today (${todayTargetPercent}%)`
+                : 'Today'}
             </text>
           </g>
         )}
@@ -502,7 +494,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
               if (!lastVisible) return null;
 
-              // Show the final percent which matches the full year tile
               const displayPct = Math.round(team.finalPercent * 10) / 10;
 
               return (
@@ -622,7 +613,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           <svg width="12" height="10">
             <line x1="6" y1="0" x2="6" y2="10" stroke="#FF8A2A" strokeWidth="1.5" strokeDasharray="3 2" />
           </svg>
-          <span>Today</span>
+          <span>Today{todayTargetPercent !== null ? ` (${todayTargetPercent}% of target)` : ''}</span>
         </div>
 
         {chartData.map(team => (
