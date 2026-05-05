@@ -121,6 +121,7 @@ export const SelfAssessmentProgress: React.FC = () => {
   const [monthlyData, setMonthlyData] = useState<
     Record<number, Record<number, { submitted: number; target: number }>>
   >({});
+  const [dailyActuals, setDailyActuals] = useState<Record<number, Record<string, number>>>({});
   const [loadingMonthly, setLoadingMonthly] = useState(false);
 
   React.useEffect(() => {
@@ -134,6 +135,7 @@ export const SelfAssessmentProgress: React.FC = () => {
 
         if (!saService) {
           setMonthlyData({});
+          setDailyActuals({});
           return;
         }
 
@@ -159,6 +161,16 @@ export const SelfAssessmentProgress: React.FC = () => {
           .eq('service_id', saService.service_id)
           .in('year', [deliveryStartYear, deliveryEndYear])
           .in('staff_id', staffIds);
+
+        // Build per-day actuals map: staffId -> dateStr -> count
+        const nextDailyActuals: Record<number, Record<string, number>> = {};
+        (activities || []).forEach((a) => {
+          if (a.staff_id == null || !a.date) return;
+          if (!nextDailyActuals[a.staff_id]) nextDailyActuals[a.staff_id] = {};
+          nextDailyActuals[a.staff_id][a.date] =
+            (nextDailyActuals[a.staff_id][a.date] || 0) + (a.delivered_count || 0);
+        });
+        setDailyActuals(nextDailyActuals);
 
         const breakdown: Record<number, Record<number, { submitted: number; target: number }>> = {};
 
@@ -195,28 +207,18 @@ export const SelfAssessmentProgress: React.FC = () => {
           }
         });
 
-        const today = new Date();
-        const currentYear = today.getFullYear();
-        const currentMonth = today.getMonth() + 1;
-
+        // Use raw DB targets for all months (no past-month overwrite)
         teamProgress.forEach((staffEntry) => {
           const staffId = staffEntry.team_id;
           getFinancialYearMonths().forEach((m) => {
-            const monthNum = m.number;
-            const yearNum = monthNum >= 4 ? deliveryStartYear : deliveryEndYear;
-            const isPastMonth = yearNum < currentYear || (yearNum === currentYear && monthNum < currentMonth);
-
-            if (isPastMonth) {
-              breakdown[staffId][monthNum].target = breakdown[staffId][monthNum].submitted;
-            } else {
-              breakdown[staffId][monthNum].target = dbTargets[staffId]?.[monthNum] || 0;
-            }
+            breakdown[staffId][m.number].target = dbTargets[staffId]?.[m.number] || 0;
           });
         });
 
         setMonthlyData(breakdown);
       } catch {
         setMonthlyData({});
+        setDailyActuals({});
       } finally {
         setLoadingMonthly(false);
       }
@@ -227,7 +229,6 @@ export const SelfAssessmentProgress: React.FC = () => {
 
   const visibleTeams = teamProgress.filter((t) => t.fullYearTarget > 0 || t.submitted > 0);
 
-  // Sort full year data by % complete high to low for the TABLE display
   const sortedVisibleTeams = useMemo(() => {
     return [...visibleTeams].sort((a, b) => {
       const percentA = a.fullYearTarget > 0 ? (a.submitted / a.fullYearTarget) * 100 : 0;
@@ -236,9 +237,6 @@ export const SelfAssessmentProgress: React.FC = () => {
     });
   }, [visibleTeams]);
 
-  // Pass the UNSORTED visibleTeams to the chart so the chart's internal
-  // name-based sort and colour assignment are self-consistent.
-  // The chart sorts by name internally, so colours always match the legend.
   const chartTeamProgress = useMemo(() => visibleTeams, [visibleTeams]);
 
   const totals = sortedVisibleTeams.reduce(
@@ -601,6 +599,7 @@ export const SelfAssessmentProgress: React.FC = () => {
               teamProgress={chartTeamProgress}
               financialYear={localFinancialYear}
               monthlyData={chartMonthlyData}
+              dailyActuals={dailyActuals}
               activeTeamId={activeTeamId}
               onActiveTeamChange={(id) => {
                 setActiveTeamId(id);

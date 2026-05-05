@@ -13,6 +13,7 @@ interface SelfAssessmentProgressChartProps {
   teamProgress: TeamProgressData[];
   financialYear: FinancialYear;
   monthlyData: Record<number, Record<number, { submitted: number; target: number }>>;
+  dailyActuals: Record<number, Record<string, number>>;
   activeTeamId: number | null;
   onActiveTeamChange: (id: number | null) => void;
 }
@@ -53,7 +54,6 @@ interface DayPoint {
   isWorkingDay: boolean;
   isMonthStart: boolean;
   monthIndex: number;
-  // fraction of this month completed at end of this day (0..1)
   monthDayFraction: number;
 }
 
@@ -73,7 +73,6 @@ function buildDayPoints(financialYear: FinancialYear): DayPoint[] {
         isWorkingDay: !isWeekend(year, monthNumber, day),
         isMonthStart: day === 1,
         monthIndex,
-        // fraction of month elapsed at end of this day
         monthDayFraction: day / daysInMonth,
       });
     }
@@ -97,6 +96,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   teamProgress,
   financialYear,
   monthlyData,
+  dailyActuals,
   activeTeamId,
   onActiveTeamChange,
 }) => {
@@ -142,140 +142,25 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
     '#008A00',
   ];
 
-  // Build cumulative working days count per day index
-  const cumulativeWorkingDays = React.useMemo(() => {
-    let count = 0;
-    return dayPoints.map(dp => {
-      if (dp.isWorkingDay) count++;
-      return count;
-    });
-  }, [dayPoints]);
-
-  const totalWorkingDays = cumulativeWorkingDays[cumulativeWorkingDays.length - 1] ?? 0;
-
-  // Build target line percents
-  const targetLinePercents = React.useMemo(() => {
-    const monthlyTargetTotals = SA_MONTHS.map(m => {
-      return visibleTeams.reduce((sum, team) => {
-        return sum + (monthlyData[team.team_id]?.[m]?.target ?? 0);
-      }, 0);
-    });
-
-    const trueTotalTarget = monthlyTargetTotals.reduce((a, b) => a + b, 0);
-
-    if (trueTotalTarget <= 0 || totalWorkingDays === 0) {
-      return dayPoints.map((_, i) => {
-        const wd = cumulativeWorkingDays[i];
-        return (wd / Math.max(totalWorkingDays, 1)) * 100;
-      });
-    }
-
-    const workingDaysPerMonth = SA_MONTHS.map((monthNumber, monthIndex) => {
-      return dayPoints.filter(dp => dp.monthIndex === monthIndex && dp.isWorkingDay).length;
-    });
-
-    const targetPerWorkingDay: number[] = [];
-    SA_MONTHS.forEach((_, monthIndex) => {
-      const monthWD = workingDaysPerMonth[monthIndex];
-      const monthTarget = monthlyTargetTotals[monthIndex];
-      const perWD = monthWD > 0 ? monthTarget / monthWD : 0;
-      dayPoints
-        .filter(dp => dp.monthIndex === monthIndex)
-        .forEach(dp => {
-          targetPerWorkingDay.push(dp.isWorkingDay ? perWD : 0);
-        });
-    });
-
-    let cumTarget = 0;
-    return dayPoints.map((_, i) => {
-      cumTarget += targetPerWorkingDay[i] ?? 0;
-      return (cumTarget / trueTotalTarget) * 100;
-    });
-  }, [visibleTeams, monthlyData, dayPoints, cumulativeWorkingDays, totalWorkingDays]);
-
   // ─────────────────────────────────────────────────────────────────────────────
-  // KEY FIX: Build each team's cumulative % line using an exact, unambiguous
-  // method that guarantees the line endpoint equals submitted / fullYearTarget.
-  //
-  // For each day point we compute:
-  //   cumulativeSubmitted = sum over all months of:
-  //     - if the month is fully past (all days ≤ today): full month submitted
-  //     - if the month contains today: month submitted × (day / daysInMonth)
-  //     - if the month is in the future: 0
-  //
-  // This is exact — no floating-point drift from per-working-day spreading.
-  // The final visible point will be exactly submitted / fullYearTarget × 100.
+  // chartData: for each team, accumulate real daily actuals up to today.
+  // y(day) = cumulative_real_actuals_up_to_that_day / fullYearTarget × 100
+  // Line moves only on days with real activity; flat otherwise.
   // ─────────────────────────────────────────────────────────────────────────────
   const chartData = React.useMemo(() => {
-    // Pre-compute last day of each SA month as a dateStr for comparison
-    const monthLastDays: string[] = SA_MONTHS.map((monthNumber, _monthIndex) => {
-      const year = getCalendarYear(monthNumber, financialYear);
-      const lastDay = getDaysInMonth(year, monthNumber);
-      const mm = String(monthNumber).padStart(2, '0');
-      const dd = String(lastDay).padStart(2, '0');
-      return `${year}-${mm}-${dd}`;
-    });
-
-    // First day of each SA month as dateStr
-    const monthFirstDays: string[] = SA_MONTHS.map((monthNumber, _monthIndex) => {
-      const year = getCalendarYear(monthNumber, financialYear);
-      const mm = String(monthNumber).padStart(2, '0');
-      return `${year}-${mm}-01`;
-    });
-
     return visibleTeams.map((team, idx) => {
       const denominator = team.fullYearTarget > 0 ? team.fullYearTarget : 1;
+      const teamDaily = dailyActuals[team.team_id] || {};
 
-      // Per-month submitted counts from monthlyData
-      const submittedPerMonth: number[] = SA_MONTHS.map(m => {
-        return monthlyData[team.team_id]?.[m]?.submitted ?? 0;
-      });
-
-      // Total submitted (matches team.submitted)
-      const totalSubmitted = submittedPerMonth.reduce((a, b) => a + b, 0);
-
-      const percents: Array<{
-        dateStr: string;
-        percent: number;
-        cumulativeCount: number;
-        isVisible: boolean;
-      }> = dayPoints.map((dp) => {
+      let cum = 0;
+      const percents = dayPoints.map((dp) => {
         const isVisible = dp.dateStr <= todayStr;
-
-        if (!isVisible) {
-          return { dateStr: dp.dateStr, percent: 0, cumulativeCount: 0, isVisible: false };
-        }
-
-        // Compute cumulative submitted up to and including this day
-        let cumSubmitted = 0;
-
-        SA_MONTHS.forEach((monthNumber, monthIndex) => {
-          const monthFirst = monthFirstDays[monthIndex];
-          const monthLast = monthLastDays[monthIndex];
-          const monthSubmitted = submittedPerMonth[monthIndex];
-
-          if (monthSubmitted === 0) return;
-
-          if (dp.dateStr >= monthLast) {
-            // This day is on or after the last day of this month → full month counts
-            cumSubmitted += monthSubmitted;
-          } else if (dp.dateStr >= monthFirst) {
-            // This day is within this month → proportional share by calendar day
-            const year = getCalendarYear(monthNumber, financialYear);
-            const daysInMonth = getDaysInMonth(year, monthNumber);
-            const fraction = dp.day / daysInMonth;
-            cumSubmitted += monthSubmitted * fraction;
-          }
-          // else: this month hasn't started yet → 0
-        });
-
-        const percent = Math.min((cumSubmitted / denominator) * 100, 100);
-
+        cum += teamDaily[dp.dateStr] || 0;
         return {
           dateStr: dp.dateStr,
-          percent,
-          cumulativeCount: cumSubmitted,
-          isVisible: true,
+          percent: isVisible ? Math.min((cum / denominator) * 100, 100) : 0,
+          cumulativeCount: cum,
+          isVisible,
         };
       });
 
@@ -284,13 +169,76 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
         name: team.name,
         color: colours[idx % colours.length],
         percents,
-        // finalPercent is the exact table value — used for labels
-        finalPercent: (totalSubmitted / denominator) * 100,
-        totalSubmitted,
+        finalPercent: (team.submitted / denominator) * 100,
+        totalSubmitted: team.submitted,
         fullYearTarget: team.fullYearTarget,
       };
     });
-  }, [visibleTeams, monthlyData, dayPoints, todayStr, financialYear]);
+  }, [visibleTeams, dailyActuals, dayPoints, todayStr]);
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // targetLinePercents: grey dashed reference line.
+  // Past months: tracks team's actual cumulative % (overlaps actuals historically).
+  // Current + future months: climbs only on working days by monthPlannedTarget/workingDaysInMonth.
+  // Ends at exactly 100% on 31 Jan.
+  // ─────────────────────────────────────────────────────────────────────────────
+  const targetLinePercents = React.useMemo(() => {
+    const teamCount = visibleTeams.length;
+    if (teamCount === 0) return dayPoints.map(() => 0);
+
+    const totalDenominator = visibleTeams.reduce((s, t) => s + t.fullYearTarget, 0);
+    if (totalDenominator <= 0) return dayPoints.map(() => 0);
+
+    // Aggregate all teams' daily actuals
+    const totalActualsByDate: Record<string, number> = {};
+    visibleTeams.forEach((team) => {
+      const td = dailyActuals[team.team_id] || {};
+      Object.keys(td).forEach((d) => {
+        totalActualsByDate[d] = (totalActualsByDate[d] || 0) + td[d];
+      });
+    });
+
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    const currentYear = todayDate.getFullYear();
+    const currentMonth = todayDate.getMonth() + 1;
+
+    const isPastMonth = (m: number) => {
+      const y = getCalendarYear(m, financialYear);
+      return y < currentYear || (y === currentYear && m < currentMonth);
+    };
+
+    // Working days per SA month index
+    const wdPerMonth = SA_MONTHS.map((_, mi) =>
+      dayPoints.filter(dp => dp.monthIndex === mi && dp.isWorkingDay).length
+    );
+
+    // Planned target per SA month (sum across all visible teams, using DB targets)
+    const plannedPerMonth = SA_MONTHS.map((m) =>
+      visibleTeams.reduce((s, t) => s + (monthlyData[t.team_id]?.[m]?.target ?? 0), 0)
+    );
+
+    let cumActual = 0;
+    let cumPlanned = 0;
+
+    return dayPoints.map((dp) => {
+      cumActual += totalActualsByDate[dp.dateStr] || 0;
+
+      if (isPastMonth(dp.monthNumber)) {
+        // Past months: target line tracks actual cumulative %
+        return (cumActual / totalDenominator) * 100;
+      }
+
+      // Current and future months: advance only on working days
+      if (dp.isWorkingDay) {
+        const wd = wdPerMonth[dp.monthIndex] || 1;
+        cumPlanned += plannedPerMonth[dp.monthIndex] / wd;
+      }
+
+      const totalProjected = cumActual + cumPlanned;
+      return Math.min((totalProjected / totalDenominator) * 100, 100);
+    });
+  }, [visibleTeams, dailyActuals, monthlyData, dayPoints, financialYear]);
 
   const getX = (dayIndex: number) =>
     PADDING_LEFT + (CHART_WIDTH / Math.max(totalDays - 1, 1)) * dayIndex;
@@ -473,7 +421,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           </g>
         )}
 
-        {/* Target line — dotted grey, advances only on working days */}
+        {/* Target line — dotted grey, advances only on working days for future months */}
         <polyline
           points={targetPolylinePoints}
           fill="none"
@@ -494,7 +442,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           Target
         </text>
 
-        {/* Actual lines — only plot points up to today */}
+        {/* Actual lines — only plot points up to today, step-function on real activity days */}
         {chartData.map(team => {
           const visiblePoints = team.percents
             .map((p, i) => ({ ...p, i }))
