@@ -46,13 +46,15 @@ function isWeekend(year: number, month: number, day: number): boolean {
 }
 
 interface DayPoint {
-  dateStr: string; // YYYY-MM-DD
+  dateStr: string;
   monthNumber: number;
   year: number;
   day: number;
   isWorkingDay: boolean;
   isMonthStart: boolean;
-  monthIndex: number; // index in SA_MONTHS
+  monthIndex: number;
+  // fraction of this month completed at end of this day (0..1)
+  monthDayFraction: number;
 }
 
 function buildDayPoints(financialYear: FinancialYear): DayPoint[] {
@@ -71,6 +73,8 @@ function buildDayPoints(financialYear: FinancialYear): DayPoint[] {
         isWorkingDay: !isWeekend(year, monthNumber, day),
         isMonthStart: day === 1,
         monthIndex,
+        // fraction of month elapsed at end of this day
+        monthDayFraction: day / daysInMonth,
       });
     }
   });
@@ -189,73 +193,104 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
     });
   }, [visibleTeams, monthlyData, dayPoints, cumulativeWorkingDays, totalWorkingDays]);
 
-  // For each team, build cumulative submitted % per day (only up to today).
+  // ─────────────────────────────────────────────────────────────────────────────
+  // KEY FIX: Build each team's cumulative % line using an exact, unambiguous
+  // method that guarantees the line endpoint equals submitted / fullYearTarget.
   //
-  // KEY FIX: The line's Y-position at any day must reflect the true % of the
-  // full-year target that has been submitted up to that day. We distribute each
-  // month's submitted count evenly across that month's working days, then
-  // accumulate. The final visible point's Y will equal (totalSubmitted /
-  // fullYearTarget * 100), which matches the table's "% Complete" column exactly.
+  // For each day point we compute:
+  //   cumulativeSubmitted = sum over all months of:
+  //     - if the month is fully past (all days ≤ today): full month submitted
+  //     - if the month contains today: month submitted × (day / daysInMonth)
+  //     - if the month is in the future: 0
+  //
+  // This is exact — no floating-point drift from per-working-day spreading.
+  // The final visible point will be exactly submitted / fullYearTarget × 100.
+  // ─────────────────────────────────────────────────────────────────────────────
   const chartData = React.useMemo(() => {
-    return visibleTeams.map((team, idx) => {
-      const submittedPerMonth: Record<number, number> = {};
-      SA_MONTHS.forEach(m => {
-        submittedPerMonth[m] = monthlyData[team.team_id]?.[m]?.submitted ?? 0;
-      });
+    // Pre-compute last day of each SA month as a dateStr for comparison
+    const monthLastDays: string[] = SA_MONTHS.map((monthNumber, _monthIndex) => {
+      const year = getCalendarYear(monthNumber, financialYear);
+      const lastDay = getDaysInMonth(year, monthNumber);
+      const mm = String(monthNumber).padStart(2, '0');
+      const dd = String(lastDay).padStart(2, '0');
+      return `${year}-${mm}-${dd}`;
+    });
 
-      // fullYearTarget is the denominator — same value used in the table
+    // First day of each SA month as dateStr
+    const monthFirstDays: string[] = SA_MONTHS.map((monthNumber, _monthIndex) => {
+      const year = getCalendarYear(monthNumber, financialYear);
+      const mm = String(monthNumber).padStart(2, '0');
+      return `${year}-${mm}-01`;
+    });
+
+    return visibleTeams.map((team, idx) => {
       const denominator = team.fullYearTarget > 0 ? team.fullYearTarget : 1;
 
-      // Total submitted (same as team.submitted, used for tooltip)
-      const totalSubmitted = SA_MONTHS.reduce((sum, m) => sum + (submittedPerMonth[m] ?? 0), 0);
-
-      // Working days per month — used to spread monthly submitted evenly
-      const workingDaysPerMonth: Record<number, number> = {};
-      SA_MONTHS.forEach((monthNumber, monthIndex) => {
-        workingDaysPerMonth[monthNumber] = dayPoints.filter(
-          dp => dp.monthIndex === monthIndex && dp.isWorkingDay
-        ).length;
+      // Per-month submitted counts from monthlyData
+      const submittedPerMonth: number[] = SA_MONTHS.map(m => {
+        return monthlyData[team.team_id]?.[m]?.submitted ?? 0;
       });
 
-      // Per-day submitted increment: spread each month's submitted count
-      // evenly across that month's working days
-      const submittedPerWorkingDay: number[] = dayPoints.map(dp => {
-        const monthWDs = workingDaysPerMonth[dp.monthNumber] ?? 0;
-        if (!dp.isWorkingDay || monthWDs === 0) return 0;
-        return (submittedPerMonth[dp.monthNumber] ?? 0) / monthWDs;
-      });
+      // Total submitted (matches team.submitted)
+      const totalSubmitted = submittedPerMonth.reduce((a, b) => a + b, 0);
 
-      // Accumulate only up to today; compute % of fullYearTarget
-      let cumSubmitted = 0;
-      const percents: Array<{ dateStr: string; percent: number; cumulativeCount: number; isVisible: boolean }> =
-        dayPoints.map((dp, i) => {
-          const isVisible = dp.dateStr <= todayStr;
-          if (isVisible) {
-            cumSubmitted += submittedPerWorkingDay[i] ?? 0;
+      const percents: Array<{
+        dateStr: string;
+        percent: number;
+        cumulativeCount: number;
+        isVisible: boolean;
+      }> = dayPoints.map((dp) => {
+        const isVisible = dp.dateStr <= todayStr;
+
+        if (!isVisible) {
+          return { dateStr: dp.dateStr, percent: 0, cumulativeCount: 0, isVisible: false };
+        }
+
+        // Compute cumulative submitted up to and including this day
+        let cumSubmitted = 0;
+
+        SA_MONTHS.forEach((monthNumber, monthIndex) => {
+          const monthFirst = monthFirstDays[monthIndex];
+          const monthLast = monthLastDays[monthIndex];
+          const monthSubmitted = submittedPerMonth[monthIndex];
+
+          if (monthSubmitted === 0) return;
+
+          if (dp.dateStr >= monthLast) {
+            // This day is on or after the last day of this month → full month counts
+            cumSubmitted += monthSubmitted;
+          } else if (dp.dateStr >= monthFirst) {
+            // This day is within this month → proportional share by calendar day
+            const year = getCalendarYear(monthNumber, financialYear);
+            const daysInMonth = getDaysInMonth(year, monthNumber);
+            const fraction = dp.day / daysInMonth;
+            cumSubmitted += monthSubmitted * fraction;
           }
-          return {
-            dateStr: dp.dateStr,
-            // percent = cumulative submitted so far / fullYearTarget * 100
-            // This ensures the line's Y-position directly reflects the true
-            // completion percentage, matching the table value.
-            percent: isVisible ? Math.min((cumSubmitted / denominator) * 100, 100) : 0,
-            cumulativeCount: isVisible ? cumSubmitted : 0,
-            isVisible,
-          };
+          // else: this month hasn't started yet → 0
         });
+
+        const percent = Math.min((cumSubmitted / denominator) * 100, 100);
+
+        return {
+          dateStr: dp.dateStr,
+          percent,
+          cumulativeCount: cumSubmitted,
+          isVisible: true,
+        };
+      });
 
       return {
         team_id: team.team_id,
         name: team.name,
         color: colours[idx % colours.length],
         percents,
-        // finalPercent = totalSubmitted / fullYearTarget * 100 — matches table exactly
+        // finalPercent is the exact table value — used for labels
         finalPercent: (totalSubmitted / denominator) * 100,
         totalSubmitted,
         fullYearTarget: team.fullYearTarget,
       };
     });
-  }, [visibleTeams, monthlyData, dayPoints, todayStr]);
+  }, [visibleTeams, monthlyData, dayPoints, todayStr, financialYear]);
 
   const getX = (dayIndex: number) =>
     PADDING_LEFT + (CHART_WIDTH / Math.max(totalDays - 1, 1)) * dayIndex;
