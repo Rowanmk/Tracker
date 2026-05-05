@@ -59,7 +59,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
   financialYear,
   target,
   playbackDay,
-  totalDelivered,
+  totalDelivered: _totalDelivered,
   staffPerformance = [],
 }) => {
   const selectedYear = getMonthYearFromFinancialYear(month, financialYear);
@@ -121,16 +121,8 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
       actualCumulativeRaw.push(actualRunning);
     }
 
-    // The final raw sum from dailyActivities
-    const finalRawSum = actualRunning;
-
-    // Scale factor: if totalDelivered is provided, scale so the final bar matches exactly
-    const scaleFactor =
-      totalDelivered !== undefined && finalRawSum > 0
-        ? totalDelivered / finalRawSum
-        : 1;
-
-    const actualCumulative = actualCumulativeRaw.map((v) => v * scaleFactor);
+    // No scaleFactor — use raw cumulative actuals directly
+    const actualCumulative = actualCumulativeRaw;
 
     // Cumulative expected target line: advances only on working days
     let workingDaysElapsed = 0;
@@ -148,14 +140,13 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
       return Math.round(actual) - Math.round(expected);
     });
 
-    return { actualCumulative, expectedCumulative, varianceByDay, scaleFactor };
+    return { actualCumulative, expectedCumulative, varianceByDay };
   }, [
     deliveredByDay,
     daysInMonth,
     workingDaysList,
     workingDays,
     target,
-    totalDelivered,
   ]);
 
   // Build cumulative per-staff breakdown for each day
@@ -207,48 +198,34 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     [series.expectedCumulative, yMax, daysInMonth]
   );
 
-  // Build tooltip breakdown for a given day
+  // Build tooltip breakdown for a given day (no scaleFactor)
   const buildBreakdown = (day: number): { breakdown: AccountantDailyBreakdown[]; cumulativeTotal: number; expectedAtDay: number } => {
     const cumulativeForDay = cumulativeByDayByStaff[day] || {};
-    const scaleFactor = series.scaleFactor;
-
-    // Total cumulative for this day (scaled)
-    const rawTotal = Object.values(cumulativeForDay).reduce((s, v) => s + v, 0);
-    const scaledTotal = rawTotal * scaleFactor;
-
-    // Expected at this day from the series
+    const cumulativeTotal = Object.values(cumulativeForDay).reduce((s, v) => s + v, 0);
     const expectedAtDay = series.expectedCumulative[day - 1] || 0;
 
-    // Per-staff expected share: proportional to their target if available, else equal split
     const staffMap = new Map(staffPerformance.map((s) => [s.staff_id, s]));
     const staffCount = staffPerformance.filter(s => s.staff_id !== -1).length || 1;
-
     const breakdown: AccountantDailyBreakdown[] = [];
 
-    Object.entries(cumulativeForDay).forEach(([staffIdStr, rawCumulative]) => {
+    Object.entries(cumulativeForDay).forEach(([staffIdStr, cumulative]) => {
       const staffId = Number(staffIdStr);
-      if (staffId === -1) return; // skip unknown staff
+      if (staffId === -1) return;
       const staffEntry = staffMap.get(staffId);
       const name = staffEntry?.name || `Staff #${staffId}`;
-      const scaledCumulative = rawCumulative * scaleFactor;
-
-      // Calculate this staff member's share of the expected total
-      // Use equal split of expected if no individual targets available
       const staffExpected = expectedAtDay / staffCount;
-      const aheadBehind = Math.round(scaledCumulative) - Math.round(staffExpected);
+      const aheadBehind = Math.round(cumulative) - Math.round(staffExpected);
 
       breakdown.push({
         staff_id: staffId,
         name,
-        cumulativeDelivered: Math.round(scaledCumulative),
+        cumulativeDelivered: Math.round(cumulative),
         aheadBehind,
       });
     });
 
-    // Sort by cumulative delivered descending
     breakdown.sort((a, b) => b.cumulativeDelivered - a.cumulativeDelivered);
-
-    return { breakdown, cumulativeTotal: Math.round(scaledTotal), expectedAtDay };
+    return { breakdown, cumulativeTotal: Math.round(cumulativeTotal), expectedAtDay };
   };
 
   const handleBarMouseEnter = (
@@ -262,7 +239,6 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     const svgRect = svgRef.current.getBoundingClientRect();
     const containerRect = containerRef.current.getBoundingClientRect();
 
-    // Convert SVG viewBox coordinates to actual pixel positions
     const svgWidth = svgRect.width;
     const svgHeight = svgRect.height;
     const scaleX = svgWidth / CHART_WIDTH;
@@ -290,6 +266,12 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
   const handleBarMouseLeave = () => {
     setTooltip((prev) => ({ ...prev, visible: false }));
   };
+
+  // Determine last day with real activity
+  const lastDayWithActivity = useMemo(() => {
+    const activeDays = Object.keys(deliveredByDay).map(Number);
+    return activeDays.length > 0 ? Math.max(...activeDays) : 0;
+  }, [deliveredByDay]);
 
   return (
     <div
@@ -366,48 +348,51 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             );
           })}
 
-          {/* Actual cumulative bars */}
-          {series.actualCumulative.map((value, idx) => {
-            const day = idx + 1;
-            if (day > playbackDayCapped) return null;
-            if (value <= 0) return null;
+          {/* Actual cumulative bars — stop after last day with activity */}
+          {(() => {
+            return series.actualCumulative.map((value, idx) => {
+              const day = idx + 1;
+              if (day > playbackDayCapped) return null;
+              if (day > lastDayWithActivity) return null;
+              if (value <= 0) return null;
 
-            const barHeight = Math.max(0, (value / yMax) * BAR_AREA_HEIGHT);
-            const barTopY = BASELINE_Y - barHeight;
-            const x = getX(day);
-            const variance = series.varianceByDay[idx];
-            const varianceLabel = variance > 0 ? `+${variance}` : `${variance}`;
-            const varianceColor =
-              variance > 0
-                ? '#008A00'
-                : variance < 0
-                ? '#FF3B30'
-                : '#6B7280';
+              const barHeight = Math.max(0, (value / yMax) * BAR_AREA_HEIGHT);
+              const barTopY = BASELINE_Y - barHeight;
+              const x = getX(day);
+              const variance = series.varianceByDay[idx];
+              const varianceLabel = variance > 0 ? `+${variance}` : `${variance}`;
+              const varianceColor =
+                variance > 0
+                  ? '#008A00'
+                  : variance < 0
+                  ? '#FF3B30'
+                  : '#6B7280';
 
-            return (
-              <g key={day}>
-                <rect
-                  x={x - barWidth / 2}
-                  y={barTopY}
-                  width={barWidth}
-                  height={barHeight}
-                  fill="#001B47"
-                  rx={2}
-                  style={{ cursor: 'pointer' }}
-                  onMouseEnter={(e) => handleBarMouseEnter(e, day, barHeight, barTopY)}
-                  onMouseLeave={handleBarMouseLeave}
-                />
-                <text
-                  x={x}
-                  y={barTopY - 5}
-                  textAnchor="middle"
-                  style={{ fontSize: 9, fontWeight: 700, fill: varianceColor }}
-                >
-                  {varianceLabel}
-                </text>
-              </g>
-            );
-          })}
+              return (
+                <g key={day}>
+                  <rect
+                    x={x - barWidth / 2}
+                    y={barTopY}
+                    width={barWidth}
+                    height={barHeight}
+                    fill="#001B47"
+                    rx={2}
+                    style={{ cursor: 'pointer' }}
+                    onMouseEnter={(e) => handleBarMouseEnter(e, day, barHeight, barTopY)}
+                    onMouseLeave={handleBarMouseLeave}
+                  />
+                  <text
+                    x={x}
+                    y={barTopY - 5}
+                    textAnchor="middle"
+                    style={{ fontSize: 9, fontWeight: 700, fill: varianceColor }}
+                  >
+                    {varianceLabel}
+                  </text>
+                </g>
+              );
+            });
+          })()}
 
           {/* Dotted target run-rate line */}
           <polyline
