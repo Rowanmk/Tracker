@@ -14,7 +14,6 @@ import { usePerformanceSummary } from "../hooks/usePerformanceSummary";
 import { supabase } from "../supabase/client";
 
 const DAY_TRANSITION_DURATION_MS = 800;
-const DAY_STEP_PAUSE_MS = 150;
 
 interface PlaybackControllerState {
   currentDayIndex: number;
@@ -23,8 +22,6 @@ interface PlaybackControllerState {
   isPaused: boolean;
   animationProgress: number;
 }
-
-const easeInOut = (t: number) => 0.5 - Math.cos(Math.PI * t) / 2;
 
 const getRunRateStatusColor = (achievedPercent: number, elapsedWorkingDayPercent: number) => {
   if (elapsedWorkingDayPercent <= 0) {
@@ -111,7 +108,6 @@ export const Dashboard: React.FC = () => {
   });
 
   const rafRef = useRef<number | null>(null);
-  const pauseTimeoutRef = useRef<number | null>(null);
   const sequenceRef = useRef(0);
 
   const clampDay = (day: number) => Math.max(1, Math.min(maxActualDay, day));
@@ -120,10 +116,6 @@ export const Dashboard: React.FC = () => {
     if (rafRef.current !== null) {
       window.cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
-    }
-    if (pauseTimeoutRef.current !== null) {
-      window.clearTimeout(pauseTimeoutRef.current);
-      pauseTimeoutRef.current = null;
     }
   };
 
@@ -149,82 +141,40 @@ export const Dashboard: React.FC = () => {
     stopPlaybackLoop();
     sequenceRef.current += 1;
     const localSequence = sequenceRef.current;
+    const safeStart = clampDay(startDay);
     const safeTarget = clampDay(targetDay);
 
-    const animateDayStep = (fromDay: number) => {
+    if (safeStart >= safeTarget) {
+      setIdleAtDay(safeTarget);
+      return;
+    }
+
+    const totalMs = (safeTarget - safeStart) * DAY_TRANSITION_DURATION_MS;
+    const startedAt = performance.now();
+
+    const tick = (timestamp: number) => {
       if (localSequence !== sequenceRef.current) return;
-      const safeFromDay = clampDay(fromDay);
-      if (safeFromDay >= safeTarget) {
-        setPlaybackController({
-          currentDayIndex: safeTarget,
-          targetDayIndex: safeTarget,
-          isPlaying: false,
-          isPaused: false,
-          animationProgress: safeTarget,
-        });
-        return;
+      const elapsed = timestamp - startedAt;
+      const linearProgress = Math.min(elapsed / totalMs, 1);
+      const animationProgress = safeStart + (safeTarget - safeStart) * linearProgress;
+      const currentDayIndex = Math.min(safeTarget, Math.floor(animationProgress));
+
+      setPlaybackController({
+        currentDayIndex,
+        targetDayIndex: safeTarget,
+        isPlaying: linearProgress < 1,
+        isPaused: false,
+        animationProgress,
+      });
+
+      if (linearProgress < 1) {
+        rafRef.current = window.requestAnimationFrame(tick);
+      } else {
+        setIdleAtDay(safeTarget);
       }
-
-      const nextDay = clampDay(safeFromDay + 1);
-      const stepStartedAt = performance.now();
-
-      const tick = (timestamp: number) => {
-        if (localSequence !== sequenceRef.current) return;
-        const elapsed = timestamp - stepStartedAt;
-        const linearProgress = Math.min(elapsed / DAY_TRANSITION_DURATION_MS, 1);
-        const easedProgress = easeInOut(linearProgress);
-        const animationProgress = safeFromDay + (nextDay - safeFromDay) * easedProgress;
-
-        setPlaybackController({
-          currentDayIndex: safeFromDay,
-          targetDayIndex: safeTarget,
-          isPlaying: true,
-          isPaused: false,
-          animationProgress,
-        });
-
-        if (linearProgress < 1) {
-          rafRef.current = window.requestAnimationFrame(tick);
-          return;
-        }
-
-        setPlaybackController({
-          currentDayIndex: nextDay,
-          targetDayIndex: safeTarget,
-          isPlaying: true,
-          isPaused: false,
-          animationProgress: nextDay,
-        });
-
-        if (nextDay >= safeTarget) {
-          setPlaybackController({
-            currentDayIndex: nextDay,
-            targetDayIndex: nextDay,
-            isPlaying: false,
-            isPaused: false,
-            animationProgress: nextDay,
-          });
-          rafRef.current = null;
-          return;
-        }
-
-        pauseTimeoutRef.current = window.setTimeout(() => {
-          animateDayStep(nextDay);
-        }, DAY_STEP_PAUSE_MS);
-      };
-
-      rafRef.current = window.requestAnimationFrame(tick);
     };
 
-    setPlaybackController({
-      currentDayIndex: clampDay(startDay),
-      targetDayIndex: safeTarget,
-      isPlaying: true,
-      isPaused: false,
-      animationProgress: clampDay(startDay),
-    });
-
-    animateDayStep(startDay);
+    rafRef.current = window.requestAnimationFrame(tick);
   };
 
   const filteredActivities = useMemo(() => {

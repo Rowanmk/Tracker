@@ -119,12 +119,17 @@ export const DashboardPlaybackControls: React.FC<DashboardPlaybackControlsProps>
       <div className="mt-4 px-1">
         <div className="relative h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
           <div
-            className="absolute inset-y-0 left-0 bg-[#001B47] rounded-full transition-none"
+            className="absolute inset-y-0 left-0 bg-[#001B47] rounded-full transition-[width] duration-100 ease-linear"
             style={{ width: `${progressPercent}%` }}
           />
+        </div>
+        <div
+          className="relative mt-1"
+          style={{ height: '16px' }}
+        >
           <div
-            className="absolute top-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-[#001B47] border-2 border-white dark:border-gray-800 shadow-sm transition-none"
-            style={{ left: `calc(${progressPercent}% - 8px)` }}
+            className="absolute top-0 -translate-x-1/2 h-4 w-4 rounded-full bg-[#001B47] border-2 border-white dark:border-gray-800 shadow-sm transition-[left] duration-100 ease-linear"
+            style={{ left: `${progressPercent}%` }}
           />
         </div>
       </div>

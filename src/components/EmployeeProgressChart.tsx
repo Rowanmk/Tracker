@@ -84,7 +84,8 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
 
   const isAllTeams = selectedTeamId === "all";
   const isTeamView = selectedTeamId === "team-view";
-  const roundedPlaybackDay = playbackDay ? Math.max(1, Math.round(playbackDay)) : undefined;
+  // Use ceil so the day label flips at the start of that day's animation
+  const roundedPlaybackDay = playbackDay ? Math.max(1, Math.ceil(playbackDay)) : undefined;
 
   useEffect(() => {
     const fetchTargets = async () => {

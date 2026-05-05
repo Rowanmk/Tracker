@@ -89,7 +89,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
 
   // Sum delivered_count per calendar day per staff from the already-filtered dailyActivities prop
   const deliveredByDayByStaff = useMemo(() => {
-    const totals: Record<number, Record<number, number>> = {}; // day -> staff_id -> count
+    const totals: Record<number, Record<number, number>> = {};
     dailyActivities.forEach((activity) => {
       const staffId = activity.staff_id ?? -1;
       if (!totals[activity.day]) totals[activity.day] = {};
@@ -107,13 +107,13 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     return totals;
   }, [dailyActivities]);
 
-  // Playback day capped to month length
+  // Fractional playback day
   const safePlaybackDay = Math.max(1, Math.min(playbackDay ?? daysInMonth, daysInMonth));
-  const playbackDayCapped = Math.floor(safePlaybackDay);
+  // Use ceil so the leading bar appears as it begins filling
+  const playbackDayCapped = Math.ceil(safePlaybackDay);
 
   // Build per-day series
   const series = useMemo(() => {
-    // Raw cumulative actual delivered up to each calendar day
     let actualRunning = 0;
     const actualCumulativeRaw: number[] = [];
     for (let d = 1; d <= daysInMonth; d++) {
@@ -151,7 +151,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
 
   // Build cumulative per-staff breakdown for each day
   const cumulativeByDayByStaff = useMemo(() => {
-    const result: Record<number, Record<number, number>> = {}; // day -> staff_id -> cumulative
+    const result: Record<number, Record<number, number>> = {};
     const runningByStaff: Record<number, number> = {};
 
     for (let d = 1; d <= daysInMonth; d++) {
@@ -273,6 +273,9 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     return activeDays.length > 0 ? Math.max(...activeDays) : 0;
   }, [deliveredByDay]);
 
+  // Fractional progress within the current day (0–1)
+  const dayFraction = safePlaybackDay - Math.floor(safePlaybackDay);
+
   return (
     <div
       ref={containerRef}
@@ -348,7 +351,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             );
           })}
 
-          {/* Actual cumulative bars — stop after last day with activity */}
+          {/* Actual cumulative bars — stop after last day with activity, partial fill on leading bar */}
           {(() => {
             return series.actualCumulative.map((value, idx) => {
               const day = idx + 1;
@@ -356,7 +359,11 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
               if (day > lastDayWithActivity) return null;
               if (value <= 0) return null;
 
-              const barHeight = Math.max(0, (value / yMax) * BAR_AREA_HEIGHT);
+              // For the leading (partially filled) day, scale height by dayFraction
+              const isLeadingDay = day === playbackDayCapped && dayFraction > 0 && dayFraction < 1;
+              const displayValue = isLeadingDay ? value * dayFraction : value;
+
+              const barHeight = Math.max(0, (displayValue / yMax) * BAR_AREA_HEIGHT);
               const barTopY = BASELINE_Y - barHeight;
               const x = getX(day);
               const variance = series.varianceByDay[idx];
@@ -381,14 +388,16 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
                     onMouseEnter={(e) => handleBarMouseEnter(e, day, barHeight, barTopY)}
                     onMouseLeave={handleBarMouseLeave}
                   />
-                  <text
-                    x={x}
-                    y={barTopY - 5}
-                    textAnchor="middle"
-                    style={{ fontSize: 9, fontWeight: 700, fill: varianceColor }}
-                  >
-                    {varianceLabel}
-                  </text>
+                  {!isLeadingDay && (
+                    <text
+                      x={x}
+                      y={barTopY - 5}
+                      textAnchor="middle"
+                      style={{ fontSize: 9, fontWeight: 700, fill: varianceColor }}
+                    >
+                      {varianceLabel}
+                    </text>
+                  )}
                 </g>
               );
             });
