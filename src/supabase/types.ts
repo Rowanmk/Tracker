@@ -7,6 +7,8 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "13.0.5"
   }
@@ -155,27 +157,27 @@ export type Database = {
           month: number
           service_id: number | null
           staff_id: number | null
-          team_id: number | null
           target_id: number
           target_value: number
+          team_id: number | null
           year: number
         }
         Insert: {
           month: number
           service_id?: number | null
           staff_id?: number | null
-          team_id?: number | null
           target_id?: number
           target_value: number
+          team_id?: number | null
           year: number
         }
         Update: {
           month?: number
           service_id?: number | null
           staff_id?: number | null
-          team_id?: number | null
           target_id?: number
           target_value?: number
+          team_id?: number | null
           year?: number
         }
         Relationships: [
@@ -199,8 +201,155 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "teams"
             referencedColumns: ["id"]
-          }
+          },
         ]
+      }
+      notification_channel_config: {
+        Row: {
+          channel: string
+          config: Json
+          created_at: string | null
+          id: string
+          is_configured: boolean
+          updated_at: string | null
+        }
+        Insert: {
+          channel: string
+          config?: Json
+          created_at?: string | null
+          id?: string
+          is_configured?: boolean
+          updated_at?: string | null
+        }
+        Update: {
+          channel?: string
+          config?: Json
+          created_at?: string | null
+          id?: string
+          is_configured?: boolean
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      notification_delivery_logs: {
+        Row: {
+          channel: string
+          error_message: string | null
+          id: string
+          recipient_name: string | null
+          recipient_staff_id: number | null
+          sent_at: string | null
+          status: string
+          template_id: string | null
+          template_name: string | null
+        }
+        Insert: {
+          channel: string
+          error_message?: string | null
+          id?: string
+          recipient_name?: string | null
+          recipient_staff_id?: number | null
+          sent_at?: string | null
+          status: string
+          template_id?: string | null
+          template_name?: string | null
+        }
+        Update: {
+          channel?: string
+          error_message?: string | null
+          id?: string
+          recipient_name?: string | null
+          recipient_staff_id?: number | null
+          sent_at?: string | null
+          status?: string
+          template_id?: string | null
+          template_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_delivery_logs_recipient_staff_id_fkey"
+            columns: ["recipient_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "notification_delivery_logs_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "notification_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_global_settings: {
+        Row: {
+          id: string
+          is_paused: boolean
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          is_paused?: boolean
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          is_paused?: boolean
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      notification_templates: {
+        Row: {
+          body: string
+          channel: string
+          created_at: string | null
+          day_of_week: number | null
+          description: string | null
+          frequency: string
+          id: string
+          is_enabled: boolean
+          name: string
+          recipient_role: string
+          send_time: string
+          subject: string | null
+          timezone: string
+          updated_at: string | null
+        }
+        Insert: {
+          body?: string
+          channel: string
+          created_at?: string | null
+          day_of_week?: number | null
+          description?: string | null
+          frequency?: string
+          id?: string
+          is_enabled?: boolean
+          name: string
+          recipient_role?: string
+          send_time?: string
+          subject?: string | null
+          timezone?: string
+          updated_at?: string | null
+        }
+        Update: {
+          body?: string
+          channel?: string
+          created_at?: string | null
+          day_of_week?: number | null
+          description?: string | null
+          frequency?: string
+          id?: string
+          is_enabled?: boolean
+          name?: string
+          recipient_role?: string
+          send_time?: string
+          subject?: string | null
+          timezone?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       public_holidays: {
         Row: {
