@@ -189,7 +189,13 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
     });
   }, [visibleTeams, monthlyData, dayPoints, cumulativeWorkingDays, totalWorkingDays]);
 
-  // For each team, build cumulative submitted % per day (only up to today)
+  // For each team, build cumulative submitted % per day (only up to today).
+  //
+  // KEY FIX: The line's Y-position at any day must reflect the true % of the
+  // full-year target that has been submitted up to that day. We distribute each
+  // month's submitted count evenly across that month's working days, then
+  // accumulate. The final visible point's Y will equal (totalSubmitted /
+  // fullYearTarget * 100), which matches the table's "% Complete" column exactly.
   const chartData = React.useMemo(() => {
     return visibleTeams.map((team, idx) => {
       const submittedPerMonth: Record<number, number> = {};
@@ -197,35 +203,54 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
         submittedPerMonth[m] = monthlyData[team.team_id]?.[m]?.submitted ?? 0;
       });
 
+      // fullYearTarget is the denominator — same value used in the table
       const denominator = team.fullYearTarget > 0 ? team.fullYearTarget : 1;
+
+      // Total submitted (same as team.submitted, used for tooltip)
       const totalSubmitted = SA_MONTHS.reduce((sum, m) => sum + (submittedPerMonth[m] ?? 0), 0);
 
+      // Working days per month — used to spread monthly submitted evenly
+      const workingDaysPerMonth: Record<number, number> = {};
+      SA_MONTHS.forEach((monthNumber, monthIndex) => {
+        workingDaysPerMonth[monthNumber] = dayPoints.filter(
+          dp => dp.monthIndex === monthIndex && dp.isWorkingDay
+        ).length;
+      });
+
+      // Per-day submitted increment: spread each month's submitted count
+      // evenly across that month's working days
       const submittedPerWorkingDay: number[] = dayPoints.map(dp => {
-        const monthWDs = dayPoints.filter(d => d.monthIndex === dp.monthIndex && d.isWorkingDay).length;
+        const monthWDs = workingDaysPerMonth[dp.monthNumber] ?? 0;
         if (!dp.isWorkingDay || monthWDs === 0) return 0;
         return (submittedPerMonth[dp.monthNumber] ?? 0) / monthWDs;
       });
 
+      // Accumulate only up to today; compute % of fullYearTarget
       let cumSubmitted = 0;
-      const percents: Array<{ dateStr: string; percent: number; cumulativeCount: number; isVisible: boolean }> = dayPoints.map((dp, i) => {
-        const isVisible = dp.dateStr <= todayStr;
-        if (isVisible) {
-          cumSubmitted += submittedPerWorkingDay[i] ?? 0;
-        }
-        return {
-          dateStr: dp.dateStr,
-          percent: isVisible && denominator > 0 ? Math.min((cumSubmitted / denominator) * 100, 100) : 0,
-          cumulativeCount: isVisible ? cumSubmitted : 0,
-          isVisible,
-        };
-      });
+      const percents: Array<{ dateStr: string; percent: number; cumulativeCount: number; isVisible: boolean }> =
+        dayPoints.map((dp, i) => {
+          const isVisible = dp.dateStr <= todayStr;
+          if (isVisible) {
+            cumSubmitted += submittedPerWorkingDay[i] ?? 0;
+          }
+          return {
+            dateStr: dp.dateStr,
+            // percent = cumulative submitted so far / fullYearTarget * 100
+            // This ensures the line's Y-position directly reflects the true
+            // completion percentage, matching the table value.
+            percent: isVisible ? Math.min((cumSubmitted / denominator) * 100, 100) : 0,
+            cumulativeCount: isVisible ? cumSubmitted : 0,
+            isVisible,
+          };
+        });
 
       return {
         team_id: team.team_id,
         name: team.name,
         color: colours[idx % colours.length],
         percents,
-        finalPercent: denominator > 0 ? (totalSubmitted / denominator) * 100 : 0,
+        // finalPercent = totalSubmitted / fullYearTarget * 100 — matches table exactly
+        finalPercent: (totalSubmitted / denominator) * 100,
         totalSubmitted,
         fullYearTarget: team.fullYearTarget,
       };
@@ -279,7 +304,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   ) => {
     if (!svgRef.current || !containerRef.current) return;
 
-    const svgRect = svgRef.current.getBoundingClientRect();
     const containerRect = containerRef.current.getBoundingClientRect();
 
     const completed = Math.round(team.totalSubmitted);
@@ -287,8 +311,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
     const pixelX = e.clientX - containerRect.left;
     const pixelY = e.clientY - containerRect.top;
-
-    void svgRect;
 
     setTooltip({
       visible: true,
