@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
-import { getFinancialYearMonths, getFinancialYears } from '../utils/financialYear';
+import { getFinancialYearMonths, getFinancialYears, getCurrentFinancialYear } from '../utils/financialYear';
 import { isTargetInFinancialYear } from '../utils/loadTargets';
 import { unparse, parse } from 'papaparse';
 import type { FinancialYear } from '../utils/financialYear';
@@ -86,7 +86,7 @@ export const TargetsControl: React.FC = () => {
 
   const targetableServices = useMemo(() => services.filter(s => s.service_name !== 'Bagel Days'), [services]);
 
-  const activeAccountants = useMemo<Staff[]>(
+  const activeAccountants = useMemo&lt;Staff[]&gt;(
     () =>
       allStaff
         .filter((staffMember) => !staffMember.is_hidden && isAccountantStaff(staffMember))
@@ -94,23 +94,19 @@ export const TargetsControl: React.FC = () => {
     [allStaff]
   );
 
-  const [selectedFinancialYear, setSelectedFinancialYear] = useState<FinancialYear>({
-    label: '2025/26',
-    start: 2025,
-    end: 2026
-  });
+  const [selectedFinancialYear, setSelectedFinancialYear] = useState&lt;FinancialYear&gt;(() => getCurrentFinancialYear());
 
-  const [targetData, setTargetData] = useState<TargetData[]>([]);
-  const [lastSavedSnapshot, setLastSavedSnapshot] = useState<Record<string, number>>({});
+  const [targetData, setTargetData] = useState&lt;TargetData[]&gt;([]);
+  const [lastSavedSnapshot, setLastSavedSnapshot] = useState&lt;Record&lt;string, number&gt;&gt;({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [localInputState, setLocalInputState] = useState<LocalInputState>({});
+  const [error, setError] = useState&lt;string | null&gt;(null);
+  const [saveMessage, setSaveMessage] = useState&lt;string | null&gt;(null);
+  const [localInputState, setLocalInputState] = useState&lt;LocalInputState&gt;({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+  const [pendingAction, setPendingAction] = useState&lt;(() => void) | null&gt;(null);
 
-  const [importState, setImportState] = useState<ImportState>({
+  const [importState, setImportState] = useState&lt;ImportState&gt;({
     step: 'idle',
     selectedFY: null,
     parsedRows: [],
@@ -118,12 +114,12 @@ export const TargetsControl: React.FC = () => {
     error: null,
   });
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
-  const scrollPositionsRef = useRef<Record<number, number>>({});
+  const fileInputRef = useRef&lt;HTMLInputElement&gt;(null);
+  const inputRefs = useRef&lt;Map&lt;string, HTMLInputElement&gt;&gt;(new Map());
+  const scrollPositionsRef = useRef&lt;Record&lt;number, number&gt;&gt;({});
 
   const buildSnapshot = (data: TargetData[]) => {
-    const snapshot: Record<string, number> = {};
+    const snapshot: Record&lt;string, number&gt; = {};
     data.forEach((staffMember) => {
       Object.entries(staffMember.targets).forEach(([monthStr, monthTargets]) => {
         const month = Number(monthStr);
@@ -266,7 +262,7 @@ export const TargetsControl: React.FC = () => {
   };
 
   const handleKeyDown = (
-    e: React.KeyboardEvent<HTMLInputElement>,
+    e: React.KeyboardEvent&lt;HTMLInputElement&gt;,
     staffId: number,
     month: number,
     serviceName: string,
@@ -289,11 +285,11 @@ export const TargetsControl: React.FC = () => {
 
     if (e.shiftKey) {
       nextMonthIndex--;
-      if (nextMonthIndex < 0) {
+      if (nextMonthIndex &lt; 0) {
         nextServiceIndex--;
-        if (nextServiceIndex < 0) {
+        if (nextServiceIndex &lt; 0) {
           nextStaffIndex--;
-          if (nextStaffIndex < 0) {
+          if (nextStaffIndex &lt; 0) {
             nextStaffIndex = targetData.length - 1;
           }
           nextServiceIndex = targetableServices.length - 1;
@@ -332,7 +328,7 @@ export const TargetsControl: React.FC = () => {
     }
   };
 
-  const handleSaveTargets = async (): Promise<boolean> => {
+  const handleSaveTargets = async (): Promise&lt;boolean&gt; => {
     setSaveMessage(null);
     setError(null);
 
@@ -341,7 +337,7 @@ export const TargetsControl: React.FC = () => {
         targetData.map(async (staffMember) => {
           const monthData = getFinancialYearMonths();
 
-          const monthsByYear: Record<number, number[]> = {};
+          const monthsByYear: Record&lt;number, number[]&gt; = {};
           monthData.forEach((m) => {
             const calYear = getYearForMonth(m.number, selectedFinancialYear);
             if (!monthsByYear[calYear]) monthsByYear[calYear] = [];
@@ -360,13 +356,13 @@ export const TargetsControl: React.FC = () => {
             if (deleteError) throw deleteError;
           }
 
-          const inserts: Array<{
+          const inserts: Array&lt;{
             staff_id: number;
             service_id: number;
             month: number;
             year: number;
             target_value: number;
-          }> = [];
+          }&gt; = [];
 
           Object.entries(staffMember.targets).forEach(([monthStr, monthTargets]) => {
             const month = Number(monthStr);
@@ -467,11 +463,11 @@ export const TargetsControl: React.FC = () => {
       return { key: buildMonthColKey(m.name, year), month: m, year };
     });
 
-    const rows: Record<string, string | number>[] = [];
+    const rows: Record&lt;string, string | number&gt;[] = [];
 
     targetableServices.forEach((service) => {
       targetData.forEach((staffMember) => {
-        const row: Record<string, string | number> = {
+        const row: Record&lt;string, string | number&gt; = {
           service_name: service.service_name,
           accountant_name: staffMember.name,
           staff_id: staffMember.staff_id,
@@ -523,7 +519,7 @@ export const TargetsControl: React.FC = () => {
   };
 
   const handleFileSelected = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    (e: React.ChangeEvent&lt;HTMLInputElement&gt;) => {
       const file = e.target.files?.[0];
       if (!file || !importState.selectedFY) return;
 
@@ -542,7 +538,7 @@ export const TargetsControl: React.FC = () => {
           textToParse = lines.slice(headerIndex).join('\n');
         }
 
-        const result = parse<Record<string, string>>(textToParse, {
+        const result = parse&lt;Record&lt;string, string&gt;&gt;(textToParse, {
           header: true,
           skipEmptyLines: true,
         });
@@ -632,7 +628,7 @@ export const TargetsControl: React.FC = () => {
           return;
         }
 
-        const monthLabelMap: Record<number, string> = {};
+        const monthLabelMap: Record&lt;number, string&gt; = {};
         monthData.forEach(m => { monthLabelMap[m.number] = m.name; });
 
         const diffRows: ImportDiffRow[] = [];
@@ -705,7 +701,7 @@ export const TargetsControl: React.FC = () => {
       await Promise.all(
         newTargetData.map(async (staffMember) => {
           const monthData = getFinancialYearMonths();
-          const monthsByYear: Record<number, number[]> = {};
+          const monthsByYear: Record&lt;number, number[]&gt; = {};
           monthData.forEach((m) => {
             const calYear = getYearForMonth(m.number, fy);
             if (!monthsByYear[calYear]) monthsByYear[calYear] = [];
@@ -724,13 +720,13 @@ export const TargetsControl: React.FC = () => {
             if (deleteError) throw deleteError;
           }
 
-          const inserts: Array<{
+          const inserts: Array&lt;{
             staff_id: number;
             service_id: number;
             month: number;
             year: number;
             target_value: number;
-          }> = [];
+          }&gt; = [];
 
           Object.entries(staffMember.targets).forEach(([monthStr, monthTargets]) => {
             const month = Number(monthStr);
@@ -835,17 +831,17 @@ export const TargetsControl: React.FC = () => {
 
   if (loading || authLoading || servicesLoading) {
     return (
-      <div className="py-6 text-center text-gray-500">
+      &lt;div className="py-6 text-center text-gray-500"&gt;
         Loading targets...
-      </div>
+      &lt;/div&gt;
     );
   }
 
   if (authError || servicesError) {
     return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded-md">
-        <p className="text-red-800">⚠️ {authError || servicesError}</p>
-      </div>
+      &lt;div className="p-4 bg-red-50 border border-red-200 rounded-md"&gt;
+        &lt;p className="text-red-800"&gt;⚠️ {authError || servicesError}&lt;/p&gt;
+      &lt;/div&gt;
     );
   }
 
@@ -896,54 +892,54 @@ export const TargetsControl: React.FC = () => {
   const diffMonthData = getFinancialYearMonths();
 
   return (
-    <div className="space-y-4">
-      <input
+    &lt;div className="space-y-4"&gt;
+      &lt;input
         ref={fileInputRef}
         type="file"
         accept=".csv"
         className="hidden"
         onChange={handleFileSelected}
-      />
+      /&gt;
 
-      <div className="page-header mb-4">
-        <h2 className="page-title">Targets Control</h2>
-        <p className="page-subtitle">
+      &lt;div className="page-header mb-4"&gt;
+        &lt;h2 className="page-title"&gt;Targets Control&lt;/h2&gt;
+        &lt;p className="page-subtitle"&gt;
           Set monthly targets for {selectedFinancialYear.label}
-        </p>
-      </div>
+        &lt;/p&gt;
+      &lt;/div&gt;
 
       {error && (
-        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-sm">
-          <p className="text-red-800 dark:text-red-200">❌ {error}</p>
-        </div>
+        &lt;div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-sm"&gt;
+          &lt;p className="text-red-800 dark:text-red-200"&gt;❌ {error}&lt;/p&gt;
+        &lt;/div&gt;
       )}
 
       {saveMessage && (
-        <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md text-sm">
-          <p className="text-green-800 dark:text-green-200">{saveMessage}</p>
-        </div>
+        &lt;div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md text-sm"&gt;
+          &lt;p className="text-green-800 dark:text-green-200"&gt;{saveMessage}&lt;/p&gt;
+        &lt;/div&gt;
       )}
 
       {showConfirmDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4 w-full animate-slide-up">
-            <div className="flex items-start gap-3 mb-6">
-              <div className="bg-yellow-100 dark:bg-yellow-900/30 p-2 rounded-full flex-shrink-0">
-                <svg className="w-6 h-6 text-yellow-600 dark:text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+        &lt;div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]"&gt;
+          &lt;div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4 w-full animate-slide-up"&gt;
+            &lt;div className="flex items-start gap-3 mb-6"&gt;
+              &lt;div className="bg-yellow-100 dark:bg-yellow-900/30 p-2 rounded-full flex-shrink-0"&gt;
+                &lt;svg className="w-6 h-6 text-yellow-600 dark:text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"&gt;
+                  &lt;path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /&gt;
+                &lt;/svg&gt;
+              &lt;/div&gt;
+              &lt;div&gt;
+                &lt;h3 className="text-lg font-bold text-gray-900 dark:text-white"&gt;
                   Unsaved Changes
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                &lt;/h3&gt;
+                &lt;p className="text-sm text-gray-600 dark:text-gray-400 mt-1"&gt;
                   You have entries that have not yet been saved. Please choose an action.
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-3 justify-end">
-              <button
+                &lt;/p&gt;
+              &lt;/div&gt;
+            &lt;/div&gt;
+            &lt;div className="flex gap-3 justify-end"&gt;
+              &lt;button
                 onClick={() => {
                   setShowConfirmDialog(false);
                   setHasUnsavedChanges(false);
@@ -953,10 +949,10 @@ export const TargetsControl: React.FC = () => {
                   }
                 }}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-md transition-colors"
-              >
+              &gt;
                 Ignore
-              </button>
-              <button
+              &lt;/button&gt;
+              &lt;button
                 onClick={async () => {
                   const success = await handleSaveTargets();
                   if (success) {
@@ -968,24 +964,24 @@ export const TargetsControl: React.FC = () => {
                   }
                 }}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-md transition-colors shadow-sm"
-              >
+              &gt;
                 Save updates
-              </button>
-            </div>
-          </div>
-        </div>
+              &lt;/button&gt;
+            &lt;/div&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
       )}
 
       {importState.step === 'select-fy' && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm mx-4 w-full animate-slide-up">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Import Targets</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+        &lt;div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]"&gt;
+          &lt;div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm mx-4 w-full animate-slide-up"&gt;
+            &lt;h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2"&gt;Import Targets&lt;/h3&gt;
+            &lt;p className="text-sm text-gray-600 dark:text-gray-400 mb-4"&gt;
               Select the financial year you are importing targets for. Only month columns matching this financial year will be accepted.
-            </p>
-            <div className="mb-5">
-              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Financial Year</label>
-              <select
+            &lt;/p&gt;
+            &lt;div className="mb-5"&gt;
+              &lt;label className="block text-xs font-bold text-gray-500 uppercase mb-1"&gt;Financial Year&lt;/label&gt;
+              &lt;select
                 value={importState.selectedFY ? `${importState.selectedFY.start}-${importState.selectedFY.end}` : ''}
                 onChange={(e) => {
                   const [start, end] = e.target.value.split('-').map(Number);
@@ -993,70 +989,70 @@ export const TargetsControl: React.FC = () => {
                   if (fy) setImportState(prev => ({ ...prev, selectedFY: fy }));
                 }}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
+              &gt;
                 {financialYears.map((fy) => (
-                  <option key={`${fy.start}-${fy.end}`} value={`${fy.start}-${fy.end}`}>
+                  &lt;option key={`${fy.start}-${fy.end}`} value={`${fy.start}-${fy.end}`}&gt;
                     {fy.label}
-                  </option>
+                  &lt;/option&gt;
                 ))}
-              </select>
-            </div>
+              &lt;/select&gt;
+            &lt;/div&gt;
             {importState.error && (
-              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-800 dark:text-red-200 whitespace-pre-line">
+              &lt;div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-800 dark:text-red-200 whitespace-pre-line"&gt;
                 {importState.error}
-              </div>
+              &lt;/div&gt;
             )}
-            <div className="flex gap-3 justify-end">
-              <button
+            &lt;div className="flex gap-3 justify-end"&gt;
+              &lt;button
                 onClick={handleCancelImport}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-md transition-colors"
-              >
+              &gt;
                 Cancel
-              </button>
-              <button
+              &lt;/button&gt;
+              &lt;button
                 onClick={handleImportFYConfirm}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-md transition-colors shadow-sm"
-              >
+              &gt;
                 Choose CSV File
-              </button>
-            </div>
-          </div>
-        </div>
+              &lt;/button&gt;
+            &lt;/div&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
       )}
 
       {(importState.step === 'preview' || importState.step === 'importing') && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col animate-slide-up">
-            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+        &lt;div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4"&gt;
+          &lt;div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col animate-slide-up"&gt;
+            &lt;div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0"&gt;
+              &lt;div&gt;
+                &lt;h3 className="text-lg font-bold text-gray-900 dark:text-white"&gt;
                   Import Preview — FY {importState.selectedFY?.label}
-                </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                &lt;/h3&gt;
+                &lt;p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5"&gt;
                   {importState.parsedRows.length} cell(s) in file •{' '}
-                  <span className={changedCount > 0 ? 'text-amber-600 font-semibold' : 'text-green-600 font-semibold'}>
+                  &lt;span className={changedCount > 0 ? 'text-amber-600 font-semibold' : 'text-green-600 font-semibold'}&gt;
                     {changedCount} change(s)
-                  </span>
+                  &lt;/span&gt;
                   {' '}detected vs current data
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-800">
-                  <span className="w-2 h-2 rounded-full bg-green-500 inline-block"></span> No change
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span> Changed
-                </span>
-              </div>
-            </div>
+                &lt;/p&gt;
+              &lt;/div&gt;
+              &lt;div className="flex items-center gap-2"&gt;
+                &lt;span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-800"&gt;
+                  &lt;span className="w-2 h-2 rounded-full bg-green-500 inline-block"&gt;&lt;/span&gt; No change
+                &lt;/span&gt;
+                &lt;span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800"&gt;
+                  &lt;span className="w-2 h-2 rounded-full bg-amber-500 inline-block"&gt;&lt;/span&gt; Changed
+                &lt;/span&gt;
+              &lt;/div&gt;
+            &lt;/div&gt;
 
             {importState.error && (
-              <div className="mx-6 mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-800 dark:text-red-200 whitespace-pre-line flex-shrink-0">
+              &lt;div className="mx-6 mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-800 dark:text-red-200 whitespace-pre-line flex-shrink-0"&gt;
                 {importState.error}
-              </div>
+              &lt;/div&gt;
             )}
 
-            <div className="flex-1 overflow-auto">
+            &lt;div className="flex-1 overflow-auto"&gt;
               {(() => {
                 const fy = importState.selectedFY;
                 if (!fy) return null;
@@ -1067,7 +1063,7 @@ export const TargetsControl: React.FC = () => {
                 });
 
                 type DiffKey = string;
-                const grouped = new Map<DiffKey, Map<number, ImportDiffRow>>();
+                const grouped = new Map&lt;DiffKey, Map&lt;number, ImportDiffRow&gt;&gt;();
 
                 importState.diffRows.forEach(row => {
                   const key: DiffKey = `${row.service_name}||${row.staff_name}||${row.staff_id}`;
@@ -1083,32 +1079,32 @@ export const TargetsControl: React.FC = () => {
                 });
 
                 return (
-                  <table className="w-full text-sm border-collapse" style={{ minWidth: '900px' }}>
-                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 z-10">
-                      <tr>
-                        <th className="px-3 py-2.5 text-left text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap">Service</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap">Accountant</th>
+                  &lt;table className="w-full text-sm border-collapse" style={{ minWidth: '900px' }}&gt;
+                    &lt;thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 z-10"&gt;
+                      &lt;tr&gt;
+                        &lt;th className="px-3 py-2.5 text-left text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap"&gt;Service&lt;/th&gt;
+                        &lt;th className="px-3 py-2.5 text-left text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap"&gt;Accountant&lt;/th&gt;
                         {monthCols.map(mc => (
-                          <th key={`${mc.month}-${mc.year}`} className="px-2 py-2.5 text-center text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap">
-                            <div>{mc.name}</div>
-                            <div className="text-[9px] font-normal text-gray-400">{mc.year}</div>
-                          </th>
+                          &lt;th key={`${mc.month}-${mc.year}`} className="px-2 py-2.5 text-center text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap"&gt;
+                            &lt;div&gt;{mc.name}&lt;/div&gt;
+                            &lt;div className="text-[9px] font-normal text-gray-400"&gt;{mc.year}&lt;/div&gt;
+                          &lt;/th&gt;
                         ))}
-                      </tr>
-                    </thead>
-                    <tbody>
+                      &lt;/tr&gt;
+                    &lt;/thead&gt;
+                    &lt;tbody&gt;
                       {sortedKeys.map((key, idx) => {
                         const monthMap = grouped.get(key)!;
                         const [serviceName, staffName] = key.split('||');
                         const rowHasChange = monthCols.some(mc => monthMap.get(mc.month)?.changed);
 
                         return (
-                          <tr
+                          &lt;tr
                             key={key}
                             className={`${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/50 dark:bg-gray-700/30'} ${rowHasChange ? 'ring-1 ring-inset ring-amber-200 dark:ring-amber-700' : ''}`}
-                          >
-                            <td className="px-3 py-2 text-gray-900 dark:text-white font-semibold whitespace-nowrap">{serviceName}</td>
-                            <td className="px-3 py-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">{staffName}</td>
+                          &gt;
+                            &lt;td className="px-3 py-2 text-gray-900 dark:text-white font-semibold whitespace-nowrap"&gt;{serviceName}&lt;/td&gt;
+                            &lt;td className="px-3 py-2 text-gray-700 dark:text-gray-300 whitespace-nowrap"&gt;{staffName}&lt;/td&gt;
                             {monthCols.map(mc => {
                               const cell = monthMap.get(mc.month);
                               const changed = cell?.changed ?? false;
@@ -1116,60 +1112,60 @@ export const TargetsControl: React.FC = () => {
                               const importVal = cell?.import_value ?? 0;
 
                               return (
-                                <td key={`${mc.month}-${mc.year}`} className={`px-2 py-2 text-center ${changed ? 'bg-amber-50 dark:bg-amber-900/20' : ''}`}>
+                                &lt;td key={`${mc.month}-${mc.year}`} className={`px-2 py-2 text-center ${changed ? 'bg-amber-50 dark:bg-amber-900/20' : ''}`}&gt;
                                   {changed ? (
-                                    <div className="flex flex-col items-center gap-0.5">
-                                      <span className="text-xs text-gray-400 line-through">{currentVal}</span>
-                                      <span className="text-xs font-bold text-amber-700 dark:text-amber-400">{importVal}</span>
-                                    </div>
+                                    &lt;div className="flex flex-col items-center gap-0.5"&gt;
+                                      &lt;span className="text-xs text-gray-400 line-through"&gt;{currentVal}&lt;/span&gt;
+                                      &lt;span className="text-xs font-bold text-amber-700 dark:text-amber-400"&gt;{importVal}&lt;/span&gt;
+                                    &lt;/div&gt;
                                   ) : (
-                                    <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{importVal}</span>
+                                    &lt;span className="text-xs font-mono text-gray-600 dark:text-gray-400"&gt;{importVal}&lt;/span&gt;
                                   )}
-                                </td>
+                                &lt;/td&gt;
                               );
                             })}
-                          </tr>
+                          &lt;/tr&gt;
                         );
                       })}
-                    </tbody>
-                  </table>
+                    &lt;/tbody&gt;
+                  &lt;/table&gt;
                 );
               })()}
-            </div>
+            &lt;/div&gt;
 
-            <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0 bg-white dark:bg-gray-800">
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+            &lt;div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0 bg-white dark:bg-gray-800"&gt;
+              &lt;p className="text-xs text-gray-500 dark:text-gray-400"&gt;
                 {changedCount === 0
                   ? 'No changes detected. The imported file matches the current data.'
                   : `Confirming will overwrite ${changedCount} value(s) in the database for FY ${importState.selectedFY?.label}. Changed cells show old → new.`}
-              </p>
-              <div className="flex gap-3">
-                <button
+              &lt;/p&gt;
+              &lt;div className="flex gap-3"&gt;
+                &lt;button
                   onClick={handleCancelImport}
                   disabled={importState.step === 'importing'}
                   className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-md transition-colors disabled:opacity-50"
-                >
+                &gt;
                   Cancel
-                </button>
-                <button
+                &lt;/button&gt;
+                &lt;button
                   onClick={handleConfirmImport}
                   disabled={importState.step === 'importing' || changedCount === 0}
                   className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-md transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                &gt;
                   {importState.step === 'importing' ? 'Importing…' : `Confirm Import (${changedCount} change${changedCount !== 1 ? 's' : ''})`}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+                &lt;/button&gt;
+              &lt;/div&gt;
+            &lt;/div&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
       )}
 
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
+      &lt;div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4"&gt;
+        &lt;div className="flex flex-col gap-1"&gt;
+          &lt;label className="text-xs font-medium text-gray-700 dark:text-gray-300"&gt;
             Financial Year
-          </label>
-          <select
+          &lt;/label&gt;
+          &lt;select
             value={`${selectedFinancialYear.start}-${selectedFinancialYear.end}`}
             onChange={(e) => {
               const [start, end] = e.target.value.split('-').map(Number);
@@ -1177,53 +1173,53 @@ export const TargetsControl: React.FC = () => {
               if (fy) handleFinancialYearChange(fy);
             }}
             className="px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-          >
+          &gt;
             {financialYears.map((fy) => (
-              <option key={`${fy.start}-${fy.end}`} value={`${fy.start}-${fy.end}`}>
+              &lt;option key={`${fy.start}-${fy.end}`} value={`${fy.start}-${fy.end}`}&gt;
                 {fy.label}
-              </option>
+              &lt;/option&gt;
             ))}
-          </select>
-        </div>
+          &lt;/select&gt;
+        &lt;/div&gt;
 
-        <div className="flex gap-2">
-          <button
+        &lt;div className="flex gap-2"&gt;
+          &lt;button
             onClick={handleImportClick}
             className="px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs font-medium"
-          >
+          &gt;
             📤 Import CSV
-          </button>
-          <button
+          &lt;/button&gt;
+          &lt;button
             onClick={handleExportCSV}
             className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium"
-          >
+          &gt;
             📥 Export CSV
-          </button>
-          <button
+          &lt;/button&gt;
+          &lt;button
             onClick={() => {
               void handleSaveTargets();
             }}
             disabled={!hasUnsavedChanges}
             className="px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+          &gt;
             💾 Save Targets
-          </button>
-        </div>
-      </div>
+          &lt;/button&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
 
-      <div className="space-y-4">
+      &lt;div className="space-y-4"&gt;
         {targetData.map((staffMember) => (
-          <div
+          &lt;div
             key={staffMember.staff_id}
             className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden"
-          >
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-4 py-2">
-              <h4 className="text-base font-bold text-white">
+          &gt;
+            &lt;div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-4 py-2"&gt;
+              &lt;h4 className="text-base font-bold text-white"&gt;
                 {staffMember.name}
-              </h4>
-            </div>
+              &lt;/h4&gt;
+            &lt;/div&gt;
 
-            <div
+            &lt;div
               className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800"
               style={{ scrollBehavior: 'smooth' }}
               onScroll={(e) => saveScrollPosition(staffMember.staff_id, e.currentTarget.scrollLeft)}
@@ -1235,62 +1231,62 @@ export const TargetsControl: React.FC = () => {
                   }
                 }
               }}
-            >
-              <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-                <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600">
-                  <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
+            &gt;
+              &lt;div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600"&gt;
+                &lt;div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600"&gt;
+                  &lt;span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block"&gt;
                     Service
-                  </span>
-                </div>
+                  &lt;/span&gt;
+                &lt;/div&gt;
 
-                <div className="flex flex-1 w-full">
+                &lt;div className="flex flex-1 w-full"&gt;
                   {monthData.map((m) => {
                     const calYear = getYearForMonth(m.number, selectedFinancialYear);
                     return (
-                      <div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600">
-                        <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
+                      &lt;div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600"&gt;
+                        &lt;span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block"&gt;
                           {m.name}
-                        </span>
-                        <span className="text-[9px] text-gray-400 dark:text-gray-500 block">
+                        &lt;/span&gt;
+                        &lt;span className="text-[9px] text-gray-400 dark:text-gray-500 block"&gt;
                           {calYear}
-                        </span>
-                      </div>
+                        &lt;/span&gt;
+                      &lt;/div&gt;
                     );
                   })}
-                </div>
+                &lt;/div&gt;
 
-                <div className="w-20 flex-shrink-0 px-2 py-1.5 text-center border-l border-gray-200 dark:border-gray-600">
-                  <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
+                &lt;div className="w-20 flex-shrink-0 px-2 py-1.5 text-center border-l border-gray-200 dark:border-gray-600"&gt;
+                  &lt;span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block"&gt;
                     Total
-                  </span>
-                </div>
-              </div>
+                  &lt;/span&gt;
+                &lt;/div&gt;
+              &lt;/div&gt;
 
-              <div className="border-b border-gray-200 dark:border-gray-700">
+              &lt;div className="border-b border-gray-200 dark:border-gray-700"&gt;
                 {targetableServices.map((service, serviceIdx) => {
                   const annualTotal = calculateAnnualTotal(staffMember.staff_id, service.service_name);
 
                   return (
-                    <div
+                    &lt;div
                       key={service.service_id}
                       className={`flex w-full ${
                         serviceIdx % 2 === 0
                           ? 'bg-white dark:bg-gray-800'
                           : 'bg-gray-50 dark:bg-gray-700'
                       } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
-                    >
-                      <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center">
-                        <span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
+                    &gt;
+                      &lt;div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center"&gt;
+                        &lt;span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis"&gt;
                           {service.service_name}
-                        </span>
-                      </div>
+                        &lt;/span&gt;
+                      &lt;/div&gt;
 
-                      <div className="flex flex-1 w-full">
+                      &lt;div className="flex flex-1 w-full"&gt;
                         {monthData.map((m) => {
                           const inputKey = getInputKey(staffMember.staff_id, m.number, service.service_name);
                           return (
-                            <div key={m.number} className="flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600">
-                              <input
+                            &lt;div key={m.number} className="flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600"&gt;
+                              &lt;input
                                 ref={(el) => {
                                   if (el) {
                                     inputRefs.current.set(inputKey, el);
@@ -1330,177 +1326,177 @@ export const TargetsControl: React.FC = () => {
                                   )
                                 }
                                 className="w-full h-full px-1 py-1.5 bg-transparent border-0 text-center text-xs font-medium text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-colors no-spinner"
-                              />
-                            </div>
+                              /&gt;
+                            &lt;/div&gt;
                           );
                         })}
-                      </div>
+                      &lt;/div&gt;
 
-                      <div className="w-20 flex-shrink-0 p-0 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center bg-gray-50 dark:bg-gray-700/50">
-                        <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">
+                      &lt;div className="w-20 flex-shrink-0 p-0 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center bg-gray-50 dark:bg-gray-700/50"&gt;
+                        &lt;span className="text-xs font-bold text-gray-900 dark:text-white py-1.5"&gt;
                           {annualTotal}
-                        </span>
-                      </div>
-                    </div>
+                        &lt;/span&gt;
+                      &lt;/div&gt;
+                    &lt;/div&gt;
                   );
                 })}
 
-                <div className="flex w-full bg-gray-200 dark:bg-gray-600 border-t border-gray-300 dark:border-gray-500">
-                  <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-300 dark:border-gray-500 flex items-center">
-                    <span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
+                &lt;div className="flex w-full bg-gray-200 dark:bg-gray-600 border-t border-gray-300 dark:border-gray-500"&gt;
+                  &lt;div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-300 dark:border-gray-500 flex items-center"&gt;
+                    &lt;span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis"&gt;
                       Monthly Total
-                    </span>
-                  </div>
+                    &lt;/span&gt;
+                  &lt;/div&gt;
 
-                  <div className="flex flex-1 w-full">
+                  &lt;div className="flex flex-1 w-full"&gt;
                     {monthData.map((m) => {
                       const monthTotal = calculateMonthlyTotal(staffMember.staff_id, m.number);
                       return (
-                        <div key={`total-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-gray-300 dark:border-gray-500 flex items-center justify-center">
-                          <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">
+                        &lt;div key={`total-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-gray-300 dark:border-gray-500 flex items-center justify-center"&gt;
+                          &lt;span className="text-xs font-bold text-gray-900 dark:text-white py-1.5"&gt;
                             {monthTotal}
-                          </span>
-                        </div>
+                          &lt;/span&gt;
+                        &lt;/div&gt;
                       );
                     })}
-                  </div>
+                  &lt;/div&gt;
 
-                  <div className="w-20 flex-shrink-0 p-0 border-l border-gray-300 dark:border-gray-500 flex items-center justify-center bg-blue-600 dark:bg-blue-700">
-                    <span className="text-xs font-bold text-white py-1.5">
+                  &lt;div className="w-20 flex-shrink-0 p-0 border-l border-gray-300 dark:border-gray-500 flex items-center justify-center bg-blue-600 dark:bg-blue-700"&gt;
+                    &lt;span className="text-xs font-bold text-white py-1.5"&gt;
                       {monthData.reduce((sum, m) => sum + calculateMonthlyTotal(staffMember.staff_id, m.number), 0)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+                    &lt;/span&gt;
+                  &lt;/div&gt;
+                &lt;/div&gt;
+              &lt;/div&gt;
+            &lt;/div&gt;
+          &lt;/div&gt;
         ))}
 
         {targetData.length === 0 && (
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-6">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+          &lt;div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-6"&gt;
+            &lt;p className="text-sm text-gray-500 dark:text-gray-400"&gt;
               No active accountants found for this year.
-            </p>
-          </div>
+            &lt;/p&gt;
+          &lt;/div&gt;
         )}
-      </div>
+      &lt;/div&gt;
 
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden mt-4">
-        <div className="bg-gradient-to-r from-purple-600 to-purple-700 dark:from-purple-700 dark:to-purple-800 px-4 py-2">
-          <h4 className="text-base font-bold text-white">
+      &lt;div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden mt-4"&gt;
+        &lt;div className="bg-gradient-to-r from-purple-600 to-purple-700 dark:from-purple-700 dark:to-purple-800 px-4 py-2"&gt;
+          &lt;h4 className="text-base font-bold text-white"&gt;
             Service Totals by Month
-          </h4>
-          <p className="text-xs text-purple-100 mt-0.5">
+          &lt;/h4&gt;
+          &lt;p className="text-xs text-purple-100 mt-0.5"&gt;
             Aggregated targets across all active accountants (Read-Only)
-          </p>
-        </div>
+          &lt;/p&gt;
+        &lt;/div&gt;
 
-        <div
+        &lt;div
           className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800"
           style={{ scrollBehavior: 'smooth' }}
-        >
-          <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-            <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600">
-              <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
+        &gt;
+          &lt;div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600"&gt;
+            &lt;div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600"&gt;
+              &lt;span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block"&gt;
                 Service
-              </span>
-            </div>
+              &lt;/span&gt;
+            &lt;/div&gt;
 
-            <div className="flex flex-1 w-full">
+            &lt;div className="flex flex-1 w-full"&gt;
               {monthData.map((m) => {
                 const calYear = getYearForMonth(m.number, selectedFinancialYear);
                 return (
-                  <div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600">
-                    <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
+                  &lt;div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600"&gt;
+                    &lt;span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block"&gt;
                       {m.name}
-                    </span>
-                    <span className="text-[9px] text-gray-400 dark:text-gray-500 block">
+                    &lt;/span&gt;
+                    &lt;span className="text-[9px] text-gray-400 dark:text-gray-500 block"&gt;
                       {calYear}
-                    </span>
-                  </div>
+                    &lt;/span&gt;
+                  &lt;/div&gt;
                 );
               })}
-            </div>
+            &lt;/div&gt;
 
-            <div className="w-20 flex-shrink-0 px-2 py-1.5 text-center border-l border-gray-200 dark:border-gray-600">
-              <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
+            &lt;div className="w-20 flex-shrink-0 px-2 py-1.5 text-center border-l border-gray-200 dark:border-gray-600"&gt;
+              &lt;span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block"&gt;
                 Total
-              </span>
-            </div>
-          </div>
+              &lt;/span&gt;
+            &lt;/div&gt;
+          &lt;/div&gt;
 
-          <div className="border-b border-gray-200 dark:border-gray-700">
+          &lt;div className="border-b border-gray-200 dark:border-gray-700"&gt;
             {targetableServices.map((service, serviceIdx) => {
               const annualTotal = calculateServiceAnnualTotal(service.service_name);
 
               return (
-                <div
+                &lt;div
                   key={`service-total-${service.service_id}`}
                   className={`flex w-full ${
                     serviceIdx % 2 === 0
                       ? 'bg-white dark:bg-gray-800'
                       : 'bg-gray-50 dark:bg-gray-700'
                   } hover:bg-purple-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
-                >
-                  <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center">
-                    <span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
+                &gt;
+                  &lt;div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center"&gt;
+                    &lt;span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis"&gt;
                       {service.service_name}
-                    </span>
-                  </div>
+                    &lt;/span&gt;
+                  &lt;/div&gt;
 
-                  <div className="flex flex-1 w-full">
+                  &lt;div className="flex flex-1 w-full"&gt;
                     {monthData.map((m) => {
                       const monthTotal = calculateServiceMonthlyTotal(m.number, service.service_name);
                       return (
-                        <div key={`${service.service_id}-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600 flex items-center justify-center">
-                          <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">
+                        &lt;div key={`${service.service_id}-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600 flex items-center justify-center"&gt;
+                          &lt;span className="text-xs font-bold text-gray-900 dark:text-white py-1.5"&gt;
                             {monthTotal}
-                          </span>
-                        </div>
+                          &lt;/span&gt;
+                        &lt;/div&gt;
                       );
                     })}
-                  </div>
+                  &lt;/div&gt;
 
-                  <div className="w-20 flex-shrink-0 p-0 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center bg-purple-50 dark:bg-purple-900/20">
-                    <span className="text-xs font-bold text-purple-900 dark:text-purple-200 py-1.5">
+                  &lt;div className="w-20 flex-shrink-0 p-0 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center bg-purple-50 dark:bg-purple-900/20"&gt;
+                    &lt;span className="text-xs font-bold text-purple-900 dark:text-purple-200 py-1.5"&gt;
                       {annualTotal}
-                    </span>
-                  </div>
-                </div>
+                    &lt;/span&gt;
+                  &lt;/div&gt;
+                &lt;/div&gt;
               );
             })}
 
-            <div className="flex w-full bg-purple-200 dark:bg-purple-900/50 border-t border-purple-300 dark:border-purple-700">
-              <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-purple-300 dark:border-purple-700 flex items-center">
-                <span className="text-xs font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
+            &lt;div className="flex w-full bg-purple-200 dark:bg-purple-900/50 border-t border-purple-300 dark:border-purple-700"&gt;
+              &lt;div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-purple-300 dark:border-purple-700 flex items-center"&gt;
+                &lt;span className="text-xs font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis"&gt;
                   Grand Total
-                </span>
-              </div>
+                &lt;/span&gt;
+              &lt;/div&gt;
 
-              <div className="flex flex-1 w-full">
+              &lt;div className="flex flex-1 w-full"&gt;
                 {monthData.map((m) => {
                   const monthGrandTotal = targetableServices.reduce((sum, service) => {
                     return sum + calculateServiceMonthlyTotal(m.number, service.service_name);
                   }, 0);
                   return (
-                    <div key={`grand-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-purple-300 dark:border-purple-700 flex items-center justify-center">
-                      <span className="text-xs font-bold text-purple-900 dark:text-purple-200 py-1.5">
+                    &lt;div key={`grand-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-purple-300 dark:border-purple-700 flex items-center justify-center"&gt;
+                      &lt;span className="text-xs font-bold text-purple-900 dark:text-purple-200 py-1.5"&gt;
                         {monthGrandTotal}
-                      </span>
-                    </div>
+                      &lt;/span&gt;
+                    &lt;/div&gt;
                   );
                 })}
-              </div>
+              &lt;/div&gt;
 
-              <div className="w-20 flex-shrink-0 p-0 border-l border-purple-300 dark:border-purple-700 flex items-center justify-center bg-purple-600 dark:bg-purple-700">
-                <span className="text-xs font-bold text-white py-1.5">
+              &lt;div className="w-20 flex-shrink-0 p-0 border-l border-purple-300 dark:border-purple-700 flex items-center justify-center bg-purple-600 dark:bg-purple-700"&gt;
+                &lt;span className="text-xs font-bold text-white py-1.5"&gt;
                   {targetableServices.reduce((sum, service) => sum + calculateServiceAnnualTotal(service.service_name), 0)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+                &lt;/span&gt;
+              &lt;/div&gt;
+            &lt;/div&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
   );
 };
