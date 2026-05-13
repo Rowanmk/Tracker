@@ -4,6 +4,19 @@ import type { FinancialYear } from './financialYear';
 
 type MonthlyTarget = Database['public']['Tables']['monthlytargets']['Row'];
 
+let cachedBagelServiceId: number | null | undefined = undefined;
+
+async function getBagelServiceId() {
+  if (cachedBagelServiceId !== undefined) return cachedBagelServiceId;
+  const { data } = await supabase
+    .from('services')
+    .select('service_id')
+    .eq('service_name', 'Bagel Days')
+    .maybeSingle();
+  cachedBagelServiceId = data?.service_id ?? null;
+  return cachedBagelServiceId;
+}
+
 function getExpectedYearForMonth(month: number, financialYear: FinancialYear): number {
   return month >= 4 ? financialYear.start : financialYear.end;
 }
@@ -20,6 +33,7 @@ export async function loadTargets(
   teamId?: number
 ) {
   const expectedYear = getExpectedYearForMonth(month, financialYear);
+  const bagelServiceId = await getBagelServiceId();
 
   let query = supabase
     .from('monthlytargets')
@@ -46,6 +60,9 @@ export async function loadTargets(
     const expected = getExpectedYearForMonth(row.month, financialYear);
     if (row.year !== expected) return;
     if (row.service_id == null) return;
+    
+    // Skip Bagel Days as it is a statistics-only measure
+    if (bagelServiceId != null && row.service_id === bagelServiceId) return;
 
     const val = row.target_value ?? 0;
     perService[row.service_id] = (perService[row.service_id] || 0) + val;

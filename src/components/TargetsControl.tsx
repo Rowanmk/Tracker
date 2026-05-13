@@ -350,12 +350,14 @@ export const TargetsControl: React.FC = () => {
 
           for (const [calYearStr, months] of Object.entries(monthsByYear)) {
             const calYear = Number(calYearStr);
-            await supabase
+            const { error: deleteError } = await supabase
               .from('monthlytargets')
               .delete()
               .eq('staff_id', staffMember.staff_id)
               .eq('year', calYear)
               .in('month', months);
+              
+            if (deleteError) throw deleteError;
           }
 
           const inserts: Array<{
@@ -712,12 +714,14 @@ export const TargetsControl: React.FC = () => {
 
           for (const [calYearStr, months] of Object.entries(monthsByYear)) {
             const calYear = Number(calYearStr);
-            await supabase
+            const { error: deleteError } = await supabase
               .from('monthlytargets')
               .delete()
               .eq('staff_id', staffMember.staff_id)
               .eq('year', calYear)
               .in('month', months);
+              
+            if (deleteError) throw deleteError;
           }
 
           const inserts: Array<{
