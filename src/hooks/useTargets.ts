@@ -54,7 +54,11 @@ export const useTargets = (month: number, year: number) => {
       void fetchTargets();
     };
     window.addEventListener('activity-updated', handler);
-    return () => window.removeEventListener('activity-updated', handler);
+    window.addEventListener('targets-updated', handler);
+    return () => {
+      window.removeEventListener('activity-updated', handler);
+      window.removeEventListener('targets-updated', handler);
+    };
   }, [currentStaff?.staff_id, month, year]);
 
   return { targets, loading, error, refetch: fetchTargets };

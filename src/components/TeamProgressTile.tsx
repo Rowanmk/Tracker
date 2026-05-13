@@ -125,6 +125,16 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     };
 
     void fetchSelectedTargets();
+
+    const handler = () => {
+      void fetchSelectedTargets();
+    };
+    window.addEventListener('activity-updated', handler);
+    window.addEventListener('targets-updated', handler);
+    return () => {
+      window.removeEventListener('activity-updated', handler);
+      window.removeEventListener('targets-updated', handler);
+    };
   }, [month, financialYear, selectedTeamId, staffPerformance]);
 
   const todayExpectedPercentage = useMemo(

@@ -447,6 +447,7 @@ export const TargetsControl: React.FC = () => {
       setLastSavedSnapshot(buildSnapshot(targetData));
       setHasUnsavedChanges(false);
       setSaveMessage('✅ Targets saved successfully');
+      window.dispatchEvent(new Event('targets-updated'));
       setTimeout(() => setSaveMessage(null), 3000);
       return true;
     } catch (err) {
@@ -760,6 +761,7 @@ export const TargetsControl: React.FC = () => {
 
       setImportState(prev => ({ ...prev, step: 'done' }));
       setSaveMessage(`✅ Import complete — ${importState.diffRows.filter(r => r.changed).length} value(s) updated for FY ${fy.label}`);
+      window.dispatchEvent(new Event('targets-updated'));
       setTimeout(() => setSaveMessage(null), 5000);
     } catch (err) {
       console.error('[TargetsControl] confirm import:', err);

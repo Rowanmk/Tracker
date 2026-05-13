@@ -242,7 +242,11 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
   useEffect(() => {
     const handler = () => fetchPerformanceData();
     window.addEventListener("activity-updated", handler);
-    return () => window.removeEventListener("activity-updated", handler);
+    window.addEventListener("targets-updated", handler);
+    return () => {
+      window.removeEventListener("activity-updated", handler);
+      window.removeEventListener("targets-updated", handler);
+    };
   }, [fetchPerformanceData]);
 
   return {

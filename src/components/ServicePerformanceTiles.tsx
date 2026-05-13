@@ -79,6 +79,18 @@ export const ServicePerformanceTiles: React.FC<ServicePerformanceTilesProps> = (
     if (staffIdsString || (dashboardMode === "individual" && currentStaff)) {
       fetchServiceTargets();
     }
+
+    const handler = () => {
+      if (staffIdsString || (dashboardMode === "individual" && currentStaff)) {
+        fetchServiceTargets();
+      }
+    };
+    window.addEventListener('activity-updated', handler);
+    window.addEventListener('targets-updated', handler);
+    return () => {
+      window.removeEventListener('activity-updated', handler);
+      window.removeEventListener('targets-updated', handler);
+    };
   }, [dashboardMode, currentStaff?.staff_id, month, financialYear, staffIdsString]);
 
   const getStatus = (delivered: number, expected: number) => {

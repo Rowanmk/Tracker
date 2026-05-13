@@ -173,6 +173,16 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
     };
 
     void fetchTargets();
+
+    const handler = () => {
+      void fetchTargets();
+    };
+    window.addEventListener('activity-updated', handler);
+    window.addEventListener('targets-updated', handler);
+    return () => {
+      window.removeEventListener('activity-updated', handler);
+      window.removeEventListener('targets-updated', handler);
+    };
   }, [month, financialYear, isAllTeams, isTeamView, selectedTeamId, teams, staffPerformance]);
 
   const chartData = useMemo(() => {

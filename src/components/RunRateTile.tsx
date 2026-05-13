@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import type { FinancialYear } from '../utils/financialYear';
 import { getMonthYearFromFinancialYear } from '../utils/runRate';
 
@@ -66,6 +66,18 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
   const daysInMonth = new Date(selectedYear, month, 0).getDate();
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const [, setRefreshTrigger] = useState(0);
+
+  useEffect(() => {
+    const handler = () => setRefreshTrigger(prev => prev + 1);
+    window.addEventListener('activity-updated', handler);
+    window.addEventListener('targets-updated', handler);
+    return () => {
+      window.removeEventListener('activity-updated', handler);
+      window.removeEventListener('targets-updated', handler);
+    };
+  }, []);
 
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false,
