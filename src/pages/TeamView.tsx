@@ -86,7 +86,7 @@ const getLastTwelvePercent = (
 const buildPerStaffBagelMonthTotals = (
   rawActivities: ActivityRow[],
   allMonths: Array<{ year: number; month: number }>,
-  bankHolidays: BankHolidayRow[],
+  bankHolidays: BankHoliday[],
   staffList: StaffForBagels[],
   bagelServiceId: number,
   startDate: Date,
@@ -517,7 +517,7 @@ export const TeamView: React.FC = () => {
         setAccountantRankings(rankingRows);
         setHeatmapData(dailyTotals);
         setHeatmapMonths(heatmapMonthsList);
-      } catch (err) {
+      } catch {
         setError('Failed to load Stats and Figures');
       } finally {
         setLoading(false);
@@ -565,6 +565,7 @@ export const TeamView: React.FC = () => {
             {statsData.map((stat, index) => {
               const latestMonth = stat.data[11];
               const isActive = activeServiceId === stat.service.service_id;
+              const accent = theme.palette[index % theme.palette.length];
 
               return (
                 <button
@@ -572,14 +573,13 @@ export const TeamView: React.FC = () => {
                   onClick={() => setActiveServiceId(stat.service.service_id)}
                   className={`p-5 rounded-xl border text-left transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                     isActive
-                      ? 'shadow-lg transform scale-[1.02] z-10 text-white'
+                      ? 'shadow-lg transform scale-[1.02] z-10'
                       : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:shadow-md'
                   }`}
-                  style={
-                    isActive
-                      ? { backgroundColor: theme.palette[index % theme.palette.length], borderColor: theme.palette[index % theme.palette.length] }
-                      : { borderColor: '#E5E7EB' }
-                  }
+                  style={{
+                    borderColor: isActive ? accent : undefined,
+                    backgroundColor: isActive ? accent : undefined,
+                  }}
                 >
                   <h3 className={`text-lg font-bold mb-2 truncate ${isActive ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
                     {stat.service.service_name}
@@ -587,7 +587,7 @@ export const TeamView: React.FC = () => {
                   <div className="flex items-end gap-2">
                     <span
                       className={`text-3xl font-extrabold ${isActive ? 'text-white' : ''}`}
-                      style={isActive ? undefined : { color: theme.palette[index % theme.palette.length] }}
+                      style={!isActive ? { color: accent } : undefined}
                     >
                       {latestMonth.rollingAverage.toFixed(1)}{stat.isPercentage ? '%' : ''}
                     </span>
@@ -626,7 +626,7 @@ export const TeamView: React.FC = () => {
                     <div className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider">
                       Current Month Actual
                     </div>
-                    <div className="text-2xl font-bold" style={{ color: theme.palette[0] || '#001B47' }}>
+                    <div className="text-2xl font-bold" style={{ color: theme.palette[0] }}>
                       {activeStat.data[11].actual.toFixed(1).replace(/\.0$/, '')}{activeStat.isPercentage ? '%' : ''}
                     </div>
                   </div>
@@ -699,24 +699,13 @@ const DeliveryHeatmap = ({
     return Math.max(max, 1);
   }, [heatmapData, months, selectedServiceId]);
 
-  const getColorClass = (val: number, max: number) => {
-    if (val === 0) return 'bg-transparent text-gray-400 dark:text-gray-500';
+  const getColorStyle = (val: number, max: number) => {
+    if (val === 0) return { backgroundColor: 'transparent', color: theme.axisLabelColor };
     const ratio = val / max;
-    if (ratio <= 0.25) return '';
-    if (ratio <= 0.5) return '';
-    if (ratio <= 0.75) return '';
-    return '';
-  };
-
-  const getCellStyle = (val: number, max: number) => {
-    if (val === 0) {
-      return { backgroundColor: 'transparent', color: theme.axisLabelColor };
-    }
-    const ratio = val / max;
-    if (ratio <= 0.25) return { backgroundColor: `${theme.palette[1] || '#0060B8'}22`, color: theme.palette[1] || '#0060B8' };
-    if (ratio <= 0.5) return { backgroundColor: `${theme.palette[1] || '#0060B8'}55`, color: '#0F172A' };
-    if (ratio <= 0.75) return { backgroundColor: theme.palette[1] || '#0060B8', color: '#FFFFFF' };
-    return { backgroundColor: theme.palette[0] || '#001B47', color: '#FFFFFF' };
+    if (ratio <= 0.25) return { backgroundColor: `${theme.palette[1]}22`, color: theme.palette[1] || theme.palette[0] };
+    if (ratio <= 0.5) return { backgroundColor: `${theme.palette[1]}55`, color: theme.palette[0] };
+    if (ratio <= 0.75) return { backgroundColor: theme.palette[1] || theme.palette[0], color: '#FFFFFF' };
+    return { backgroundColor: theme.palette[0], color: '#FFFFFF' };
   };
 
   const getMonthName = (monthNum: number) => {
@@ -725,7 +714,7 @@ const DeliveryHeatmap = ({
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6 mt-6 transition-all duration-300 animate-fade-in">
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6 mt-6 transition-all duration-300 animate-fade-in" style={{ fontFamily: theme.fontFamily }}>
       <div className="mb-6">
         <h3 className="text-xl font-bold text-gray-900 dark:text-white">
           Daily Delivery Heatmap
@@ -743,7 +732,7 @@ const DeliveryHeatmap = ({
               ? 'text-white'
               : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
           }`}
-          style={selectedServiceId === 'all' ? { backgroundColor: theme.palette[0] || '#001B47' } : undefined}
+          style={selectedServiceId === 'all' ? { backgroundColor: theme.palette[0] } : undefined}
         >
           All
         </button>
@@ -793,13 +782,13 @@ const DeliveryHeatmap = ({
 
                   const data = heatmapData[dateStr];
                   const val = data ? (selectedServiceId === 'all' ? data.total : (data.byService[selectedServiceId] || 0)) : 0;
-                  const colorClass = getColorClass(val, maxVal);
+                  const colorStyle = getColorStyle(val, maxVal);
 
                   return (
                     <td
                       key={dateStr}
-                      className={`border border-gray-200 dark:border-gray-700 p-1 text-center font-medium transition-colors ${colorClass}`}
-                      style={getCellStyle(val, maxVal)}
+                      className="border border-gray-200 dark:border-gray-700 p-1 text-center font-medium transition-colors"
+                      style={colorStyle}
                       title={`${dateStr}: ${val} items`}
                     >
                       {val > 0 ? val : ''}
@@ -834,22 +823,19 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPerc
 
   const barWidth = (CHART_WIDTH / 12) * 0.5;
   const linePoints = data.map((d, i) => `${getX(i)},${getY(d.rollingAverage)}`).join(' ');
-  const showGrid = theme.gridStyle !== 'none';
-  const gridDash = theme.gridStyle === 'dashed' ? '4 4' : undefined;
-
-  const formatValue = (value: number, asPercentage?: boolean) => {
-    return `${Math.round(value)}${asPercentage ? '%' : ''}`;
-  };
+  const formatValue = (value: number, asPercentage?: boolean) => `${Math.round(value)}${asPercentage ? '%' : ''}`;
+  const gridDashArray =
+    theme.gridStyle === 'dashed' ? '4 4' : theme.gridStyle === 'solid' ? undefined : undefined;
 
   return (
     <svg viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`} className="w-full h-full min-h-[280px]" style={{ fontFamily: theme.fontFamily }}>
       <g transform={`translate(${PADDING_LEFT}, 15)`}>
-        <rect x="0" y="0" width="12" height="12" fill={theme.palette[0] || '#001B47'} rx={theme.barRadius} />
-        <text x="18" y="10" style={{ fill: theme.axisLabelColor }} className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}>Actual Delivered</text>
+        <rect x="0" y="0" width="12" height="12" fill={theme.palette[0]} rx={theme.barRadius} />
+        <text x="18" y="10" className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`} fill={theme.axisLabelColor}>Actual Delivered</text>
 
-        <line x1="130" y1="6" x2="150" y2="6" stroke={theme.palette[3] || '#FF8A2A'} strokeWidth="3" />
-        <circle cx="140" cy="6" r="4" fill={theme.palette[3] || '#FF8A2A'} />
-        <text x="158" y="10" style={{ fill: theme.axisLabelColor }} className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}>12-Month Rolling Average</text>
+        <line x1="130" y1="6" x2="150" y2="6" stroke={theme.palette[3] || theme.palette[1]} strokeWidth="3" />
+        <circle cx="140" cy="6" r="4" fill={theme.palette[3] || theme.palette[1]} />
+        <text x="158" y="10" className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`} fill={theme.axisLabelColor}>12-Month Rolling Average</text>
       </g>
 
       {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
@@ -857,17 +843,17 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPerc
         const val = Math.round(ratio * maxY);
         return (
           <g key={ratio}>
-            <text x={PADDING_LEFT - 10} y={y + 4} textAnchor="end" style={{ fill: theme.axisLabelColor }} className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}>
+            <text x={PADDING_LEFT - 10} y={y + 4} textAnchor="end" className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`} fill={theme.axisLabelColor}>
               {val}{isPercentage ? '%' : ''}
             </text>
-            {showGrid && (
+            {theme.gridStyle !== 'none' && (
               <line
                 x1={PADDING_LEFT}
                 y1={y}
                 x2={VIEWBOX_WIDTH - PADDING_RIGHT}
                 y2={y}
                 stroke={theme.gridColor}
-                strokeDasharray={ratio === 0 ? '' : gridDash}
+                strokeDasharray={ratio === 0 ? undefined : gridDashArray}
               />
             )}
           </g>
@@ -887,7 +873,7 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPerc
               y={y}
               width={barWidth}
               height={height}
-              fill={theme.palette[i % theme.palette.length]}
+              fill={theme.palette[0]}
               rx={theme.barRadius}
             >
               <title>Actual: {d.actual}{isPercentage ? '%' : ''}</title>
@@ -896,8 +882,8 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPerc
               x={x}
               y={valueLabelY}
               textAnchor="middle"
-              style={{ fill: theme.axisLabelColor }}
-              className={`${theme.axisLabelSize} font-bold`}
+              className="text-[10px] font-bold"
+              fill={theme.axisLabelColor}
             >
               {formatValue(d.actual, isPercentage)}
             </text>
@@ -905,8 +891,8 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPerc
               x={x}
               y={VIEWBOX_HEIGHT - 15}
               textAnchor="middle"
-              style={{ fill: theme.axisLabelColor }}
               className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
+              fill={theme.axisLabelColor}
             >
               {new Date(d.year, d.month - 1).toLocaleString('en-GB', { month: 'short', year: '2-digit' })}
             </text>
@@ -917,11 +903,10 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPerc
       <polyline
         points={linePoints}
         fill="none"
-        stroke={theme.palette[3] || '#FF8A2A'}
+        stroke={theme.palette[3] || theme.palette[1]}
         strokeWidth="3"
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="transition-all duration-500 ease-out"
       />
 
       {data.map((d, i) => {
@@ -935,8 +920,8 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPerc
               x={pointX}
               y={labelY}
               textAnchor="middle"
-              fill={theme.palette[3] || '#FF8A2A'}
-              className={`${theme.axisLabelSize} font-bold`}
+              className="text-[10px] font-bold"
+              fill={theme.palette[3] || theme.palette[1]}
             >
               {formatValue(d.rollingAverage, isPercentage)}
             </text>
@@ -944,10 +929,9 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPerc
               cx={pointX}
               cy={pointY}
               r={4}
-              fill={theme.palette[3] || '#FF8A2A'}
+              fill={theme.palette[3] || theme.palette[1]}
               stroke="#fff"
               strokeWidth="2"
-              className="transition-all duration-500 ease-out"
             >
               <title>Rolling Avg: {d.rollingAverage.toFixed(1)}{isPercentage ? '%' : ''}</title>
             </circle>
@@ -983,8 +967,6 @@ const AccountantRankingChart = ({
   const maxValue = Math.max(...data.map((item) => item.rollingAverage), 1) * 1.1;
   const rowHeight = CHART_HEIGHT / Math.max(data.length, 1);
   const barHeight = Math.min(26, rowHeight * 0.62);
-  const showGrid = theme.gridStyle !== 'none';
-  const gridDash = theme.gridStyle === 'dashed' ? '4 4' : undefined;
 
   const getBarColor = (row: AccountantRankingRow, index: number) => {
     if (isTeamViewMode) {
@@ -992,10 +974,10 @@ const AccountantRankingChart = ({
     }
 
     if (selectedStaffId && row.staff_id === selectedStaffId) {
-      return theme.palette[3] || '#FF8A2A';
+      return theme.palette[3] || theme.palette[1];
     }
 
-    return '#D1D5DB';
+    return theme.gridColor;
   };
 
   const getLabelColor = (row: AccountantRankingRow) => {
@@ -1011,6 +993,8 @@ const AccountantRankingChart = ({
   };
 
   const formatValue = (value: number) => `${value.toFixed(1)}${isPercentage ? '%' : ''}`;
+  const gridDashArray =
+    theme.gridStyle === 'dashed' ? '4 4' : theme.gridStyle === 'solid' ? undefined : undefined;
 
   return (
     <svg viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`} className="w-full h-full min-h-[320px]" style={{ fontFamily: theme.fontFamily }}>
@@ -1020,22 +1004,22 @@ const AccountantRankingChart = ({
 
         return (
           <g key={ratio}>
-            {showGrid && (
+            {theme.gridStyle !== 'none' && (
               <line
                 x1={x}
                 y1={PADDING_TOP}
                 x2={x}
                 y2={VIEWBOX_HEIGHT - PADDING_BOTTOM}
                 stroke={theme.gridColor}
-                strokeDasharray={ratio === 0 ? '' : gridDash}
+                strokeDasharray={ratio === 0 ? undefined : gridDashArray}
               />
             )}
             <text
               x={x}
               y={VIEWBOX_HEIGHT - 8}
               textAnchor="middle"
-              style={{ fill: theme.axisLabelColor }}
               className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
+              fill={theme.axisLabelColor}
             >
               {formatValue(value)}
             </text>
@@ -1055,8 +1039,8 @@ const AccountantRankingChart = ({
               x={PADDING_LEFT - 10}
               y={y + 4}
               textAnchor="end"
-              style={{ fill: getLabelColor(row) }}
               className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
+              fill={getLabelColor(row)}
             >
               {row.name}
             </text>
@@ -1075,8 +1059,8 @@ const AccountantRankingChart = ({
               x={Math.min(PADDING_LEFT + barWidth + 8, VIEWBOX_WIDTH - PADDING_RIGHT + 4)}
               y={y + 4}
               textAnchor="start"
-              style={{ fill: showStrongEmphasis ? theme.axisLabelColor : '#9CA3AF' }}
-              className={`${theme.axisLabelSize} font-bold`}
+              className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
+              fill={showStrongEmphasis ? theme.axisLabelColor : '#9CA3AF'}
             >
               {formatValue(row.rollingAverage)}
             </text>

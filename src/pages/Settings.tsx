@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDate } from '../context/DateContext';
-import { useChartTheme } from '../context/ChartThemeContext';
 import { CalendarMonthYearSelector } from '../components/CalendarMonthYearSelector';
 import { NotificationsSettings } from '../components/NotificationsSettings';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
 import { logStaffBatchChange, createAuditLog } from '../utils/auditLog';
+import { useChartTheme } from '../context/ChartThemeContext';
 import type { ChartTheme } from '../utils/chartThemes';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
@@ -45,151 +45,149 @@ const deriveStaffCategories = (staffMember: Staff): StaffWithDerivedCategories =
 });
 
 const ThemePreviewCard: React.FC<{
-  previewTheme: ChartTheme;
-  selected: boolean;
+  themeOption: ChartTheme;
+  active: boolean;
   onSelect: () => void;
-}> = ({ previewTheme, selected, onSelect }) => {
+}> = ({ themeOption, active, onSelect }) => {
   const previewBars = [
-    [12, 8, 6],
-    [10, 14, 7],
-    [15, 9, 11],
+    [18, 12, 8],
+    [16, 10, 14],
+    [14, 9, 11],
   ];
-  const donutValues = [38, 34, 28];
-  const maxBarStack = Math.max(...previewBars.map((bar) => bar.reduce((sum, value) => sum + value, 0)), 1);
-  const showGrid = previewTheme.gridStyle !== 'none';
-  const gridDash = previewTheme.gridStyle === 'dashed' ? '4 3' : undefined;
-  const strokeLineCap = previewTheme.tooltipStyle === 'dark-pill' ? 'round' : 'butt';
-  const size = 72;
-  const strokeWidth = 14;
-  const radius = (size - strokeWidth) / 2;
-  const center = size / 2;
+
+  const donutSegments = [42, 33, 25];
+  const gridDashArray =
+    themeOption.gridStyle === 'dashed' ? '4 4' : themeOption.gridStyle === 'solid' ? undefined : undefined;
+
+  const strokeClasses =
+    active ? 'border-[#001B47] ring-2 ring-[#001B47]/15' : 'border-gray-200 hover:border-gray-300';
+
   let currentAngle = 0;
+  const donutPaths = donutSegments.map((value, index) => {
+    const angle = (value / 100) * 360;
+    const startAngle = currentAngle;
+    const endAngle = currentAngle + angle;
+    currentAngle += angle;
 
-  const polarToCartesian = (cx: number, cy: number, r: number, angleDeg: number) => {
-    const angleRad = ((angleDeg - 90) * Math.PI) / 180.0;
-    return {
-      x: cx + r * Math.cos(angleRad),
-      y: cy + r * Math.sin(angleRad),
+    const polar = (cx: number, cy: number, r: number, angleDeg: number) => {
+      const angleRad = ((angleDeg - 90) * Math.PI) / 180;
+      return {
+        x: cx + r * Math.cos(angleRad),
+        y: cy + r * Math.sin(angleRad),
+      };
     };
-  };
 
-  const describeArc = (cx: number, cy: number, r: number, startAngle: number, endAngle: number) => {
-    const start = polarToCartesian(cx, cy, r, endAngle);
-    const end = polarToCartesian(cx, cy, r, startAngle);
+    const start = polar(44, 44, 24, endAngle);
+    const end = polar(44, 44, 24, startAngle);
     const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
-    return [`M`, start.x, start.y, `A`, r, r, 0, largeArcFlag, 0, end.x, end.y].join(' ');
-  };
+
+    return {
+      id: `${themeOption.id}-${index}`,
+      path: `M ${start.x} ${start.y} A 24 24 0 ${largeArcFlag} 0 ${end.x} ${end.y}`,
+      color: themeOption.palette[index % themeOption.palette.length],
+    };
+  });
 
   return (
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full text-left rounded-xl border p-4 transition-all duration-200 ${
-        selected
-          ? 'border-[#001B47] ring-2 ring-[#001B47]/15 shadow-md'
-          : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
-      }`}
+      className={`w-full text-left rounded-xl border bg-white p-4 shadow-sm transition-all ${strokeClasses}`}
+      style={{ fontFamily: themeOption.fontFamily }}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h4 className="text-sm font-bold text-gray-900">{previewTheme.name}</h4>
-          <p className="mt-1 text-xs text-gray-500 leading-5">{previewTheme.description}</p>
+        <div>
+          <h4 className="text-sm font-bold text-gray-900">{themeOption.name}</h4>
+          <p className="mt-1 text-xs text-gray-500">{themeOption.description}</p>
         </div>
         <div
-          className={`w-5 h-5 shrink-0 rounded-full border flex items-center justify-center ${
-            selected ? 'border-[#001B47] bg-[#001B47]' : 'border-gray-300 bg-white'
+          className={`w-6 h-6 rounded-full border flex items-center justify-center shrink-0 ${
+            active ? 'bg-[#001B47] border-[#001B47] text-white' : 'border-gray-300 text-transparent'
           }`}
         >
-          {selected ? <span className="text-white text-[11px] font-bold">✓</span> : null}
+          ✓
         </div>
       </div>
 
-      <div
-        className="mt-4 rounded-lg border border-gray-100 bg-gray-50/70 p-3"
-        style={{ fontFamily: previewTheme.fontFamily }}
-      >
+      <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50/70 p-3">
         <div className="grid grid-cols-[1.3fr_0.9fr] gap-3 items-center">
-          <svg viewBox="0 0 140 88" className="w-full h-[88px] overflow-visible">
-            {showGrid &&
-              [0, 1, 2].map((index) => (
+          <svg viewBox="0 0 150 84" className="w-full h-20">
+            {themeOption.gridStyle !== 'none' &&
+              [18, 38, 58].map((y) => (
                 <line
-                  key={index}
+                  key={y}
                   x1="8"
-                  y1={68 - index * 18}
-                  x2="132"
-                  y2={68 - index * 18}
-                  stroke={previewTheme.gridColor}
-                  strokeDasharray={gridDash}
+                  y1={y}
+                  x2="142"
+                  y2={y}
+                  stroke={themeOption.gridColor}
+                  strokeDasharray={gridDashArray}
                 />
               ))}
-            <line x1="8" y1="68" x2="132" y2="68" stroke={previewTheme.axisLabelColor} />
-            {previewBars.map((bar, barIndex) => {
-              const x = 18 + barIndex * 38;
-              let currentY = 68;
-              return (
-                <g key={barIndex}>
-                  {bar.map((value, stackIndex) => {
-                    const height = (value / maxBarStack) * 46;
-                    currentY -= height;
-                    return (
-                      <rect
-                        key={stackIndex}
-                        x={x}
-                        y={currentY}
-                        width="20"
-                        height={height}
-                        rx={previewTheme.barRadius}
-                        fill={previewTheme.palette[stackIndex % previewTheme.palette.length]}
-                      />
-                    );
-                  })}
-                </g>
-              );
-            })}
-            {['A', 'B', 'C'].map((label, index) => (
-              <text
-                key={label}
-                x={28 + index * 38}
-                y="82"
-                textAnchor="middle"
-                fill={previewTheme.axisLabelColor}
-                className={previewTheme.axisLabelSize}
-                fontWeight={previewTheme.axisLabelWeight.includes('semibold') ? 600 : previewTheme.axisLabelWeight.includes('medium') ? 500 : 400}
-              >
-                {label}
-              </text>
-            ))}
-          </svg>
 
-          <div className="flex justify-center">
-            <svg viewBox={`0 0 ${size} ${size}`} className="w-[72px] h-[72px]">
-              <circle
-                cx={center}
-                cy={center}
-                r={radius}
-                fill="none"
-                stroke={previewTheme.gridColor}
-                strokeWidth={strokeWidth}
-              />
-              {donutValues.map((segment, index) => {
-                const angle = (segment / 100) * 360;
-                const startAngle = currentAngle;
-                const endAngle = currentAngle + angle;
-                currentAngle += angle;
+            {previewBars.map((bar, barIndex) => {
+              const baseX = 20 + barIndex * 38;
+              let currentY = 68;
+              return bar.map((segment, segmentIndex) => {
+                const height = segment;
+                currentY -= height;
                 return (
-                  <path
-                    key={index}
-                    d={describeArc(center, center, radius, startAngle, endAngle)}
-                    fill="none"
-                    stroke={previewTheme.palette[index % previewTheme.palette.length]}
-                    strokeWidth={strokeWidth}
-                    strokeLinecap={strokeLineCap}
+                  <rect
+                    key={`${barIndex}-${segmentIndex}`}
+                    x={baseX}
+                    y={currentY}
+                    width="22"
+                    height={height}
+                    rx={themeOption.barRadius}
+                    fill={themeOption.palette[segmentIndex % themeOption.palette.length]}
                   />
                 );
-              })}
-              <circle cx={center} cy={center} r={radius - strokeWidth / 2} fill="#ffffff" />
-            </svg>
-          </div>
+              });
+            })}
+
+            <text
+              x="12"
+              y="78"
+              fontSize="7"
+              fontWeight="700"
+              fill={themeOption.axisLabelColor}
+            >
+              Jan
+            </text>
+            <text
+              x="50"
+              y="78"
+              fontSize="7"
+              fontWeight="700"
+              fill={themeOption.axisLabelColor}
+            >
+              Feb
+            </text>
+            <text
+              x="88"
+              y="78"
+              fontSize="7"
+              fontWeight="700"
+              fill={themeOption.axisLabelColor}
+            >
+              Mar
+            </text>
+          </svg>
+
+          <svg viewBox="0 0 88 88" className="w-full h-20">
+            <circle cx="44" cy="44" r="24" fill="none" stroke="#E5E7EB" strokeWidth="14" />
+            {donutPaths.map((segment) => (
+              <path
+                key={segment.id}
+                d={segment.path}
+                fill="none"
+                stroke={segment.color}
+                strokeWidth="14"
+                strokeLinecap="butt"
+              />
+            ))}
+            <circle cx="44" cy="44" r="14" fill="white" />
+          </svg>
         </div>
       </div>
     </button>
@@ -198,8 +196,7 @@ const ThemePreviewCard: React.FC<{
 
 export const Settings: React.FC = () => {
   const { currentStaff, isAdmin, refreshStaff } = useAuth();
-  const { selectedFinancialYear, setSelectedFinancialYear } = useDate();
-  const { theme: activeChartTheme, setTheme, availableThemes } = useChartTheme();
+  const { theme, setTheme, availableThemes } = useChartTheme();
   const [allUsers, setAllUsers] = useState<StaffWithDerivedCategories[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
@@ -245,6 +242,8 @@ export const Settings: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [calendarMonth, setCalendarMonth] = useState<number>(new Date().getMonth() + 1);
   const [calendarYear, setCalendarYear] = useState<number>(new Date().getFullYear());
+
+  const { selectedFinancialYear, setSelectedFinancialYear } = useDate();
 
   const assistantUsers = useMemo(
     () =>
@@ -306,6 +305,12 @@ export const Settings: React.FC = () => {
   const getRoleValueFromAccessLevel = (accessLevel: AccessLevel, workCategory: WorkCategory) => {
     if (accessLevel === 'admin') return 'admin';
     return workCategory === 'accountant' ? 'staff' : 'user';
+  };
+
+  const handleThemeSelect = (themeId: string) => {
+    setTheme(themeId);
+    setThemeSavedMessage(true);
+    window.setTimeout(() => setThemeSavedMessage(false), 2000);
   };
 
   const fetchSettingsData = async () => {
@@ -391,12 +396,6 @@ export const Settings: React.FC = () => {
     } catch {
       setTimedFeedback('Failed to load calendar data');
     }
-  };
-
-  const handleThemeSelect = (themeId: string) => {
-    setTheme(themeId);
-    setThemeSavedMessage(true);
-    window.setTimeout(() => setThemeSavedMessage(false), 2000);
   };
 
   const handleAddUser = async (e: React.FormEvent) => {
@@ -844,28 +843,30 @@ export const Settings: React.FC = () => {
 
         {activeTab === 'account' && (
           <div className="mt-6 space-y-6">
-            <div className="bg-white shadow rounded-lg p-6">
-              <div className="flex items-start justify-between gap-4">
+            <div className="bg-white shadow rounded-lg p-6 max-w-5xl">
+              <div className="flex items-start justify-between gap-4 mb-6">
                 <div>
                   <h3 className="text-lg font-medium text-gray-900">Chart Appearance</h3>
                   <p className="mt-1 text-sm text-gray-500">
                     Choose how charts look across your dashboards. Your selection syncs to your account.
                   </p>
                 </div>
-                {themeSavedMessage ? (
-                  <div className="shrink-0 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700">
-                    ✓ Saved
-                  </div>
-                ) : null}
+                <div className="min-w-[72px] text-right">
+                  {themeSavedMessage ? (
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-green-50 text-green-700 text-xs font-bold border border-green-200">
+                      ✓ Saved
+                    </span>
+                  ) : null}
+                </div>
               </div>
 
-              <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                {availableThemes.map((previewTheme) => (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {availableThemes.map((themeOption) => (
                   <ThemePreviewCard
-                    key={previewTheme.id}
-                    previewTheme={previewTheme}
-                    selected={activeChartTheme.id === previewTheme.id}
-                    onSelect={() => handleThemeSelect(previewTheme.id)}
+                    key={themeOption.id}
+                    themeOption={themeOption}
+                    active={theme.id === themeOption.id}
+                    onSelect={() => handleThemeSelect(themeOption.id)}
                   />
                 ))}
               </div>

@@ -156,7 +156,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
         }
         setStaffTargets({});
         setTeamTargets({});
-      } catch (err) {
+      } catch {
         setServiceTargets({});
         setStaffTargets({});
         setTeamTargets({});
@@ -325,13 +325,10 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
     }));
   }, [viewMode, yMax]);
 
-  const getBarColor = (percentage: number, index: number) => {
-    if (viewMode === 'numbers') {
-      return theme.palette[index % theme.palette.length];
-    }
-    if (percentage >= 90) return theme.palette[5] || '#008A00';
-    if (percentage >= 75) return theme.palette[3] || '#FF8A2A';
-    return theme.palette[4] || '#FF3B30';
+  const getBarColor = (percentage: number) => {
+    if (percentage >= 90) return theme.palette[5] || theme.palette[0];
+    if (percentage >= 75) return theme.palette[3] || theme.palette[1];
+    return theme.palette[4] || theme.palette[2];
   };
 
   const formatAxisLabel = (label: string, maxChars: number) => {
@@ -380,8 +377,20 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
     setTooltip((prev) => ({ ...prev, visible: false }));
   };
 
-  const gridDash = theme.gridStyle === 'dashed' ? '4,4' : undefined;
-  const showGrid = theme.gridStyle !== 'none';
+  const gridDashArray =
+    theme.gridStyle === 'dashed' ? '4,4' : theme.gridStyle === 'solid' ? undefined : undefined;
+
+  const tooltipPanelClass =
+    theme.tooltipStyle === 'dark-pill'
+      ? 'bg-gray-900 border-gray-800 text-white'
+      : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700';
+
+  const tooltipHeaderStyle =
+    theme.tooltipStyle === 'dark-pill'
+      ? { backgroundColor: theme.palette[0], fontFamily: theme.fontFamily }
+      : { backgroundColor: theme.palette[0], fontFamily: theme.fontFamily };
+
+  const axisLabelClass = `${theme.axisLabelSize} ${theme.axisLabelWeight}`;
 
   if (loading) {
     return (
@@ -417,19 +426,19 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                 x={FIXED_LEFT_MARGIN - 10}
                 y={tick.y + 4}
                 textAnchor="end"
-                style={{ fill: theme.axisLabelColor }}
-                className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
+                className={axisLabelClass}
+                fill={theme.axisLabelColor}
               >
                 {formatTick(tick.value)}
               </text>
-              {tick.value > 0 && showGrid && (
+              {tick.value > 0 && theme.gridStyle !== 'none' && (
                 <line
                   x1={FIXED_LEFT_MARGIN}
                   y1={tick.y}
                   x2={CHART_WIDTH - 20}
                   y2={tick.y}
                   stroke={theme.gridColor}
-                  strokeDasharray={gridDash}
+                  strokeDasharray={gridDashArray}
                 />
               )}
             </g>
@@ -454,7 +463,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
             const barHeight = (clampedDisplay / Math.max(yMax, 1)) * BAR_AREA_HEIGHT;
             const x = FIXED_LEFT_MARGIN + i * barSlotWidth + barSlotWidth / 2;
             const barTopY = BASELINE_Y - barHeight;
-            const barColor = getBarColor(data.runRatePercent, i);
+            const barColor = getBarColor(data.runRatePercent);
             const displayLabel = formatAxisLabel(data.label, axisLabelCharLimit);
 
             return (
@@ -475,8 +484,8 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                   x={x}
                   y={barTopY - 8}
                   textAnchor="middle"
-                  style={{ fill: theme.axisLabelColor }}
                   className="text-[12px] font-bold"
+                  fill={theme.axisLabelColor}
                 >
                   {viewMode === "percent" ? `${Math.round(displayValue)}%` : Math.round(displayValue)}
                 </text>
@@ -485,8 +494,8 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                   x={x}
                   y={axisLabelY}
                   textAnchor="middle"
-                  style={{ fill: theme.axisLabelColor }}
-                  className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
+                  className={axisLabelClass}
+                  fill={theme.axisLabelColor}
                   transform={shouldRotateLabels ? `rotate(-35 ${x} ${axisLabelY})` : undefined}
                 >
                   <title>{data.label}</title>
@@ -523,26 +532,16 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
           }}
         >
           <div
-            className={`overflow-hidden ${theme.tooltipStyle === 'dark-pill'
-              ? 'bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl'
-              : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl'
-            }`}
+            className={`border rounded-xl shadow-2xl overflow-hidden ${tooltipPanelClass}`}
             style={{ minWidth: '240px', maxWidth: '300px', fontFamily: theme.fontFamily }}
           >
-            <div
-              className="px-3 py-2"
-              style={{ backgroundColor: theme.palette[0] || '#001B47' }}
-            >
+            <div className="px-3 py-2" style={tooltipHeaderStyle}>
               <span className="text-white text-xs font-bold uppercase tracking-wide">
                 {tooltip.label} — {isTeamView ? 'Service Split' : 'Accountant Split'}
               </span>
             </div>
 
-            <div className={`px-3 py-1 border-b flex items-center justify-between ${
-              theme.tooltipStyle === 'dark-pill'
-                ? 'bg-gray-800 border-gray-700'
-                : 'bg-gray-50 dark:bg-gray-800/40 border-gray-100 dark:border-gray-700'
-            }`}>
+            <div className="px-3 py-1 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
               <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">
                 {isTeamView ? 'Service' : 'Accountant'}
               </span>
@@ -553,7 +552,7 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
               </div>
             </div>
 
-            <div className={theme.tooltipStyle === 'dark-pill' ? 'divide-y divide-gray-800' : 'divide-y divide-gray-100 dark:divide-gray-800'}>
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {tooltip.breakdown.map((entry) => {
                 const runRatePct = entry.expectedByToday > 0
                   ? Math.round((entry.delivered / entry.expectedByToday) * 100)
@@ -562,29 +561,22 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
                   runRatePct === null
                     ? theme.axisLabelColor
                     : runRatePct >= 90
-                    ? theme.palette[5] || '#008A00'
+                    ? theme.palette[5] || theme.palette[0]
                     : runRatePct >= 75
-                    ? theme.palette[3] || '#FF8A2A'
-                    : theme.palette[4] || '#FF3B30';
+                    ? theme.palette[3] || theme.palette[1]
+                    : theme.palette[4] || theme.palette[2];
 
                 return (
                   <div key={entry.staff_id} className="px-3 py-2 flex items-center justify-between gap-2">
-                    <span className={`text-xs font-semibold truncate flex-1 ${
-                      theme.tooltipStyle === 'dark-pill' ? 'text-gray-100' : 'text-gray-800 dark:text-gray-200'
-                    }`}>
+                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate flex-1">
                       {entry.name}
                     </span>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span
-                        className="text-xs font-bold"
-                        style={{ color: theme.palette[0] || '#001B47' }}
-                      >
+                      <span className="text-xs font-bold" style={{ color: theme.palette[0] }}>
                         {entry.delivered}
                       </span>
                       <span className="text-xs text-gray-400">/</span>
-                      <span className={`text-xs w-8 text-right ${
-                        theme.tooltipStyle === 'dark-pill' ? 'text-gray-300' : 'text-gray-600 dark:text-gray-400'
-                      }`}>
+                      <span className="text-xs text-gray-600 dark:text-gray-400 w-8 text-right">
                         {entry.target}
                       </span>
                       <span
@@ -599,23 +591,13 @@ export const EmployeeProgressChart: React.FC<EmployeeProgressChartProps> = ({
               })}
             </div>
 
-            <div className={`px-3 py-1.5 border-t ${
-              theme.tooltipStyle === 'dark-pill'
-                ? 'bg-gray-800 border-gray-700'
-                : 'bg-gray-50 dark:bg-gray-800/60 border-gray-100 dark:border-gray-700'
-            }`}>
+            <div className="bg-gray-50 dark:bg-gray-800/60 px-3 py-1.5 border-t border-gray-100 dark:border-gray-700">
               <span className="text-[10px] text-gray-400">Delivered / Target · Run Rate % vs today's expected</span>
             </div>
           </div>
 
           <div className="flex justify-center">
-            <div
-              className={`w-3 h-3 rotate-45 -mt-1.5 ${
-                theme.tooltipStyle === 'dark-pill'
-                  ? 'bg-gray-900 border-r border-b border-gray-800'
-                  : 'bg-white dark:bg-gray-900 border-r border-b border-gray-200 dark:border-gray-700'
-              }`}
-            />
+            <div className="w-3 h-3 border-r border-b rotate-45 -mt-1.5 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700" />
           </div>
         </div>
       )}

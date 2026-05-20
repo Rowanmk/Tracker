@@ -28,6 +28,7 @@ const PADDING_BOTTOM = 70;
 
 const CHART_WIDTH = VIEWBOX_WIDTH - PADDING_LEFT - PADDING_RIGHT;
 const CHART_HEIGHT = VIEWBOX_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
+
 const SA_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -131,10 +132,9 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
   const totalDays = dayPoints.length;
   const visibleTeams = teamProgress.filter(t => t.fullYearTarget > 0);
 
-  const colours = React.useMemo(
-    () => theme.palette,
-    [theme.palette]
-  );
+  const colours = React.useMemo(() => {
+    return Array.from({ length: Math.max(visibleTeams.length, 1) }, (_, index) => theme.palette[index % theme.palette.length]);
+  }, [theme.palette, visibleTeams.length]);
 
   const chartData = React.useMemo(() => {
     return visibleTeams.map((team, idx) => {
@@ -189,7 +189,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
       }
       return Math.min((cumPlanned / totalDenominator) * 100, 100);
     });
-  }, [visibleTeams, monthlyData, dayPoints, financialYear]);
+  }, [visibleTeams, monthlyData, dayPoints]);
 
   const getX = (dayIndex: number) =>
     PADDING_LEFT + (CHART_WIDTH / Math.max(totalDays - 1, 1)) * dayIndex;
@@ -235,7 +235,6 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
     if (!svgRef.current || !containerRef.current) return;
 
     const containerRect = containerRef.current.getBoundingClientRect();
-
     const completed = Math.round(team.totalSubmitted);
     const remaining = Math.max(0, team.fullYearTarget - completed);
 
@@ -271,8 +270,8 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
     setTooltip((prev) => ({ ...prev, visible: false }));
   };
 
-  const showGrid = theme.gridStyle !== 'none';
-  const gridDash = theme.gridStyle === 'dashed' ? '4 4' : undefined;
+  const gridDashArray =
+    theme.gridStyle === 'dashed' ? '4 4' : theme.gridStyle === 'solid' ? undefined : undefined;
 
   return (
     <div ref={containerRef} className="flex flex-col h-full relative" style={{ fontFamily: theme.fontFamily }}>
@@ -302,19 +301,19 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
               x={PADDING_LEFT - 10}
               y={getY(p) + 4}
               textAnchor="end"
-              style={{ fill: theme.axisLabelColor }}
               className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
+              fill={theme.axisLabelColor}
             >
               {p}%
             </text>
-            {p > 0 && showGrid && (
+            {p > 0 && theme.gridStyle !== 'none' && (
               <line
                 x1={PADDING_LEFT}
                 y1={getY(p)}
                 x2={VIEWBOX_WIDTH - PADDING_RIGHT}
                 y2={getY(p)}
                 stroke={theme.gridColor}
-                strokeDasharray={gridDash}
+                strokeDasharray={gridDashArray}
               />
             )}
           </g>
@@ -322,22 +321,20 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
 
         {monthBoundaries.map(({ x, label, monthNumber }) => (
           <g key={monthNumber}>
-            {showGrid && (
-              <line
-                x1={x}
-                y1={PADDING_TOP}
-                x2={x}
-                y2={VIEWBOX_HEIGHT - PADDING_BOTTOM}
-                stroke={theme.gridColor}
-                strokeWidth="1"
-              />
-            )}
+            <line
+              x1={x}
+              y1={PADDING_TOP}
+              x2={x}
+              y2={VIEWBOX_HEIGHT - PADDING_BOTTOM}
+              stroke={theme.gridColor}
+              strokeWidth="1"
+            />
             <text
               x={x + 4}
               y={VIEWBOX_HEIGHT - PADDING_BOTTOM + 22}
               textAnchor="start"
-              style={{ fill: theme.axisLabelColor }}
               className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
+              fill={theme.axisLabelColor}
               fontSize="11"
             >
               {label}
@@ -352,7 +349,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
               y1={PADDING_TOP}
               x2={todayX}
               y2={VIEWBOX_HEIGHT - PADDING_BOTTOM}
-              stroke={theme.palette[3] || '#FF8A2A'}
+              stroke={theme.palette[3] || theme.palette[0]}
               strokeWidth="1.5"
               strokeDasharray="4 3"
               opacity="0.8"
@@ -360,7 +357,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
             <text
               x={todayX + 3}
               y={PADDING_TOP + 12}
-              fill={theme.palette[3] || '#FF8A2A'}
+              fill={theme.palette[3] || theme.palette[0]}
               fontSize="10"
               fontWeight="bold"
             >
@@ -384,8 +381,8 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
         <text
           x={getX(totalDays - 1) + 8}
           y={getY(targetLinePercents[targetLinePercents.length - 1] ?? 100) + 4}
-          style={{ fill: theme.axisLabelColor }}
-          className={theme.axisLabelSize}
+          className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
+          fill={theme.axisLabelColor}
           fontSize="11"
         >
           Target
@@ -422,7 +419,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
               <path
                 d={pathD}
                 fill="none"
-                stroke={isDimmed ? '#9CA3AF' : team.color}
+                stroke={isDimmed ? theme.gridColor : team.color}
                 strokeWidth={isActive ? 4.5 : 3}
                 opacity={isDimmed ? 0.5 : 1}
                 strokeLinecap="round"
@@ -452,9 +449,9 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
                   x={getX(lastVisible.i)}
                   y={getY(lastVisible.percent) - 10}
                   textAnchor="middle"
-                  style={{ fill: theme.axisLabelColor }}
-                  className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
+                  fill={theme.axisLabelColor}
                   fontSize="11"
+                  fontWeight="600"
                 >
                   {displayPct}%
                 </text>
@@ -475,9 +472,9 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
                 <text
                   x={getX(lastVisible.i) + 8}
                   y={getY(lastVisible.percent) + 4}
-                  style={{ fill: theme.axisLabelColor }}
-                  className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
+                  fill={theme.axisLabelColor}
                   fontSize="11"
+                  fontWeight="600"
                 >
                   {team.name}
                 </text>
@@ -499,10 +496,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           }}
         >
           <div
-            className={`overflow-hidden ${theme.tooltipStyle === 'dark-pill'
-              ? 'bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl'
-              : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl'
-            }`}
+            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden"
             style={{ minWidth: '220px', maxWidth: '280px', fontFamily: theme.fontFamily }}
           >
             <div
@@ -515,40 +509,26 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
               </span>
             </div>
 
-            <div className={theme.tooltipStyle === 'dark-pill' ? 'divide-y divide-gray-800' : 'divide-y divide-gray-100 dark:divide-gray-800'}>
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
               <div className="px-3 py-2 flex items-center justify-between gap-3">
-                <span className={`text-xs font-semibold ${
-                  theme.tooltipStyle === 'dark-pill' ? 'text-gray-300' : 'text-gray-600 dark:text-gray-300'
-                }`}>
+                <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
                   Completed
                 </span>
-                <span
-                  className="text-sm font-bold"
-                  style={{ color: theme.palette[0] || '#001B47' }}
-                >
+                <span className="text-sm font-bold" style={{ color: theme.palette[0] }}>
                   {tooltip.completed.toLocaleString()}
                 </span>
               </div>
               <div className="px-3 py-2 flex items-center justify-between gap-3">
-                <span className={`text-xs font-semibold ${
-                  theme.tooltipStyle === 'dark-pill' ? 'text-gray-300' : 'text-gray-600 dark:text-gray-300'
-                }`}>
+                <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
                   Remaining
                 </span>
-                <span
-                  className="text-sm font-bold"
-                  style={{ color: theme.palette[3] || '#FF8A2A' }}
-                >
+                <span className="text-sm font-bold" style={{ color: theme.palette[3] || theme.palette[1] }}>
                   {tooltip.remaining.toLocaleString()}
                 </span>
               </div>
             </div>
 
-            <div className={`px-3 py-1.5 border-t ${
-              theme.tooltipStyle === 'dark-pill'
-                ? 'bg-gray-800 border-gray-700'
-                : 'bg-gray-50 dark:bg-gray-800/60 border-gray-100 dark:border-gray-700'
-            }`}>
+            <div className="bg-gray-50 dark:bg-gray-800/60 px-3 py-1.5 border-t border-gray-100 dark:border-gray-700">
               <span className="text-[10px] text-gray-400">
                 Target: {tooltip.target.toLocaleString()} self assessments
               </span>
@@ -556,13 +536,7 @@ export const SelfAssessmentProgressChart: React.FC<SelfAssessmentProgressChartPr
           </div>
 
           <div className="flex justify-center">
-            <div
-              className={`w-3 h-3 rotate-45 -mt-1.5 ${
-                theme.tooltipStyle === 'dark-pill'
-                  ? 'bg-gray-900 border-r border-b border-gray-800'
-                  : 'bg-white dark:bg-gray-900 border-r border-b border-gray-200 dark:border-gray-700'
-              }`}
-            />
+            <div className="w-3 h-3 bg-white dark:bg-gray-900 border-r border-b border-gray-200 dark:border-gray-700 rotate-45 -mt-1.5" />
           </div>
         </div>
       )}

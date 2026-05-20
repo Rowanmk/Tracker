@@ -244,10 +244,8 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
     const scaleY = svgHeight / VIEWBOX_HEIGHT;
 
     const barCenterXSvg = getX(day);
-    const barTopYSvg = barTopY;
-
     const pixelX = svgRect.left - containerRect.left + barCenterXSvg * scaleX;
-    const pixelY = svgRect.top - containerRect.top + barTopYSvg * scaleY;
+    const pixelY = svgRect.top - containerRect.top + barTopY * scaleY;
 
     const { breakdown, cumulativeTotal, expectedAtDay } = buildBreakdown(day);
 
@@ -272,8 +270,14 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
   }, [deliveredByDay]);
 
   const dayFraction = safePlaybackDay - Math.floor(safePlaybackDay);
-  const showGrid = theme.gridStyle !== 'none';
-  const gridDash = theme.gridStyle === 'dashed' ? '4,4' : undefined;
+
+  const gridDashArray =
+    theme.gridStyle === 'dashed' ? '4,4' : theme.gridStyle === 'solid' ? undefined : undefined;
+
+  const tooltipPanelClass =
+    theme.tooltipStyle === 'dark-pill'
+      ? 'bg-gray-900 border-gray-800'
+      : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700';
 
   return (
     <div
@@ -304,19 +308,19 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
                   x={FIXED_LEFT_MARGIN - 6}
                   y={y + 4}
                   textAnchor="end"
-                  style={{ fill: theme.axisLabelColor }}
                   className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
+                  fill={theme.axisLabelColor}
                 >
                   {tick}
                 </text>
-                {tick > 0 && showGrid && (
+                {tick > 0 && theme.gridStyle !== 'none' && (
                   <line
                     x1={FIXED_LEFT_MARGIN}
                     y1={y}
                     x2={CHART_WIDTH - RIGHT_PADDING}
                     y2={y}
                     stroke={theme.gridColor}
-                    strokeDasharray={gridDash}
+                    strokeDasharray={gridDashArray}
                   />
                 )}
               </g>
@@ -341,8 +345,8 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
                 x={getX(day)}
                 y={BASELINE_Y + 14}
                 textAnchor="middle"
-                style={{ fill: theme.axisLabelColor }}
                 className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
+                fill={theme.axisLabelColor}
               >
                 {day}
               </text>
@@ -366,9 +370,9 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
               const varianceLabel = variance > 0 ? `+${variance}` : `${variance}`;
               const varianceColor =
                 variance > 0
-                  ? theme.palette[5] || '#008A00'
+                  ? theme.palette[5] || theme.palette[0]
                   : variance < 0
-                  ? theme.palette[4] || '#FF3B30'
+                  ? theme.palette[4] || theme.palette[2]
                   : theme.axisLabelColor;
 
               return (
@@ -378,7 +382,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
                     y={barTopY}
                     width={barWidth}
                     height={barHeight}
-                    fill={theme.palette[0] || '#001B47'}
+                    fill={theme.palette[0]}
                     rx={theme.barRadius}
                     style={{ cursor: 'pointer' }}
                     onMouseEnter={(e) => handleBarMouseEnter(e, day, barHeight, barTopY)}
@@ -402,7 +406,7 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
           <polyline
             points={targetPolylinePoints}
             fill="none"
-            stroke={theme.palette[3] || theme.axisLabelColor}
+            stroke={theme.palette[1] || theme.axisLabelColor}
             strokeWidth="2.5"
             strokeDasharray="7,4"
             strokeLinecap="round"
@@ -412,8 +416,9 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
             <text
               x={getX(daysInMonth) + 4}
               y={toY(target) + 4}
-              style={{ fontSize: 9, fill: theme.axisLabelColor }}
-              className={theme.axisLabelSize}
+              className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
+              fill={theme.axisLabelColor}
+              style={{ fontSize: 9 }}
             >
               Target
             </text>
@@ -422,18 +427,18 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
 
         <div className="flex items-center gap-4 mt-1 px-1">
           <div className="flex items-center gap-1.5">
-            <div className="w-4 h-3 rounded-sm" style={{ backgroundColor: theme.palette[0] || '#001B47' }} />
+            <div className="w-4 h-3 rounded-sm" style={{ backgroundColor: theme.palette[0] }} />
             <span className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">Cumulative Delivered</span>
           </div>
           <div className="flex items-center gap-1.5">
             <svg width="20" height="8">
-              <line x1="0" y1="4" x2="20" y2="4" stroke={theme.palette[3] || theme.axisLabelColor} strokeWidth="2" strokeDasharray="5,3" />
+              <line x1="0" y1="4" x2="20" y2="4" stroke={theme.palette[1] || theme.axisLabelColor} strokeWidth="2" strokeDasharray="5,3" />
             </svg>
             <span className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">Target Run Rate</span>
           </div>
           <div className="flex items-center gap-2 ml-auto">
-            <span className="text-[10px] font-bold" style={{ color: theme.palette[5] || '#008A00' }}>+n ahead</span>
-            <span className="text-[10px] font-bold" style={{ color: theme.palette[4] || '#FF3B30' }}>−n behind</span>
+            <span className="text-[10px] font-bold" style={{ color: theme.palette[5] || theme.palette[0] }}>+n ahead</span>
+            <span className="text-[10px] font-bold" style={{ color: theme.palette[4] || theme.palette[2] }}>−n behind</span>
           </div>
         </div>
       </div>
@@ -448,38 +453,24 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
           }}
         >
           <div
-            className={`overflow-hidden ${theme.tooltipStyle === 'dark-pill'
-              ? 'bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl'
-              : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl'
-            }`}
+            className={`border rounded-xl shadow-2xl overflow-hidden ${tooltipPanelClass}`}
             style={{ minWidth: '240px', maxWidth: '300px', fontFamily: theme.fontFamily }}
           >
-            <div
-              className="px-3 py-2"
-              style={{ backgroundColor: theme.palette[0] || '#001B47' }}
-            >
+            <div className="px-3 py-2" style={{ backgroundColor: theme.palette[0] }}>
               <span className="text-white text-xs font-bold uppercase tracking-wide">
                 Day {tooltip.day} — Accountant Split
               </span>
             </div>
 
-            <div className={`px-3 py-1.5 border-b ${
-              theme.tooltipStyle === 'dark-pill'
-                ? 'bg-gray-800 border-gray-700'
-                : 'bg-gray-50 dark:bg-gray-800/60 border-gray-100 dark:border-gray-700'
-            }`}>
-              <span className="text-[10px] text-gray-400">
-                Cumulative total: <span className={theme.tooltipStyle === 'dark-pill' ? 'font-bold text-gray-100' : 'font-bold text-gray-800 dark:text-gray-200'}>{tooltip.cumulativeTotal}</span>
+            <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-700">
+              <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                Cumulative total: <span className="font-bold text-gray-800 dark:text-gray-200">{tooltip.cumulativeTotal}</span>
                 <span className="mx-1.5 text-gray-300">·</span>
-                Expected: <span className={theme.tooltipStyle === 'dark-pill' ? 'font-bold text-gray-100' : 'font-bold text-gray-800 dark:text-gray-200'}>{Math.round(tooltip.expectedAtDay)}</span>
+                Expected: <span className="font-bold text-gray-800 dark:text-gray-200">{Math.round(tooltip.expectedAtDay)}</span>
               </span>
             </div>
 
-            <div className={`px-3 py-1 border-b flex items-center justify-between ${
-              theme.tooltipStyle === 'dark-pill'
-                ? 'bg-gray-800 border-gray-700'
-                : 'bg-gray-50 dark:bg-gray-800/40 border-gray-100 dark:border-gray-700'
-            }`}>
+            <div className="px-3 py-1 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
               <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Accountant</span>
               <div className="flex items-center gap-3">
                 <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Delivered</span>
@@ -487,30 +478,25 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
               </div>
             </div>
 
-            <div className={theme.tooltipStyle === 'dark-pill' ? 'divide-y divide-gray-800' : 'divide-y divide-gray-100 dark:divide-gray-800'}>
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {tooltip.breakdown.map((entry) => {
                 const aheadBehindLabel = entry.aheadBehind > 0
                   ? `+${entry.aheadBehind}`
                   : `${entry.aheadBehind}`;
                 const aheadBehindColor =
                   entry.aheadBehind > 0
-                    ? theme.palette[5] || '#008A00'
+                    ? theme.palette[5] || theme.palette[0]
                     : entry.aheadBehind < 0
-                    ? theme.palette[4] || '#FF3B30'
+                    ? theme.palette[4] || theme.palette[2]
                     : theme.axisLabelColor;
 
                 return (
                   <div key={entry.staff_id} className="px-3 py-2 flex items-center justify-between gap-2">
-                    <span className={`text-xs font-semibold truncate flex-1 ${
-                      theme.tooltipStyle === 'dark-pill' ? 'text-gray-100' : 'text-gray-800 dark:text-gray-200'
-                    }`}>
+                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate flex-1">
                       {entry.name}
                     </span>
                     <div className="flex items-center gap-3 shrink-0">
-                      <span
-                        className="text-xs font-bold"
-                        style={{ color: theme.palette[0] || '#001B47' }}
-                      >
+                      <span className="text-xs font-bold" style={{ color: theme.palette[0] }}>
                         {entry.cumulativeDelivered}
                       </span>
                       <span
@@ -525,23 +511,13 @@ export const RunRateTile: React.FC<RunRateTileProps> = ({
               })}
             </div>
 
-            <div className={`px-3 py-1.5 border-t ${
-              theme.tooltipStyle === 'dark-pill'
-                ? 'bg-gray-800 border-gray-700'
-                : 'bg-gray-50 dark:bg-gray-800/60 border-gray-100 dark:border-gray-700'
-            }`}>
+            <div className="bg-gray-50 dark:bg-gray-800/60 px-3 py-1.5 border-t border-gray-100 dark:border-gray-700">
               <span className="text-[10px] text-gray-400">Delivered · Ahead (+) / Behind (−) of run rate</span>
             </div>
           </div>
 
           <div className="flex justify-center">
-            <div
-              className={`w-3 h-3 rotate-45 -mt-1.5 ${
-                theme.tooltipStyle === 'dark-pill'
-                  ? 'bg-gray-900 border-r border-b border-gray-800'
-                  : 'bg-white dark:bg-gray-900 border-r border-b border-gray-200 dark:border-gray-700'
-              }`}
-            />
+            <div className="w-3 h-3 bg-white dark:bg-gray-900 border-r border-b border-gray-200 dark:border-gray-700 rotate-45 -mt-1.5" />
           </div>
         </div>
       )}
