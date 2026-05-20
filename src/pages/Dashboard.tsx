@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { TeamProgressTile } from "../components/TeamProgressTile";
 import { EmployeeProgressChart } from "../components/EmployeeProgressChart";
 import { RunRateTile } from "../components/RunRateTile";
@@ -13,16 +13,6 @@ import { useStaffPerformance } from "../hooks/useStaffPerformance";
 import { usePerformanceSummary } from "../hooks/usePerformanceSummary";
 import { supabase } from "../supabase/client";
 import { BAGEL_SERVICE_ID } from "../utils/bagelDays";
-
-const DAY_TRANSITION_DURATION_MS = 800;
-
-interface PlaybackControllerState {
-  currentDayIndex: number;
-  targetDayIndex: number;
-  isPlaying: boolean;
-  isPaused: boolean;
-  animationProgress: number;
-}
 
 const getRunRateStatusColor = (achievedPercent: number, elapsedWorkingDayPercent: number) => {
   if (elapsedWorkingDayPercent <= 0) {
@@ -98,96 +88,19 @@ export const Dashboard: React.FC = () => {
     ? Math.min(today.getDate(), daysInMonth)
     : daysInMonth;
 
-  const initialPlaybackDay = Math.max(1, maxActualDay);
+  const initialSelectedDay = Math.max(1, maxActualDay);
+  const [currentDayIndex, setCurrentDayIndex] = useState(initialSelectedDay);
 
-  const [playbackController, setPlaybackController] = useState<PlaybackControllerState>({
-    currentDayIndex: initialPlaybackDay,
-    targetDayIndex: initialPlaybackDay,
-    isPlaying: false,
-    isPaused: false,
-    animationProgress: initialPlaybackDay,
-  });
-
-  const rafRef = useRef<number | null>(null);
-  const sequenceRef = useRef(0);
+  useEffect(() => {
+    setCurrentDayIndex(initialSelectedDay);
+  }, [selectedMonth, selectedYear, selectedTeamId, initialSelectedDay]);
 
   const clampDay = (day: number) => Math.max(1, Math.min(maxActualDay, day));
 
-  const stopPlaybackLoop = () => {
-    if (rafRef.current !== null) {
-      window.cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-  };
-
-  const setIdleAtDay = (day: number) => {
-    const safeDay = clampDay(day);
-    setPlaybackController({
-      currentDayIndex: safeDay,
-      targetDayIndex: safeDay,
-      isPlaying: false,
-      isPaused: false,
-      animationProgress: safeDay,
-    });
-  };
-
-  useEffect(() => {
-    stopPlaybackLoop();
-    sequenceRef.current += 1;
-    setIdleAtDay(initialPlaybackDay);
-    return () => { stopPlaybackLoop(); };
-  }, [selectedMonth, selectedYear, selectedTeamId, initialPlaybackDay]);
-
-  const startPlaybackSequence = (startDay: number, targetDay: number) => {
-    stopPlaybackLoop();
-    sequenceRef.current += 1;
-    const localSequence = sequenceRef.current;
-    const safeStart = clampDay(startDay);
-    const safeTarget = clampDay(targetDay);
-
-    if (safeStart >= safeTarget) {
-      setIdleAtDay(safeTarget);
-      return;
-    }
-
-    const totalMs = (safeTarget - safeStart) * DAY_TRANSITION_DURATION_MS;
-    const startedAt = performance.now();
-
-    const tick = (timestamp: number) => {
-      if (localSequence !== sequenceRef.current) return;
-      const elapsed = timestamp - startedAt;
-      const linearProgress = Math.min(elapsed / totalMs, 1);
-      const animationProgress = safeStart + (safeTarget - safeStart) * linearProgress;
-      const currentDayIndex = Math.min(safeTarget, Math.floor(animationProgress));
-
-      setPlaybackController({
-        currentDayIndex,
-        targetDayIndex: safeTarget,
-        isPlaying: linearProgress < 1,
-        isPaused: false,
-        animationProgress,
-      });
-
-      if (linearProgress < 1) {
-        rafRef.current = window.requestAnimationFrame(tick);
-      } else {
-        setIdleAtDay(safeTarget);
-      }
-    };
-
-    rafRef.current = window.requestAnimationFrame(tick);
-  };
-
   const filteredActivities = useMemo(() => {
-    const safeProgress = Math.max(1, Math.min(daysInMonth, playbackController.animationProgress));
-    return dailyActivities
-      .map((activity) => {
-        const visibleFraction = Math.max(0, Math.min(1, safeProgress - (activity.day - 1)));
-        if (visibleFraction <= 0) return null;
-        return { ...activity, delivered_count: activity.delivered_count * visibleFraction };
-      })
-      .filter((a): a is NonNullable<typeof a> => a !== null);
-  }, [dailyActivities, daysInMonth, playbackController.animationProgress]);
+    const selectedDay = clampDay(currentDayIndex);
+    return dailyActivities.filter((activity) => activity.day <= selectedDay);
+  }, [dailyActivities, currentDayIndex, maxActualDay]);
 
   const historicalStaffPerformance = useMemo(() => {
     const activityTotalsByStaff = new Map<number, number>();
@@ -235,10 +148,14 @@ export const Dashboard: React.FC = () => {
   }, [filteredActivities, services, staffPerformance]);
 
   const workingDaysElapsedToPlayback = useMemo(() => {
-    const safeProgress = Math.max(1, Math.min(daysInMonth, playbackController.animationProgress));
+    const selectedDay = clampDay(currentDayIndex);
     let count = 0;
 
     for (let day = 1; day <= daysInMonth; day++) {
+      if (day > selectedDay) {
+        break;
+      }
+
       const dateStr = `${yearForMonth}-${String(selectedMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       const currentDate = new Date(yearForMonth, selectedMonth - 1, day);
       const dayOfWeek = currentDate.getDay();
@@ -246,19 +163,18 @@ export const Dashboard: React.FC = () => {
       const isHoliday = bankHolidayDates.has(dateStr);
 
       if (isWeekend || isHoliday) continue;
-
-      const visibleFraction = Math.max(0, Math.min(1, safeProgress - (day - 1)));
-      count += visibleFraction;
+      count += 1;
     }
 
     return Math.min(count, teamWorkingDays);
   }, [
-    playbackController.animationProgress,
+    currentDayIndex,
     selectedMonth,
     yearForMonth,
     daysInMonth,
     teamWorkingDays,
     bankHolidayDates,
+    maxActualDay,
   ]);
 
   const isIndividualDashboard = !isTeamView && !!selectedAccountant;
@@ -295,42 +211,7 @@ export const Dashboard: React.FC = () => {
   const variance = performanceSummary.variance;
 
   const handleDaySelect = (day: number) => {
-    stopPlaybackLoop();
-    sequenceRef.current += 1;
-    setIdleAtDay(day);
-  };
-
-  const handlePlayPause = () => {
-    if (playbackController.isPlaying) {
-      stopPlaybackLoop();
-      sequenceRef.current += 1;
-      const pausedDay = clampDay(playbackController.animationProgress);
-      setPlaybackController({
-        currentDayIndex: pausedDay,
-        targetDayIndex: maxActualDay,
-        isPlaying: false,
-        isPaused: true,
-        animationProgress: pausedDay,
-      });
-      return;
-    }
-
-    const isResume = playbackController.isPaused;
-    const startDay = isResume
-      ? clampDay(playbackController.animationProgress)
-      : clampDay(
-          playbackController.animationProgress >= maxActualDay
-            ? 1
-            : playbackController.animationProgress
-        );
-
-    startPlaybackSequence(startDay, maxActualDay);
-  };
-
-  const handleReset = () => {
-    stopPlaybackLoop();
-    sequenceRef.current += 1;
-    setIdleAtDay(1);
+    setCurrentDayIndex(clampDay(day));
   };
 
   const deliveredPercent =
@@ -350,7 +231,7 @@ export const Dashboard: React.FC = () => {
 
   const selectedDayIndicator = Math.max(
     1,
-    Math.min(maxActualDay, Math.round(playbackController.animationProgress))
+    Math.min(maxActualDay, currentDayIndex)
   );
 
   const runRateActivities = useMemo(() => {
@@ -404,13 +285,7 @@ export const Dashboard: React.FC = () => {
         <DashboardPlaybackControls
           daysInMonth={daysInMonth}
           selectedDay={selectedDayIndicator}
-          isPlaying={playbackController.isPlaying}
-          isPaused={playbackController.isPaused}
-          playbackProgress={playbackController.animationProgress}
-          maxPlayableDay={maxActualDay}
           onDaySelect={handleDaySelect}
-          onPlayPause={handlePlayPause}
-          onReset={handleReset}
           month={selectedMonth}
           year={yearForMonth}
         />
@@ -468,7 +343,7 @@ export const Dashboard: React.FC = () => {
             financialYear={financialYear}
             selectedTeamId={selectedTeamId}
             teams={teams}
-            playbackDay={playbackController.animationProgress}
+            playbackDay={selectedDayIndicator}
           />
         </div>
         <div>
@@ -480,7 +355,7 @@ export const Dashboard: React.FC = () => {
             financialYear={financialYear}
             target={performanceSummary.target}
             viewMode={viewMode}
-            playbackDay={playbackController.animationProgress}
+            playbackDay={selectedDayIndicator}
             totalDelivered={performanceSummary.delivered}
             staffPerformance={runRateStaffList}
           />
