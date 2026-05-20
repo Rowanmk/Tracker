@@ -4,6 +4,7 @@ import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
 import { generateBagelDays, BAGEL_SERVICE_ID } from '../utils/bagelDays';
 import { isAccountantStaff } from '../utils/staff';
+import { useChartTheme } from '../context/ChartThemeContext';
 
 interface MonthlyData {
   year: number;
@@ -123,6 +124,7 @@ const buildPerStaffBagelMonthTotals = (
 };
 
 export const TeamView: React.FC = () => {
+  const { theme } = useChartTheme();
   const { allStaff, selectedTeamId, loading: authLoading } = useAuth();
   const { services, loading: servicesLoading } = useServices();
 
@@ -516,7 +518,6 @@ export const TeamView: React.FC = () => {
         setHeatmapData(dailyTotals);
         setHeatmapMonths(heatmapMonthsList);
       } catch (err) {
-        console.error('TeamView fetch failed', err);
         setError('Failed to load Stats and Figures');
       } finally {
         setLoading(false);
@@ -524,7 +525,7 @@ export const TeamView: React.FC = () => {
     };
 
     void fetchStatsData();
-  }, [allStaff, services, selectedTeamId, authLoading, servicesLoading]);
+  }, [allStaff, services, selectedTeamId, authLoading, servicesLoading, activeServiceId]);
 
   useEffect(() => {
     if (statsData.length > 0) {
@@ -548,7 +549,7 @@ export const TeamView: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" style={{ fontFamily: theme.fontFamily }}>
       <div className="page-header">
         <h2 className="page-title">Stats and Figures</h2>
         <p className="page-subtitle">12-month performance actuals and rolling averages</p>
@@ -561,7 +562,7 @@ export const TeamView: React.FC = () => {
       ) : (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {statsData.map((stat) => {
+            {statsData.map((stat, index) => {
               const latestMonth = stat.data[11];
               const isActive = activeServiceId === stat.service.service_id;
 
@@ -569,20 +570,28 @@ export const TeamView: React.FC = () => {
                 <button
                   key={stat.service.service_id}
                   onClick={() => setActiveServiceId(stat.service.service_id)}
-                  className={`p-5 rounded-xl border text-left transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#001B47] ${
+                  className={`p-5 rounded-xl border text-left transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                     isActive
-                      ? 'bg-[#001B47] border-[#001B47] shadow-lg transform scale-[1.02] z-10'
-                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-[#001B47] hover:shadow-md'
+                      ? 'shadow-lg transform scale-[1.02] z-10 text-white'
+                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:shadow-md'
                   }`}
+                  style={
+                    isActive
+                      ? { backgroundColor: theme.palette[index % theme.palette.length], borderColor: theme.palette[index % theme.palette.length] }
+                      : { borderColor: '#E5E7EB' }
+                  }
                 >
                   <h3 className={`text-lg font-bold mb-2 truncate ${isActive ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
                     {stat.service.service_name}
                   </h3>
                   <div className="flex items-end gap-2">
-                    <span className={`text-3xl font-extrabold ${isActive ? 'text-[#FF8A2A]' : 'text-[#001B47] dark:text-blue-400'}`}>
+                    <span
+                      className={`text-3xl font-extrabold ${isActive ? 'text-white' : ''}`}
+                      style={isActive ? undefined : { color: theme.palette[index % theme.palette.length] }}
+                    >
                       {latestMonth.rollingAverage.toFixed(1)}{stat.isPercentage ? '%' : ''}
                     </span>
-                    <span className={`text-xs font-semibold uppercase tracking-wider mb-1 ${isActive ? 'text-gray-300' : 'text-gray-500 dark:text-gray-400'}`}>
+                    <span className={`text-xs font-semibold uppercase tracking-wider mb-1 ${isActive ? 'text-white/80' : 'text-gray-500 dark:text-gray-400'}`}>
                       12m Avg
                     </span>
                   </div>
@@ -617,7 +626,7 @@ export const TeamView: React.FC = () => {
                     <div className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider">
                       Current Month Actual
                     </div>
-                    <div className="text-2xl font-bold text-[#001B47] dark:text-blue-400">
+                    <div className="text-2xl font-bold" style={{ color: theme.palette[0] || '#001B47' }}>
                       {activeStat.data[11].actual.toFixed(1).replace(/\.0$/, '')}{activeStat.isPercentage ? '%' : ''}
                     </div>
                   </div>
@@ -672,6 +681,7 @@ const DeliveryHeatmap = ({
   months: Array<{ year: number; month: number }>;
   services: Array<{ service_id: number; service_name: string }>;
 }) => {
+  const { theme } = useChartTheme();
   const [selectedServiceId, setSelectedServiceId] = useState<number | 'all'>('all');
 
   const maxVal = useMemo(() => {
@@ -692,10 +702,21 @@ const DeliveryHeatmap = ({
   const getColorClass = (val: number, max: number) => {
     if (val === 0) return 'bg-transparent text-gray-400 dark:text-gray-500';
     const ratio = val / max;
-    if (ratio <= 0.25) return 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200';
-    if (ratio <= 0.5) return 'bg-blue-300 dark:bg-blue-700/60 text-blue-900 dark:text-blue-100';
-    if (ratio <= 0.75) return 'bg-blue-500 dark:bg-blue-600/80 text-white';
-    return 'bg-blue-700 dark:bg-blue-500 text-white';
+    if (ratio <= 0.25) return '';
+    if (ratio <= 0.5) return '';
+    if (ratio <= 0.75) return '';
+    return '';
+  };
+
+  const getCellStyle = (val: number, max: number) => {
+    if (val === 0) {
+      return { backgroundColor: 'transparent', color: theme.axisLabelColor };
+    }
+    const ratio = val / max;
+    if (ratio <= 0.25) return { backgroundColor: `${theme.palette[1] || '#0060B8'}22`, color: theme.palette[1] || '#0060B8' };
+    if (ratio <= 0.5) return { backgroundColor: `${theme.palette[1] || '#0060B8'}55`, color: '#0F172A' };
+    if (ratio <= 0.75) return { backgroundColor: theme.palette[1] || '#0060B8', color: '#FFFFFF' };
+    return { backgroundColor: theme.palette[0] || '#001B47', color: '#FFFFFF' };
   };
 
   const getMonthName = (monthNum: number) => {
@@ -719,21 +740,23 @@ const DeliveryHeatmap = ({
           onClick={() => setSelectedServiceId('all')}
           className={`px-4 py-2 rounded-md text-sm font-bold transition-colors ${
             selectedServiceId === 'all'
-              ? 'bg-[#001B47] text-white'
+              ? 'text-white'
               : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
           }`}
+          style={selectedServiceId === 'all' ? { backgroundColor: theme.palette[0] || '#001B47' } : undefined}
         >
           All
         </button>
-        {services.map(s => (
+        {services.map((s, index) => (
           <button
             key={s.service_id}
             onClick={() => setSelectedServiceId(s.service_id)}
             className={`px-4 py-2 rounded-md text-sm font-bold transition-colors ${
               selectedServiceId === s.service_id
-                ? 'bg-[#001B47] text-white'
+                ? 'text-white'
                 : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
             }`}
+            style={selectedServiceId === s.service_id ? { backgroundColor: theme.palette[index % theme.palette.length] } : undefined}
           >
             {s.service_name}
           </button>
@@ -773,7 +796,12 @@ const DeliveryHeatmap = ({
                   const colorClass = getColorClass(val, maxVal);
 
                   return (
-                    <td key={dateStr} className={`border border-gray-200 dark:border-gray-700 p-1 text-center font-medium transition-colors ${colorClass}`} title={`${dateStr}: ${val} items`}>
+                    <td
+                      key={dateStr}
+                      className={`border border-gray-200 dark:border-gray-700 p-1 text-center font-medium transition-colors ${colorClass}`}
+                      style={getCellStyle(val, maxVal)}
+                      title={`${dateStr}: ${val} items`}
+                    >
                       {val > 0 ? val : ''}
                     </td>
                   );
@@ -788,6 +816,7 @@ const DeliveryHeatmap = ({
 };
 
 const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPercentage?: boolean }) => {
+  const { theme } = useChartTheme();
   const VIEWBOX_WIDTH = 800;
   const VIEWBOX_HEIGHT = 320;
   const PADDING_TOP = 40;
@@ -804,22 +833,23 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPerc
   const getY = (val: number) => PADDING_TOP + CHART_HEIGHT - (val / maxY) * CHART_HEIGHT;
 
   const barWidth = (CHART_WIDTH / 12) * 0.5;
-
   const linePoints = data.map((d, i) => `${getX(i)},${getY(d.rollingAverage)}`).join(' ');
+  const showGrid = theme.gridStyle !== 'none';
+  const gridDash = theme.gridStyle === 'dashed' ? '4 4' : undefined;
 
   const formatValue = (value: number, asPercentage?: boolean) => {
     return `${Math.round(value)}${asPercentage ? '%' : ''}`;
   };
 
   return (
-    <svg viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`} className="w-full h-full min-h-[280px]">
+    <svg viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`} className="w-full h-full min-h-[280px]" style={{ fontFamily: theme.fontFamily }}>
       <g transform={`translate(${PADDING_LEFT}, 15)`}>
-        <rect x="0" y="0" width="12" height="12" fill="#001B47" rx="2" className="dark:fill-blue-500" />
-        <text x="18" y="10" className="text-xs fill-gray-600 dark:fill-gray-300 font-medium">Actual Delivered</text>
+        <rect x="0" y="0" width="12" height="12" fill={theme.palette[0] || '#001B47'} rx={theme.barRadius} />
+        <text x="18" y="10" style={{ fill: theme.axisLabelColor }} className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}>Actual Delivered</text>
 
-        <line x1="130" y1="6" x2="150" y2="6" stroke="#FF8A2A" strokeWidth="3" />
-        <circle cx="140" cy="6" r="4" fill="#FF8A2A" />
-        <text x="158" y="10" className="text-xs fill-gray-600 dark:fill-gray-300 font-medium">12-Month Rolling Average</text>
+        <line x1="130" y1="6" x2="150" y2="6" stroke={theme.palette[3] || '#FF8A2A'} strokeWidth="3" />
+        <circle cx="140" cy="6" r="4" fill={theme.palette[3] || '#FF8A2A'} />
+        <text x="158" y="10" style={{ fill: theme.axisLabelColor }} className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}>12-Month Rolling Average</text>
       </g>
 
       {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
@@ -827,18 +857,19 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPerc
         const val = Math.round(ratio * maxY);
         return (
           <g key={ratio}>
-            <text x={PADDING_LEFT - 10} y={y + 4} textAnchor="end" className="text-[10px] fill-gray-500 dark:fill-gray-400">
+            <text x={PADDING_LEFT - 10} y={y + 4} textAnchor="end" style={{ fill: theme.axisLabelColor }} className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}>
               {val}{isPercentage ? '%' : ''}
             </text>
-            <line
-              x1={PADDING_LEFT}
-              y1={y}
-              x2={VIEWBOX_WIDTH - PADDING_RIGHT}
-              y2={y}
-              stroke="#E5E7EB"
-              className="dark:stroke-gray-700"
-              strokeDasharray={ratio === 0 ? '' : '4 4'}
-            />
+            {showGrid && (
+              <line
+                x1={PADDING_LEFT}
+                y1={y}
+                x2={VIEWBOX_WIDTH - PADDING_RIGHT}
+                y2={y}
+                stroke={theme.gridColor}
+                strokeDasharray={ratio === 0 ? '' : gridDash}
+              />
+            )}
           </g>
         );
       })}
@@ -856,9 +887,8 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPerc
               y={y}
               width={barWidth}
               height={height}
-              fill="#001B47"
-              rx={4}
-              className="transition-all duration-500 ease-out dark:fill-blue-500"
+              fill={theme.palette[i % theme.palette.length]}
+              rx={theme.barRadius}
             >
               <title>Actual: {d.actual}{isPercentage ? '%' : ''}</title>
             </rect>
@@ -866,7 +896,8 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPerc
               x={x}
               y={valueLabelY}
               textAnchor="middle"
-              className="text-[10px] font-bold fill-gray-700 dark:fill-gray-200"
+              style={{ fill: theme.axisLabelColor }}
+              className={`${theme.axisLabelSize} font-bold`}
             >
               {formatValue(d.actual, isPercentage)}
             </text>
@@ -874,7 +905,8 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPerc
               x={x}
               y={VIEWBOX_HEIGHT - 15}
               textAnchor="middle"
-              className="text-[10px] font-medium fill-gray-600 dark:fill-gray-400"
+              style={{ fill: theme.axisLabelColor }}
+              className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
             >
               {new Date(d.year, d.month - 1).toLocaleString('en-GB', { month: 'short', year: '2-digit' })}
             </text>
@@ -885,7 +917,7 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPerc
       <polyline
         points={linePoints}
         fill="none"
-        stroke="#FF8A2A"
+        stroke={theme.palette[3] || '#FF8A2A'}
         strokeWidth="3"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -903,7 +935,8 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPerc
               x={pointX}
               y={labelY}
               textAnchor="middle"
-              className="text-[10px] font-bold fill-[#FF8A2A]"
+              fill={theme.palette[3] || '#FF8A2A'}
+              className={`${theme.axisLabelSize} font-bold`}
             >
               {formatValue(d.rollingAverage, isPercentage)}
             </text>
@@ -911,10 +944,10 @@ const ServiceComboChart = ({ data, isPercentage }: { data: MonthlyData[]; isPerc
               cx={pointX}
               cy={pointY}
               r={4}
-              fill="#FF8A2A"
+              fill={theme.palette[3] || '#FF8A2A'}
               stroke="#fff"
               strokeWidth="2"
-              className="dark:stroke-gray-800 transition-all duration-500 ease-out"
+              className="transition-all duration-500 ease-out"
             >
               <title>Rolling Avg: {d.rollingAverage.toFixed(1)}{isPercentage ? '%' : ''}</title>
             </circle>
@@ -936,6 +969,7 @@ const AccountantRankingChart = ({
   selectedStaffId: number | null;
   isTeamViewMode: boolean;
 }) => {
+  const { theme } = useChartTheme();
   const VIEWBOX_WIDTH = 560;
   const VIEWBOX_HEIGHT = 420;
   const PADDING_TOP = 20;
@@ -949,14 +983,16 @@ const AccountantRankingChart = ({
   const maxValue = Math.max(...data.map((item) => item.rollingAverage), 1) * 1.1;
   const rowHeight = CHART_HEIGHT / Math.max(data.length, 1);
   const barHeight = Math.min(26, rowHeight * 0.62);
+  const showGrid = theme.gridStyle !== 'none';
+  const gridDash = theme.gridStyle === 'dashed' ? '4 4' : undefined;
 
-  const getBarColor = (row: AccountantRankingRow) => {
+  const getBarColor = (row: AccountantRankingRow, index: number) => {
     if (isTeamViewMode) {
-      return '#001B47';
+      return theme.palette[index % theme.palette.length];
     }
 
     if (selectedStaffId && row.staff_id === selectedStaffId) {
-      return '#FF8A2A';
+      return theme.palette[3] || '#FF8A2A';
     }
 
     return '#D1D5DB';
@@ -964,40 +1000,42 @@ const AccountantRankingChart = ({
 
   const getLabelColor = (row: AccountantRankingRow) => {
     if (isTeamViewMode) {
-      return 'fill-gray-700 dark:fill-gray-200';
+      return theme.axisLabelColor;
     }
 
     if (selectedStaffId && row.staff_id === selectedStaffId) {
-      return 'fill-[#001B47] dark:fill-white';
+      return theme.axisLabelColor;
     }
 
-    return 'fill-gray-400 dark:fill-gray-500';
+    return '#9CA3AF';
   };
 
   const formatValue = (value: number) => `${value.toFixed(1)}${isPercentage ? '%' : ''}`;
 
   return (
-    <svg viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`} className="w-full h-full min-h-[320px]">
+    <svg viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`} className="w-full h-full min-h-[320px]" style={{ fontFamily: theme.fontFamily }}>
       {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
         const x = PADDING_LEFT + ratio * CHART_WIDTH;
         const value = maxValue * ratio;
 
         return (
           <g key={ratio}>
-            <line
-              x1={x}
-              y1={PADDING_TOP}
-              x2={x}
-              y2={VIEWBOX_HEIGHT - PADDING_BOTTOM}
-              stroke="#E5E7EB"
-              className="dark:stroke-gray-700"
-              strokeDasharray={ratio === 0 ? '' : '4 4'}
-            />
+            {showGrid && (
+              <line
+                x1={x}
+                y1={PADDING_TOP}
+                x2={x}
+                y2={VIEWBOX_HEIGHT - PADDING_BOTTOM}
+                stroke={theme.gridColor}
+                strokeDasharray={ratio === 0 ? '' : gridDash}
+              />
+            )}
             <text
               x={x}
               y={VIEWBOX_HEIGHT - 8}
               textAnchor="middle"
-              className="text-[10px] fill-gray-500 dark:fill-gray-400"
+              style={{ fill: theme.axisLabelColor }}
+              className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
             >
               {formatValue(value)}
             </text>
@@ -1017,7 +1055,8 @@ const AccountantRankingChart = ({
               x={PADDING_LEFT - 10}
               y={y + 4}
               textAnchor="end"
-              className={`text-[12px] font-medium ${getLabelColor(row)}`}
+              style={{ fill: getLabelColor(row) }}
+              className={`${theme.axisLabelSize} ${theme.axisLabelWeight}`}
             >
               {row.name}
             </text>
@@ -1027,8 +1066,8 @@ const AccountantRankingChart = ({
               y={y - barHeight / 2}
               width={barWidth}
               height={barHeight}
-              rx={4}
-              fill={getBarColor(row)}
+              rx={theme.barRadius}
+              fill={getBarColor(row, index)}
               opacity={showStrongEmphasis ? 1 : 0.9}
             />
 
@@ -1036,7 +1075,8 @@ const AccountantRankingChart = ({
               x={Math.min(PADDING_LEFT + barWidth + 8, VIEWBOX_WIDTH - PADDING_RIGHT + 4)}
               y={y + 4}
               textAnchor="start"
-              className={`text-[12px] font-bold ${showStrongEmphasis ? 'fill-gray-800 dark:fill-gray-100' : 'fill-gray-500 dark:fill-gray-400'}`}
+              style={{ fill: showStrongEmphasis ? theme.axisLabelColor : '#9CA3AF' }}
+              className={`${theme.axisLabelSize} font-bold`}
             >
               {formatValue(row.rollingAverage)}
             </text>

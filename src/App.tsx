@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { DateProvider } from './context/DateContext';
+import { ChartThemeProvider } from './context/ChartThemeContext';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
@@ -154,9 +155,11 @@ const App: React.FC = () => {
       <ThemeProvider>
         <Router>
           <AuthProvider>
-            <DateProvider>
-              <AppRoutes />
-            </DateProvider>
+            <ChartThemeProvider>
+              <DateProvider>
+                <AppRoutes />
+              </DateProvider>
+            </ChartThemeProvider>
           </AuthProvider>
         </Router>
       </ThemeProvider>

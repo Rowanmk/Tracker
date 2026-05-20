@@ -3,6 +3,7 @@ import { loadTargets } from '../utils/loadTargets';
 import { useAuth } from '../context/AuthContext';
 import type { FinancialYear } from '../utils/financialYear';
 import { calculateExpectedRaw, calculateRunRateDelta } from '../utils/runRate';
+import { useChartTheme } from '../context/ChartThemeContext';
 
 interface TeamProgressTileProps {
   services: Array<{
@@ -53,12 +54,12 @@ interface TooltipState {
   rowId: string;
 }
 
-const getRunRateBarColor = (achievedPercent: number, elapsedWorkingDayPercent: number) => {
-  if (elapsedWorkingDayPercent <= 0) return '#008A00';
+const getRunRateBarColor = (achievedPercent: number, elapsedWorkingDayPercent: number, palette: string[]) => {
+  if (elapsedWorkingDayPercent <= 0) return palette[5] || '#008A00';
   const paceRatio = (achievedPercent / elapsedWorkingDayPercent) * 100;
-  if (paceRatio >= 100) return '#008A00';
-  if (paceRatio >= 80) return '#FF8A2A';
-  return '#FF3B30';
+  if (paceRatio >= 100) return palette[5] || '#008A00';
+  if (paceRatio >= 80) return palette[3] || '#FF8A2A';
+  return palette[4] || '#FF3B30';
 };
 
 export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
@@ -69,6 +70,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
   month,
   financialYear,
 }) => {
+  const { theme } = useChartTheme();
   const { selectedTeamId } = useAuth();
   const [selectedTarget, setSelectedTarget] = useState(0);
   const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
@@ -113,9 +115,6 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
         setServiceTargets(nextServiceTargets);
         setPerStaffServiceTargets(nextPerStaffServiceTargets);
       } catch (err) {
-        // FIX 6: Log caught errors with file context.
-        // PRE-FIX-6: catch {} with no parameter and no logging.
-        console.error('[TeamProgressTile] fetch selected targets:', err);
         setSelectedTarget(0);
         setServiceTargets({});
         setPerStaffServiceTargets({});
@@ -143,7 +142,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
   );
 
   const progressRows = useMemo<ProgressRow[]>(() => {
-    const baseRows = services.map((service) => {
+    const baseRows = services.map((service, serviceIndex) => {
       const delivered = staffPerformance.reduce(
         (sum, staff) => sum + (staff.services[service.service_name] || 0),
         0
@@ -173,7 +172,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
         achievedPercent,
         expectedPercent,
         difference,
-        barColor: getRunRateBarColor(achievedPercent, todayExpectedPercentage),
+        barColor: getRunRateBarColor(achievedPercent, todayExpectedPercentage, theme.palette),
         expectedSoFar,
         accountantBreakdown,
       };
@@ -206,7 +205,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
         achievedPercent: totalAchievedPercent,
         expectedPercent: totalExpectedPercent,
         difference: totalDifference,
-        barColor: getRunRateBarColor(totalAchievedPercent, todayExpectedPercentage),
+        barColor: getRunRateBarColor(totalAchievedPercent, todayExpectedPercentage, theme.palette),
         expectedSoFar: totalExpectedSoFar,
         accountantBreakdown: totalAccountantBreakdown,
       },
@@ -220,6 +219,7 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     workingDaysUpToToday,
     selectedTarget,
     todayExpectedPercentage,
+    theme.palette,
   ]);
 
   const activeRow = tooltip.visible ? progressRows.find((r) => r.id === tooltip.rowId) : null;
@@ -255,13 +255,14 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     <div
       ref={containerRef}
       className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 h-[418px] flex flex-col tile-brand transition-all duration-300 ease-in-out relative"
+      style={{ fontFamily: theme.fontFamily }}
     >
       <div className="tile-header px-4 py-1.5">
         Accountant Progress
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {progressRows.map((row) => {
+        {progressRows.map((row, rowIndex) => {
           const formattedDifference =
             row.difference > 0 ? `+${row.difference}` : `${row.difference}`;
 
@@ -287,17 +288,18 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
                     onMouseLeave={handleBarMouseLeave}
                   >
                     <div
-                      className="h-7 rounded-full shadow-sm transition-[width] duration-[800ms] ease-in-out"
+                      className="h-7 shadow-sm transition-[width] duration-[800ms] ease-in-out"
                       style={{
                         width: `${Math.min(row.achievedPercent, 100)}%`,
-                        backgroundColor: row.barColor,
+                        backgroundColor: row.barColor || theme.palette[rowIndex % theme.palette.length],
+                        borderRadius: `${theme.barRadius}px`,
                       }}
                       title={`${row.label}: ${Math.round(row.delivered * 10) / 10}/${Math.round(row.target * 10) / 10} (${Math.round(row.achievedPercent)}%)`}
                     />
                     {row.target > 0 && (
                       <div
-                        className="absolute top-0 h-7 w-0.5 bg-[#001B47] transition-[left] duration-[800ms] ease-in-out"
-                        style={{ left: `${row.expectedPercent}%` }}
+                        className="absolute top-0 h-7 w-0.5 transition-[left] duration-[800ms] ease-in-out"
+                        style={{ left: `${row.expectedPercent}%`, backgroundColor: theme.palette[0] || '#001B47' }}
                         title={`Expected by today: ${Math.round(row.expectedSoFar * 10) / 10}`}
                       />
                     )}
@@ -309,10 +311,10 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
                     style={{
                       color:
                         row.difference > 0
-                          ? '#008A00'
+                          ? theme.palette[5] || '#008A00'
                           : row.difference < 0
-                          ? '#FF3B30'
-                          : '#6B7280',
+                          ? theme.palette[4] || '#FF3B30'
+                          : theme.axisLabelColor,
                     }}
                   >
                     {formattedDifference}
@@ -324,7 +326,6 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
         })}
       </div>
 
-      {/* Tooltip */}
       {tooltip.visible && activeRow && activeRow.accountantBreakdown.length > 0 && (
         <div
           className="absolute z-50 pointer-events-none"
@@ -335,37 +336,52 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
           }}
         >
           <div
-            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden"
-            style={{ minWidth: '220px', maxWidth: '280px' }}
+            className={`overflow-hidden ${theme.tooltipStyle === 'dark-pill'
+              ? 'bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl'
+              : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl'
+            }`}
+            style={{ minWidth: '220px', maxWidth: '280px', fontFamily: theme.fontFamily }}
           >
-            {/* Header */}
-            <div className="bg-[#001B47] px-3 py-2">
+            <div
+              className="px-3 py-2"
+              style={{ backgroundColor: theme.palette[0] || '#001B47' }}
+            >
               <span className="text-white text-xs font-bold uppercase tracking-wide">
                 {activeRow.label} — Accountant Split
               </span>
             </div>
 
-            {/* Rows */}
-            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            <div className={theme.tooltipStyle === 'dark-pill' ? 'divide-y divide-gray-800' : 'divide-y divide-gray-100 dark:divide-gray-800'}>
               {activeRow.accountantBreakdown.map((entry) => {
                 const pct = entry.target > 0 ? Math.round((entry.delivered / entry.target) * 100) : 0;
                 return (
                   <div key={entry.staff_id} className="px-3 py-2 flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate flex-1">
+                    <span className={`text-xs font-semibold truncate flex-1 ${
+                      theme.tooltipStyle === 'dark-pill' ? 'text-gray-100' : 'text-gray-800 dark:text-gray-200'
+                    }`}>
                       {entry.name}
                     </span>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-xs font-bold text-[#001B47] dark:text-blue-300">
+                      <span
+                        className="text-xs font-bold"
+                        style={{ color: theme.palette[0] || '#001B47' }}
+                      >
                         {entry.delivered}
                       </span>
                       <span className="text-xs text-gray-400">/</span>
-                      <span className="text-xs text-gray-600 dark:text-gray-400">
+                      <span className={`text-xs ${
+                        theme.tooltipStyle === 'dark-pill' ? 'text-gray-300' : 'text-gray-600 dark:text-gray-400'
+                      }`}>
                         {entry.target}
                       </span>
                       <span
                         className="text-[10px] font-bold ml-1"
                         style={{
-                          color: pct >= 90 ? '#008A00' : pct >= 75 ? '#FF8A2A' : '#FF3B30',
+                          color: pct >= 90
+                            ? theme.palette[5] || '#008A00'
+                            : pct >= 75
+                            ? theme.palette[3] || '#FF8A2A'
+                            : theme.palette[4] || '#FF3B30',
                         }}
                       >
                         {pct}%
@@ -376,16 +392,22 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
               })}
             </div>
 
-            {/* Footer hint */}
-            <div className="bg-gray-50 dark:bg-gray-800/60 px-3 py-1.5 border-t border-gray-100 dark:border-gray-700">
+            <div className={`px-3 py-1.5 border-t ${
+              theme.tooltipStyle === 'dark-pill'
+                ? 'bg-gray-800 border-gray-700'
+                : 'bg-gray-50 dark:bg-gray-800/60 border-gray-100 dark:border-gray-700'
+            }`}>
               <span className="text-[10px] text-gray-400">Delivered / Target</span>
             </div>
           </div>
 
-          {/* Arrow */}
           <div className="flex justify-center">
             <div
-              className="w-3 h-3 bg-white dark:bg-gray-900 border-r border-b border-gray-200 dark:border-gray-700 rotate-45 -mt-1.5"
+              className={`w-3 h-3 rotate-45 -mt-1.5 ${
+                theme.tooltipStyle === 'dark-pill'
+                  ? 'bg-gray-900 border-r border-b border-gray-800'
+                  : 'bg-white dark:bg-gray-900 border-r border-b border-gray-200 dark:border-gray-700'
+              }`}
             />
           </div>
         </div>

@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDate } from '../context/DateContext';
+import { useChartTheme } from '../context/ChartThemeContext';
 import { CalendarMonthYearSelector } from '../components/CalendarMonthYearSelector';
 import { NotificationsSettings } from '../components/NotificationsSettings';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
 import { logStaffBatchChange, createAuditLog } from '../utils/auditLog';
+import type { ChartTheme } from '../utils/chartThemes';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
 type Team = Database['public']['Tables']['teams']['Row'];
@@ -42,12 +44,167 @@ const deriveStaffCategories = (staffMember: Staff): StaffWithDerivedCategories =
   workCategory: deriveWorkCategory(staffMember),
 });
 
+const ThemePreviewCard: React.FC<{
+  previewTheme: ChartTheme;
+  selected: boolean;
+  onSelect: () => void;
+}> = ({ previewTheme, selected, onSelect }) => {
+  const previewBars = [
+    [12, 8, 6],
+    [10, 14, 7],
+    [15, 9, 11],
+  ];
+  const donutValues = [38, 34, 28];
+  const maxBarStack = Math.max(...previewBars.map((bar) => bar.reduce((sum, value) => sum + value, 0)), 1);
+  const showGrid = previewTheme.gridStyle !== 'none';
+  const gridDash = previewTheme.gridStyle === 'dashed' ? '4 3' : undefined;
+  const strokeLineCap = previewTheme.tooltipStyle === 'dark-pill' ? 'round' : 'butt';
+  const size = 72;
+  const strokeWidth = 14;
+  const radius = (size - strokeWidth) / 2;
+  const center = size / 2;
+  let currentAngle = 0;
+
+  const polarToCartesian = (cx: number, cy: number, r: number, angleDeg: number) => {
+    const angleRad = ((angleDeg - 90) * Math.PI) / 180.0;
+    return {
+      x: cx + r * Math.cos(angleRad),
+      y: cy + r * Math.sin(angleRad),
+    };
+  };
+
+  const describeArc = (cx: number, cy: number, r: number, startAngle: number, endAngle: number) => {
+    const start = polarToCartesian(cx, cy, r, endAngle);
+    const end = polarToCartesian(cx, cy, r, startAngle);
+    const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
+    return [`M`, start.x, start.y, `A`, r, r, 0, largeArcFlag, 0, end.x, end.y].join(' ');
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`w-full text-left rounded-xl border p-4 transition-all duration-200 ${
+        selected
+          ? 'border-[#001B47] ring-2 ring-[#001B47]/15 shadow-md'
+          : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h4 className="text-sm font-bold text-gray-900">{previewTheme.name}</h4>
+          <p className="mt-1 text-xs text-gray-500 leading-5">{previewTheme.description}</p>
+        </div>
+        <div
+          className={`w-5 h-5 shrink-0 rounded-full border flex items-center justify-center ${
+            selected ? 'border-[#001B47] bg-[#001B47]' : 'border-gray-300 bg-white'
+          }`}
+        >
+          {selected ? <span className="text-white text-[11px] font-bold">✓</span> : null}
+        </div>
+      </div>
+
+      <div
+        className="mt-4 rounded-lg border border-gray-100 bg-gray-50/70 p-3"
+        style={{ fontFamily: previewTheme.fontFamily }}
+      >
+        <div className="grid grid-cols-[1.3fr_0.9fr] gap-3 items-center">
+          <svg viewBox="0 0 140 88" className="w-full h-[88px] overflow-visible">
+            {showGrid &&
+              [0, 1, 2].map((index) => (
+                <line
+                  key={index}
+                  x1="8"
+                  y1={68 - index * 18}
+                  x2="132"
+                  y2={68 - index * 18}
+                  stroke={previewTheme.gridColor}
+                  strokeDasharray={gridDash}
+                />
+              ))}
+            <line x1="8" y1="68" x2="132" y2="68" stroke={previewTheme.axisLabelColor} />
+            {previewBars.map((bar, barIndex) => {
+              const x = 18 + barIndex * 38;
+              let currentY = 68;
+              return (
+                <g key={barIndex}>
+                  {bar.map((value, stackIndex) => {
+                    const height = (value / maxBarStack) * 46;
+                    currentY -= height;
+                    return (
+                      <rect
+                        key={stackIndex}
+                        x={x}
+                        y={currentY}
+                        width="20"
+                        height={height}
+                        rx={previewTheme.barRadius}
+                        fill={previewTheme.palette[stackIndex % previewTheme.palette.length]}
+                      />
+                    );
+                  })}
+                </g>
+              );
+            })}
+            {['A', 'B', 'C'].map((label, index) => (
+              <text
+                key={label}
+                x={28 + index * 38}
+                y="82"
+                textAnchor="middle"
+                fill={previewTheme.axisLabelColor}
+                className={previewTheme.axisLabelSize}
+                fontWeight={previewTheme.axisLabelWeight.includes('semibold') ? 600 : previewTheme.axisLabelWeight.includes('medium') ? 500 : 400}
+              >
+                {label}
+              </text>
+            ))}
+          </svg>
+
+          <div className="flex justify-center">
+            <svg viewBox={`0 0 ${size} ${size}`} className="w-[72px] h-[72px]">
+              <circle
+                cx={center}
+                cy={center}
+                r={radius}
+                fill="none"
+                stroke={previewTheme.gridColor}
+                strokeWidth={strokeWidth}
+              />
+              {donutValues.map((segment, index) => {
+                const angle = (segment / 100) * 360;
+                const startAngle = currentAngle;
+                const endAngle = currentAngle + angle;
+                currentAngle += angle;
+                return (
+                  <path
+                    key={index}
+                    d={describeArc(center, center, radius, startAngle, endAngle)}
+                    fill="none"
+                    stroke={previewTheme.palette[index % previewTheme.palette.length]}
+                    strokeWidth={strokeWidth}
+                    strokeLinecap={strokeLineCap}
+                  />
+                );
+              })}
+              <circle cx={center} cy={center} r={radius - strokeWidth / 2} fill="#ffffff" />
+            </svg>
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+};
+
 export const Settings: React.FC = () => {
   const { currentStaff, isAdmin, refreshStaff } = useAuth();
+  const { selectedFinancialYear, setSelectedFinancialYear } = useDate();
+  const { theme: activeChartTheme, setTheme, availableThemes } = useChartTheme();
   const [allUsers, setAllUsers] = useState<StaffWithDerivedCategories[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [themeSavedMessage, setThemeSavedMessage] = useState(false);
 
   const [newUserName, setNewUserName] = useState('');
   const [newUserAccessLevel, setNewUserAccessLevel] = useState<AccessLevel>('user');
@@ -88,8 +245,6 @@ export const Settings: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [calendarMonth, setCalendarMonth] = useState<number>(new Date().getMonth() + 1);
   const [calendarYear, setCalendarYear] = useState<number>(new Date().getFullYear());
-
-  const { selectedFinancialYear, setSelectedFinancialYear } = useDate();
 
   const assistantUsers = useMemo(
     () =>
@@ -236,6 +391,12 @@ export const Settings: React.FC = () => {
     } catch {
       setTimedFeedback('Failed to load calendar data');
     }
+  };
+
+  const handleThemeSelect = (themeId: string) => {
+    setTheme(themeId);
+    setThemeSavedMessage(true);
+    window.setTimeout(() => setThemeSavedMessage(false), 2000);
   };
 
   const handleAddUser = async (e: React.FormEvent) => {
@@ -682,52 +843,81 @@ export const Settings: React.FC = () => {
         </div>
 
         {activeTab === 'account' && (
-          <div className="mt-6 bg-white shadow rounded-lg p-6 max-w-2xl">
-            <h3 className="text-lg font-medium text-gray-900 mb-6">Security Settings</h3>
-            <form onSubmit={handleSaveAccount} className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Change Password</label>
-                <input
-                  type="password"
-                  value={accountForm.password}
-                  onChange={e => setAccountForm(f => ({ ...f, password: e.target.value }))}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  placeholder="Leave blank to keep current password"
-                />
+          <div className="mt-6 space-y-6">
+            <div className="bg-white shadow rounded-lg p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">Chart Appearance</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Choose how charts look across your dashboards. Your selection syncs to your account.
+                  </p>
+                </div>
+                {themeSavedMessage ? (
+                  <div className="shrink-0 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700">
+                    ✓ Saved
+                  </div>
+                ) : null}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Security Question</label>
-                <input
-                  type="text"
-                  value={accountForm.security_question}
-                  onChange={e => setAccountForm(f => ({ ...f, security_question: e.target.value }))}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  placeholder="e.g., What was your first pet's name?"
-                  required
-                />
-                <p className="mt-1 text-xs text-gray-500">This will be used to reset your password if you forget it.</p>
+
+              <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                {availableThemes.map((previewTheme) => (
+                  <ThemePreviewCard
+                    key={previewTheme.id}
+                    previewTheme={previewTheme}
+                    selected={activeChartTheme.id === previewTheme.id}
+                    onSelect={() => handleThemeSelect(previewTheme.id)}
+                  />
+                ))}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Security Answer</label>
-                <input
-                  type="text"
-                  value={accountForm.security_answer}
-                  onChange={e => setAccountForm(f => ({ ...f, security_answer: e.target.value }))}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  placeholder="Enter your answer"
-                  required
-                />
-              </div>
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  disabled={isSavingAccount}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 font-medium"
-                >
-                  {isSavingAccount ? 'Saving...' : 'Update Security Settings'}
-                </button>
-              </div>
-            </form>
+            </div>
+
+            <div className="bg-white shadow rounded-lg p-6 max-w-2xl">
+              <h3 className="text-lg font-medium text-gray-900 mb-6">Security Settings</h3>
+              <form onSubmit={handleSaveAccount} className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Change Password</label>
+                  <input
+                    type="password"
+                    value={accountForm.password}
+                    onChange={e => setAccountForm(f => ({ ...f, password: e.target.value }))}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    placeholder="Leave blank to keep current password"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Security Question</label>
+                  <input
+                    type="text"
+                    value={accountForm.security_question}
+                    onChange={e => setAccountForm(f => ({ ...f, security_question: e.target.value }))}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    placeholder="e.g., What was your first pet's name?"
+                    required
+                  />
+                  <p className="mt-1 text-xs text-gray-500">This will be used to reset your password if you forget it.</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Security Answer</label>
+                  <input
+                    type="text"
+                    value={accountForm.security_answer}
+                    onChange={e => setAccountForm(f => ({ ...f, security_answer: e.target.value }))}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    placeholder="Enter your answer"
+                    required
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={isSavingAccount}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 font-medium"
+                  >
+                    {isSavingAccount ? 'Saving...' : 'Update Security Settings'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
 
