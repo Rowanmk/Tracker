@@ -11,7 +11,7 @@ import { supabase } from "../supabase/client";
 import { loadTargets } from "../utils/loadTargets";
 import { logTrackerSheetUpdate } from "../utils/auditLog";
 import { unparse } from "papaparse";
-import { getFinancialYearMonths } from "../utils/financialYear";
+import { getFinancialYearFromDate } from "../utils/financialYear";
 import { isAccountantStaff } from "../utils/staff";
 import { BAGEL_SERVICE_ID } from "../utils/bagelDays";
 
@@ -25,6 +25,20 @@ const sanitizeCsvCell = (v: unknown): string => {
   if (v === null || v === undefined) return '';
   const s = String(v);
   return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+};
+
+const formatIsoDate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatDisplayDate = (date: Date): string => {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
 };
 
 export const StaffTracker: React.FC = () => {
@@ -199,7 +213,6 @@ export const StaffTracker: React.FC = () => {
     if (isTeamView || !currentStaff) return;
 
     if (editableStaffIds.length !== 1) {
-      console.error("Tracker save aborted: no single staff selected");
       return;
     }
 
@@ -358,82 +371,115 @@ export const StaffTracker: React.FC = () => {
     setIsExporting(true);
 
     try {
-      const targetableServices = services.filter(s => s.service_id !== BAGEL_SERVICE_ID);
-      const accountants = allStaff.filter(s => !s.is_hidden && isAccountantStaff(s));
-      const staffIds = accountants.map(a => a.staff_id);
+      const restorePoint = `staff-tracker-actuals-export-${new Date().toISOString()}`;
+      void restorePoint;
 
-      const { data: activities, error } = await supabase
+      const targetableServices = services
+        .filter((service) => service.service_id !== BAGEL_SERVICE_ID)
+        .sort((a, b) => a.service_name.localeCompare(b.service_name));
+
+      const accountants = allStaff
+        .filter((staff) => !staff.is_hidden && isAccountantStaff(staff))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      if (accountants.length === 0 || targetableServices.length === 0) {
+        return;
+      }
+
+      const { data: earliestActivityRow, error: earliestError } = await supabase
         .from('dailyactivity')
-        .select('staff_id, service_id, month, year, delivered_count')
-        .in('staff_id', staffIds)
-        .in('year', [selectedFinancialYear.start, selectedFinancialYear.end]);
+        .select('date')
+        .order('date', { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
-      if (error) throw error;
+      if (earliestError) {
+        throw earliestError;
+      }
 
-      const aggregated: Record<string, number> = {};
-      (activities || []).forEach(a => {
-        const expectedYear = a.month >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
-        if (a.year === expectedYear) {
-          const key = `${a.staff_id}-${a.service_id}-${a.month}-${a.year}`;
-          aggregated[key] = (aggregated[key] || 0) + (a.delivered_count || 0);
+      if (!earliestActivityRow?.date) {
+        return;
+      }
+
+      const { data: activities, error: activitiesError } = await supabase
+        .from('dailyactivity')
+        .select('staff_id, service_id, delivered_count, date')
+        .in('staff_id', accountants.map((accountant) => accountant.staff_id));
+
+      if (activitiesError) {
+        throw activitiesError;
+      }
+
+      const deliveredByKey = new Map<string, number>();
+      (activities || []).forEach((activity) => {
+        if (
+          activity.staff_id == null ||
+          activity.service_id == null ||
+          !activity.date ||
+          activity.service_id === BAGEL_SERVICE_ID
+        ) {
+          return;
         }
+
+        const key = `${activity.staff_id}|${activity.date}|${activity.service_id}`;
+        deliveredByKey.set(key, (deliveredByKey.get(key) || 0) + (activity.delivered_count || 0));
       });
 
-      const monthData = getFinancialYearMonths();
-      const monthCols = monthData.map(m => {
-        const colYear = m.number >= 4 ? selectedFinancialYear.start : selectedFinancialYear.end;
-        return { key: `${m.name}_${colYear}`, month: m.number, year: colYear };
+      const startDate = new Date(`${earliestActivityRow.date}T00:00:00`);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const rows: Array<Record<string, string | number>> = [];
+
+      for (const accountant of accountants) {
+        for (let currentDate = new Date(startDate); currentDate <= today; currentDate.setDate(currentDate.getDate() + 1)) {
+          const isoDate = formatIsoDate(currentDate);
+          const displayDate = formatDisplayDate(currentDate);
+          const financialYearLabel = getFinancialYearFromDate(new Date(currentDate)).label;
+
+          for (const service of targetableServices) {
+            const deliveredKey = `${accountant.staff_id}|${isoDate}|${service.service_id}`;
+            rows.push({
+              Accountant: sanitizeCsvCell(accountant.name),
+              Date: displayDate,
+              'Financial Year': financialYearLabel,
+              Service: sanitizeCsvCell(service.service_name),
+              Delivered: deliveredByKey.get(deliveredKey) || 0,
+            });
+          }
+        }
+      }
+
+      const csvBody = unparse({
+        fields: ['Accountant', 'Date', 'Financial Year', 'Service', 'Delivered'],
+        data: rows,
       });
-
-      const rows: Record<string, string | number>[] = [];
-
-      targetableServices.forEach(service => {
-        accountants.forEach(staff => {
-          const row: Record<string, string | number> = {
-            service_name: sanitizeCsvCell(service.service_name),
-            accountant_name: sanitizeCsvCell(staff.name),
-            staff_id: staff.staff_id,
-            service_id: service.service_id,
-          };
-
-          monthCols.forEach(mc => {
-            const key = `${staff.staff_id}-${service.service_id}-${mc.month}-${mc.year}`;
-            row[mc.key] = aggregated[key] || 0;
-          });
-
-          rows.push(row);
-        });
-      });
-
-      const fields = [
-        'service_name',
-        'accountant_name',
-        'staff_id',
-        'service_id',
-        ...monthCols.map(c => c.key),
-      ];
-
-      const baseCsv = unparse({ fields, data: rows });
 
       const now = new Date();
       const formattedDateTime = now.toLocaleString('en-GB', {
-        day: '2-digit', month: 'short', year: 'numeric',
-        hour: '2-digit', minute: '2-digit', second: '2-digit'
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
       });
-      const fileDateTime = now.toISOString().replace(/T/, '_').replace(/:/g, '-').split('.')[0];
 
-      const customHeaders = `"Crew Tracker Actual Data"\n"${formattedDateTime}"\n`;
-      const csv = customHeaders + baseCsv;
+      const fileDate = formatIsoDate(now);
+      const fileTime = [
+        String(now.getHours()).padStart(2, '0'),
+        String(now.getMinutes()).padStart(2, '0'),
+        String(now.getSeconds()).padStart(2, '0'),
+      ].join('-');
 
+      const csv = `"Crew Tracker Actual Data"\n"${formattedDateTime}"\n${csvBody}`;
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `actuals_template_${selectedFinancialYear.label.replace('/', '-')}_${fileDateTime}.csv`;
+      a.download = `actuals_export_${fileDate}_${fileTime}.csv`;
       a.click();
       window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('[StaffTracker] export CSV:', err);
     } finally {
       setIsExporting(false);
     }
