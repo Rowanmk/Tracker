@@ -228,11 +228,6 @@ const getMondayFirstDOW = (dateIso: string) => {
   return raw === 0 ? 6 : raw - 1;
 };
 
-const isWeekendDate = (dateIso: string) => {
-  const day = new Date(`${dateIso}T00:00:00`).getDay();
-  return day === 0 || day === 6;
-};
-
 const DonutChart: React.FC<{
   data: Array<{ service_name: string; total: number; pct: number; color: string }>;
 }> = ({ data }) => {
@@ -317,7 +312,6 @@ const MonthlyStackedBarChart: React.FC<{
   const chartWidth = 760;
   const left = 56;
   const top = 18;
-  const bottom = 58;
   const slotWidth = chartWidth / Math.max(data.length, 1);
   const barWidth = Math.min(42, slotWidth * 0.74);
   const maxValue = Math.max(...data.map((month) => month.total), 1);
@@ -566,9 +560,15 @@ const KpiTile: React.FC<{
 }> = ({ label, value, subValue }) => (
   <div className="bg-white rounded-xl shadow-md border border-gray-200 tile-brand overflow-hidden">
     <div className="tile-header px-4 py-2">{label}</div>
-    <div className="p-4">
-      <div className="text-3xl font-extrabold text-[#001B47]">{value}</div>
-      {subValue ? <div className="mt-2 text-sm text-gray-500">{subValue}</div> : null}
+    <div className="min-h-[132px] p-4 flex flex-col justify-between">
+      <div className="flex-1 flex items-center">
+        <div className="text-3xl md:text-[2rem] leading-tight font-extrabold text-[#001B47] break-words">
+          {value}
+        </div>
+      </div>
+      <div className="pt-3 min-h-[44px] flex items-end">
+        {subValue ? <div className="text-sm text-gray-500 leading-snug">{subValue}</div> : <div />}
+      </div>
     </div>
   </div>
 );
@@ -680,7 +680,6 @@ export const AnnualSummary: React.FC = () => {
     }
 
     const currentWindowMonths = getMonthRange(selectedYear, selectedMonth, 12);
-    const priorWindowMonths = getMonthRange(selectedYear, selectedMonth - 12 <= 0 ? 12 + (selectedMonth - 12) : selectedMonth - 12, 12);
     const currentWindowStart = currentWindowMonths[0].start;
     const currentWindowEnd = currentWindowMonths[currentWindowMonths.length - 1].end;
     const priorWindowStart = new Date(currentWindowStart.getFullYear(), currentWindowStart.getMonth() - 12, 1);
