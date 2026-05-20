@@ -2,9 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
-import { generateBagelDays } from '../utils/bagelDays';
-// FIX 5: Use shared isAccountantStaff utility instead of local helper.
-// PRE-FIX-5: local const isAccountant = (role: string) => ... defined inline.
+import { generateBagelDays, BAGEL_SERVICE_ID } from '../utils/bagelDays';
 import { isAccountantStaff } from '../utils/staff';
 
 interface MonthlyData {
@@ -260,7 +258,7 @@ export const TeamView: React.FC = () => {
 
         let finalActivities: ActivityRow[] = [...rawActivities];
         let finalRankingActivities: ActivityRow[] = [...rawRankingActivities];
-        const bagelService = services.find((s) => s.service_name === 'Bagel Days');
+        const bagelService = services.find((s) => s.service_id === BAGEL_SERVICE_ID);
 
         const [sYear, sMonth, sDay] = startDateStr.split('-').map(Number);
         const localStartDate = new Date(sYear, sMonth - 1, sDay);
@@ -297,9 +295,8 @@ export const TeamView: React.FC = () => {
             dailyTotals[activity.date] = { total: 0, byService: {} };
           }
           const count = activity.delivered_count || 0;
-          const service = services.find((s) => s.service_id === activity.service_id);
 
-          if (service && service.service_name !== 'Bagel Days') {
+          if (activity.service_id !== BAGEL_SERVICE_ID) {
             dailyTotals[activity.date].total += count;
           }
           if (activity.service_id) {
@@ -319,8 +316,7 @@ export const TeamView: React.FC = () => {
 
         finalActivities.forEach((activity) => {
           if (!activity.date || activity.service_id == null) return;
-          const service = services.find((s) => s.service_id === activity.service_id);
-          if (!service || service.service_name === 'Bagel Days') return;
+          if (activity.service_id === BAGEL_SERVICE_ID) return;
 
           const [yearStr, monthStr] = activity.date.split('-');
           const key = getMonthKey(parseInt(yearStr, 10), parseInt(monthStr, 10));
@@ -330,7 +326,7 @@ export const TeamView: React.FC = () => {
         const processedStats: ServiceStats[] = displayServices.map((service) => {
           const serviceMonthTotals: Record<string, number> = {};
 
-          if (service.service_name === 'Bagel Days') {
+          if (service.service_id === BAGEL_SERVICE_ID) {
             const bagelUsersByDate = new Map<string, Set<number>>();
             finalActivities.forEach((activity) => {
               if (
@@ -464,9 +460,8 @@ export const TeamView: React.FC = () => {
 
               const [yearStr, monthStr] = activity.date.split('-');
               const monthKey = getMonthKey(parseInt(yearStr, 10), parseInt(monthStr, 10));
-              const service = services.find((item) => item.service_id === activity.service_id);
 
-              if (!service || service.service_name === 'Bagel Days') {
+              if (activity.service_id === BAGEL_SERVICE_ID) {
                 return;
               }
 
@@ -493,7 +488,7 @@ export const TeamView: React.FC = () => {
             } else {
               const activeService = services.find((service) => service.service_id === resolvedActiveMetricId);
 
-              if (activeService?.service_name === 'Bagel Days') {
+              if (activeService?.service_id === BAGEL_SERVICE_ID) {
                 const bagelTotalsForStaff = perStaffBagelMonthTotals.get(staffMember.staff_id) || {};
                 const monthlySeries = all24Months.map(
                   (month) => bagelTotalsForStaff[getMonthKey(month.year, month.month)] || 0
@@ -521,8 +516,6 @@ export const TeamView: React.FC = () => {
         setHeatmapData(dailyTotals);
         setHeatmapMonths(heatmapMonthsList);
       } catch (err) {
-        // FIX 3: Surface silent catch with logged context.
-        // PRE-FIX-3: catch {} with no parameter and no logging.
         console.error('TeamView fetch failed', err);
         setError('Failed to load Stats and Figures');
       } finally {
@@ -531,10 +524,6 @@ export const TeamView: React.FC = () => {
     };
 
     void fetchStatsData();
-    // FIX 3: Removed activeServiceId from dep array — clicking a service tile must not
-    // trigger a Supabase round-trip. The data fetch only runs on month/staff/services changes.
-    // PRE-FIX-3: dep array previously included activeServiceId, causing redundant fetches.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allStaff, services, selectedTeamId, authLoading, servicesLoading]);
 
   useEffect(() => {
@@ -618,7 +607,7 @@ export const TeamView: React.FC = () => {
                         * Monthly bars: (Monthly Deliveries / Monthly Target). Line: (12-Month Deliveries Sum / 12-Month Target Sum).
                       </p>
                     )}
-                    {activeStat.service.service_name === 'Bagel Days' && (
+                    {activeStat.service.service_id === BAGEL_SERVICE_ID && (
                       <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                         * Bagel Days count working days where no selected user recorded any actuals on that day.
                       </p>
@@ -665,7 +654,7 @@ export const TeamView: React.FC = () => {
             <DeliveryHeatmap
               heatmapData={heatmapData}
               months={heatmapMonths}
-              services={services.filter(s => s.service_name !== 'Bagel Days')}
+              services={services.filter(s => s.service_id !== BAGEL_SERVICE_ID)}
             />
           )}
         </div>

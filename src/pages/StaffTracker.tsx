@@ -13,6 +13,7 @@ import { logTrackerSheetUpdate } from "../utils/auditLog";
 import { unparse } from "papaparse";
 import { getFinancialYearMonths } from "../utils/financialYear";
 import { isAccountantStaff } from "../utils/staff";
+import { BAGEL_SERVICE_ID } from "../utils/bagelDays";
 
 interface DailyEntry {
   date: string;
@@ -32,7 +33,7 @@ export const StaffTracker: React.FC = () => {
   const { services } = useServices();
   const { staffPerformance, teamTarget } = useStaffPerformance("desc");
 
-  const displayServices = useMemo(() => services.filter(s => s.service_name !== 'Bagel Days'), [services]);
+  const displayServices = useMemo(() => services.filter(s => s.service_id !== BAGEL_SERVICE_ID), [services]);
 
   const isTeamView = selectedTeamId === "team-view";
 
@@ -262,9 +263,6 @@ export const StaffTracker: React.FC = () => {
     }
 
     if (existingTotal !== numValue && service) {
-      // FIX C: Audit-log subject names should match the edited staff, not the full
-      // selectedAccountants list.
-      // PRE-FIX-C: previously logged all selectedAccountants names regardless of who was edited.
       const targetStaff = selectedAccountants.find((s) => s.staff_id === targetStaffId);
       await logTrackerSheetUpdate({
         actorStaffId: currentStaff.staff_id,
@@ -360,7 +358,7 @@ export const StaffTracker: React.FC = () => {
     setIsExporting(true);
 
     try {
-      const targetableServices = services.filter(s => s.service_name !== 'Bagel Days');
+      const targetableServices = services.filter(s => s.service_id !== BAGEL_SERVICE_ID);
       const accountants = allStaff.filter(s => !s.is_hidden && isAccountantStaff(s));
       const staffIds = accountants.map(a => a.staff_id);
 

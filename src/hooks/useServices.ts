@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
+import { BAGEL_SERVICE_ID, BAGEL_SERVICE_NAME } from '../utils/bagelDays';
 
 type Service = Database['public']['Tables']['services']['Row'];
 
-const SERVICE_ORDER = ['Accounts', 'VAT', 'Self Assessments', 'Self Assessment', 'Bagel Days'];
+const SERVICE_ORDER = ['Accounts', 'VAT', 'Self Assessments', 'Self Assessment', BAGEL_SERVICE_NAME];
 
 const sortServices = (servicesToSort: Service[]) => {
   return [...servicesToSort].sort((a, b) => {
@@ -12,17 +13,22 @@ const sortServices = (servicesToSort: Service[]) => {
     const nameB = b.service_name || '';
     const indexA = SERVICE_ORDER.indexOf(nameA);
     const indexB = SERVICE_ORDER.indexOf(nameB);
-    
+
     const weightA = indexA === -1 ? 999 : indexA;
     const weightB = indexB === -1 ? 999 : indexB;
-    
+
     if (weightA === weightB) {
       return nameA.localeCompare(nameB);
     }
-    
+
     return weightA - weightB;
   });
 };
+
+const getBagelService = (): Service => ({
+  service_id: BAGEL_SERVICE_ID,
+  service_name: BAGEL_SERVICE_NAME,
+});
 
 export const useServices = () => {
   const [services, setServices] = useState<Service[]>([]);
@@ -40,6 +46,13 @@ export const useServices = () => {
           .from('services')
           .select('*');
 
+        // Bagel Days is a synthetic service generated client-side and must never be written to the activities or monthlytargets tables.
+        const injectBagelService = (rows: Service[]) =>
+          sortServices([
+            ...rows.filter((service) => service.service_name !== BAGEL_SERVICE_NAME),
+            getBagelService(),
+          ]);
+
         const mockServices: Service[] = [
           {
             service_id: 1,
@@ -53,27 +66,16 @@ export const useServices = () => {
             service_id: 3,
             service_name: 'Self Assessments',
           },
-          {
-            service_id: 4,
-            service_name: 'Bagel Days',
-          }
         ];
 
         if (servicesError) {
           setError('Failed to load services data');
           setShowFallbackWarning(true);
-          setServices(sortServices(mockServices));
+          setServices(injectBagelService(mockServices));
         } else {
-          let fetchedServices = data || [];
-          // Auto-inject Bagel Days if it doesn't exist in the DB yet, so it shows up immediately
-          if (!fetchedServices.some(s => s.service_name === 'Bagel Days')) {
-            fetchedServices = [...fetchedServices, { service_id: -999, service_name: 'Bagel Days' }];
-          }
-          setServices(sortServices(fetchedServices));
+          setServices(injectBagelService(data || []));
         }
       } catch (err) {
-        // FIX 6: Log caught errors with file context.
-        // PRE-FIX-6: catch {} with no parameter and no logging.
         console.error('[useServices] fetch services:', err);
         setError('Failed to connect to database');
         setShowFallbackWarning(true);
@@ -91,12 +93,8 @@ export const useServices = () => {
             service_id: 3,
             service_name: 'Self Assessments',
           },
-          {
-            service_id: 4,
-            service_name: 'Bagel Days',
-          }
         ];
-        setServices(sortServices(mockServices));
+        setServices(injectBagelService(mockServices));
       } finally {
         setLoading(false);
       }

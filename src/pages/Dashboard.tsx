@@ -12,6 +12,7 @@ import { useDashboardView } from "../context/DashboardViewContext";
 import { useStaffPerformance } from "../hooks/useStaffPerformance";
 import { usePerformanceSummary } from "../hooks/usePerformanceSummary";
 import { supabase } from "../supabase/client";
+import { BAGEL_SERVICE_ID } from "../utils/bagelDays";
 
 const DAY_TRANSITION_DURATION_MS = 800;
 
@@ -65,7 +66,7 @@ export const Dashboard: React.FC = () => {
   }, [startIso, endIso]);
 
   const displayServices = useMemo(
-    () => services.filter((s) => s.service_name !== "Bagel Days"),
+    () => services.filter((s) => s.service_id !== BAGEL_SERVICE_ID),
     [services]
   );
 
@@ -203,7 +204,7 @@ export const Dashboard: React.FC = () => {
       const matchedService = servicesById.get(serviceId);
       if (!matchedStaff || !matchedService) return;
 
-      if (matchedService.service_name !== "Bagel Days") {
+      if (matchedService.service_id !== BAGEL_SERVICE_ID) {
         activityTotalsByStaff.set(
           staffId,
           (activityTotalsByStaff.get(staffId) || 0) + activity.delivered_count
@@ -353,10 +354,8 @@ export const Dashboard: React.FC = () => {
   );
 
   const runRateActivities = useMemo(() => {
-    const bagelService = services.find((s) => s.service_name === "Bagel Days");
-
     const noBagels = filteredActivities.filter(
-      (a) => !bagelService || a.service_id !== bagelService.service_id
+      (a) => a.service_id !== BAGEL_SERVICE_ID
     );
 
     if (isIndividualDashboard && selectedAccountant) {
@@ -364,7 +363,7 @@ export const Dashboard: React.FC = () => {
     }
 
     return noBagels;
-  }, [filteredActivities, services, isIndividualDashboard, selectedAccountant]);
+  }, [filteredActivities, isIndividualDashboard, selectedAccountant]);
 
   const runRateStaffList = useMemo(() => {
     if (isIndividualDashboard && selectedAccountant) {

@@ -10,6 +10,7 @@ import type { FinancialYear } from '../utils/financialYear';
 import type { Database } from '../supabase/types';
 import { logMonthlyTargetsSaved } from '../utils/auditLog';
 import { isAccountantStaff } from '../utils/staff';
+import { BAGEL_SERVICE_ID } from '../utils/bagelDays';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
 
@@ -90,7 +91,7 @@ const persistStaffTargets = async (
       .eq('staff_id', staffMember.staff_id)
       .eq('year', calYear)
       .in('month', months);
-      
+
     if (deleteError) throw deleteError;
   }
 
@@ -139,7 +140,7 @@ export const TargetsControl: React.FC = () => {
   } = useAuth();
   const { services, loading: servicesLoading, error: servicesError } = useServices();
 
-  const targetableServices = useMemo(() => services.filter(s => s.service_name !== 'Bagel Days'), [services]);
+  const targetableServices = useMemo(() => services.filter(s => s.service_id !== BAGEL_SERVICE_ID), [services]);
 
   const activeAccountants = useMemo<Staff[]>(
     () =>
@@ -477,7 +478,7 @@ export const TargetsControl: React.FC = () => {
           service_id: service.service_id,
         };
 
-        monthCols.forEach(({ key, month, year }) => {
+        monthCols.forEach(({ key, month }) => {
           row[key] = staffMember.targets[month.number]?.[service.service_name] ?? 0;
         });
 
@@ -594,6 +595,11 @@ export const TargetsControl: React.FC = () => {
 
           if (isNaN(staffId) || isNaN(serviceId)) {
             parseErrors.push(`Row ${idx + 2}: invalid staff_id or service_id.`);
+            return;
+          }
+
+          if (serviceId === BAGEL_SERVICE_ID) {
+            parseErrors.push(`Row ${idx + 2}: Bagel Days cannot be imported as a target column.`);
             return;
           }
 

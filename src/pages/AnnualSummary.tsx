@@ -4,10 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
 import { getFinancialYearDateRange, getFinancialYearMonths } from '../utils/financialYear';
-import { generateBagelDays } from '../utils/bagelDays';
-// FIX B: Use shared isAccountantStaff utility instead of local helper.
-// PRE-FIX-5: local const isAccountant = (role: string) => ... defined inline; call sites passed staff.role.
-// Now passes the staff object to isAccountantStaff(staff) at the call site.
+import { generateBagelDays, BAGEL_SERVICE_ID } from '../utils/bagelDays';
 import { isAccountantStaff } from '../utils/staff';
 
 interface AnnualStaffData {
@@ -36,8 +33,6 @@ export const AnnualSummary: React.FC = () => {
 
     const visibleAccountants = allStaff.filter(s => !s.is_hidden && isAccountantStaff(s));
 
-    // FIX E: Drop dead `selectedTeamId === "all"` branch — AuthContext.onTeamChange normalises 'all' to 'team-view'.
-    // PRE-FIX-E: filter previously was `selectedTeamId === "all" || !selectedTeamId ? all : filtered`.
     const filteredStaff = !selectedTeamId
       ? visibleAccountants
       : visibleAccountants.filter(s => String(s.staff_id) === selectedTeamId);
@@ -49,7 +44,7 @@ export const AnnualSummary: React.FC = () => {
     }
 
     const { data: bankHolidays } = await supabase.from('bank_holidays').select('date, region');
-    const bagelService = services.find(s => s.service_name === 'Bagel Days');
+    const bagelService = services.find(s => s.service_id === BAGEL_SERVICE_ID);
 
     const results = await Promise.all(
       filteredStaff.map(async (staff) => {
@@ -79,7 +74,7 @@ export const AnnualSummary: React.FC = () => {
             const svc = services.find(s => s.service_id === a.service_id);
             if (svc) {
               months[a.month].services[svc.service_name] += a.delivered_count || 0;
-              if (svc.service_name !== 'Bagel Days') {
+              if (svc.service_id !== BAGEL_SERVICE_ID) {
                 months[a.month].total += a.delivered_count || 0;
               }
             }

@@ -4,7 +4,7 @@ import { loadTargets } from "../utils/loadTargets";
 import { useAuth } from "../context/AuthContext";
 import { useDate } from "../context/DateContext";
 import { useServices } from "./useServices";
-import { generateBagelDays } from "../utils/bagelDays";
+import { generateBagelDays, BAGEL_SERVICE_ID } from "../utils/bagelDays";
 import { isAccountantStaff } from "../utils/staff";
 
 export interface StaffPerformance {
@@ -68,8 +68,6 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
       const startDate = new Date(financialYear.start, 3, 1);
       const endDate = new Date(financialYear.end, 2, 31);
 
-      // FIX E: Drop dead `selectedTeamId === "all"` branch — AuthContext.onTeamChange normalises 'all' to 'team-view'.
-      // PRE-FIX-E: previously `!selectedTeamId || selectedTeamId === "team-view" || selectedTeamId === "all"`.
       const isFullTeamSelection =
         !selectedTeamId || selectedTeamId === "team-view";
 
@@ -99,9 +97,6 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
       const staffIds = filteredStaff.map(s => s.staff_id);
 
       const { data: bankHolidays } = await supabase.from('bank_holidays').select('date, region');
-      const bagelService = services.find(s => s.service_name === 'Bagel Days');
-      const bagelServiceId = bagelService?.service_id;
-
       const yearForSelectedMonth = selectedMonth >= 4 ? financialYear.start : financialYear.end;
 
       const { data: activities, error: activitiesError } = await supabase
@@ -114,10 +109,10 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
       if (activitiesError) throw activitiesError;
 
       let finalActivities = activities || [];
-      if (bagelServiceId && bankHolidays) {
+      if (bankHolidays) {
         const startOfMonth = new Date(yearForSelectedMonth, selectedMonth - 1, 1);
         const endOfMonth = new Date(yearForSelectedMonth, selectedMonth, 0);
-        const bagels = generateBagelDays(finalActivities, bankHolidays, filteredStaff, bagelServiceId, startOfMonth, endOfMonth);
+        const bagels = generateBagelDays(finalActivities, bankHolidays, filteredStaff, BAGEL_SERVICE_ID, startOfMonth, endOfMonth);
         finalActivities = [...finalActivities, ...bagels];
       }
       setDailyActivities(finalActivities as UseStaffPerformanceResult['dailyActivities']);
@@ -131,8 +126,8 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
         .lte("date", endDate.toISOString().split("T")[0]);
 
       let finalHistorical = historicalActivities || [];
-      if (bagelServiceId && bankHolidays) {
-        const bagels = generateBagelDays(finalHistorical, bankHolidays, filteredStaff, bagelServiceId, startDate, endDate)
+      if (bankHolidays) {
+        const bagels = generateBagelDays(finalHistorical, bankHolidays, filteredStaff, BAGEL_SERVICE_ID, startDate, endDate)
           .filter(b => b.month !== selectedMonth);
         finalHistorical = [...finalHistorical, ...bagels];
       }
@@ -150,10 +145,10 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
         .eq("year", previousYear);
 
       let finalPrevMonth = previousMonthActivities || [];
-      if (bagelServiceId && bankHolidays) {
+      if (bankHolidays) {
         const startOfPrev = new Date(previousYear, previousMonth - 1, 1);
         const endOfPrev = new Date(previousYear, previousMonth, 0);
-        const bagels = generateBagelDays(finalPrevMonth, bankHolidays, filteredStaff, bagelServiceId, startOfPrev, endOfPrev);
+        const bagels = generateBagelDays(finalPrevMonth, bankHolidays, filteredStaff, BAGEL_SERVICE_ID, startOfPrev, endOfPrev);
         finalPrevMonth = [...finalPrevMonth, ...bagels];
       }
 
@@ -170,7 +165,7 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
           const service = services.find(s => s.service_id === a.service_id);
           if (service) {
             serviceData[service.service_name] += a.delivered_count || 0;
-            if (service.service_name !== 'Bagel Days') {
+            if (service.service_id !== BAGEL_SERVICE_ID) {
               totalDelivered += a.delivered_count || 0;
             }
           }
@@ -181,8 +176,7 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
         const staffHistorical = finalHistorical.filter(a => a.staff_id === staff.staff_id);
         const monthlyTotals: Record<string, number> = {};
         staffHistorical.forEach(a => {
-          const service = services.find(s => s.service_id === a.service_id);
-          if (service?.service_name !== 'Bagel Days') {
+          if (a.service_id !== BAGEL_SERVICE_ID) {
             const key = `${a.year}-${a.month}`;
             monthlyTotals[key] = (monthlyTotals[key] || 0) + (a.delivered_count || 0);
           }
@@ -192,8 +186,7 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
 
         const staffPrevActivities = finalPrevMonth.filter(a => a.staff_id === staff.staff_id);
         const previousMonthTotal = staffPrevActivities.reduce((sum, a) => {
-          const service = services.find(srv => srv.service_id === a.service_id);
-          if (service?.service_name !== 'Bagel Days') {
+          if (a.service_id !== BAGEL_SERVICE_ID) {
             return sum + (a.delivered_count || 0);
           }
           return sum;
@@ -226,13 +219,8 @@ export const useStaffPerformance = (sortMode: SortMode): UseStaffPerformanceResu
     } finally {
       setLoading(false);
     }
-  // FIX D: selectedYear is not read in the body of fetchPerformanceData (only `financialYear` and
-  // `selectedMonth` drive the year). Removing it from the dep array.
-  // PRE-FIX-D: dep array previously included selectedYear.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, servicesLoading, accountantStaff, selectedMonth, financialYear, sortMode, selectedTeamId, services]);
 
-  // Reference selectedYear so an unused-var lint rule does not complain about the destructure above.
   void selectedYear;
 
   useEffect(() => {

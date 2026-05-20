@@ -1,5 +1,3 @@
-// src/utils/bagelDays.ts
-
 type Activity = {
   staff_id?: number | null;
   service_id?: number | null;
@@ -20,6 +18,9 @@ type Staff = {
   home_region?: string | null;
 };
 
+export const BAGEL_SERVICE_ID = -999;
+export const BAGEL_SERVICE_NAME = 'Bagel Days';
+
 export function generateBagelDays<TActivity extends Activity>(
   activities: TActivity[],
   bankHolidays: BankHoliday[],
@@ -32,19 +33,16 @@ export function generateBagelDays<TActivity extends Activity>(
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Bagel days can only be calculated up to today
   const actualEndDate = endDate > today ? today : endDate;
 
-  // Map activities by date and staff_id for quick lookup
-  const activityMap = new Map<string, number>(); // key: "YYYY-MM-DD_staffId", value: total_delivered
+  const activityMap = new Map<string, number>();
   for (const activity of activities) {
     if (!activity.staff_id || !activity.date) continue;
     const key = `${activity.date}_${activity.staff_id}`;
     activityMap.set(key, (activityMap.get(key) || 0) + (activity.delivered_count || 0));
   }
 
-  // Map bank holidays by region and date
-  const holidayMap = new Set<string>(); // key: "YYYY-MM-DD_region"
+  const holidayMap = new Set<string>();
   for (const holiday of bankHolidays) {
     holidayMap.add(`${holiday.date}_${holiday.region}`);
   }
@@ -57,7 +55,6 @@ export function generateBagelDays<TActivity extends Activity>(
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
     if (!isWeekend) {
-      // Format date as YYYY-MM-DD locally to avoid timezone issues
       const year = curr.getFullYear();
       const month = String(curr.getMonth() + 1).padStart(2, '0');
       const day = String(curr.getDate()).padStart(2, '0');
@@ -71,7 +68,6 @@ export function generateBagelDays<TActivity extends Activity>(
           const key = `${dateStr}_${staff.staff_id}`;
           const totalDelivered = activityMap.get(key) || 0;
 
-          // If no submissions for any service on this working day, it's a Bagel Day
           if (totalDelivered === 0) {
             bagelActivities.push({
               staff_id: staff.staff_id,
