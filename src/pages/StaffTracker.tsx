@@ -401,17 +401,42 @@ export const StaffTracker: React.FC = () => {
         return;
       }
 
-      const { data: activities, error: activitiesError } = await supabase
-        .from('dailyactivity')
-        .select('staff_id, service_id, delivered_count, date')
-        .in('staff_id', accountants.map((accountant) => accountant.staff_id));
+      const pageSize = 1000;
+      let from = 0;
+      const allActivities: Array<{
+        staff_id: number | null;
+        service_id: number | null;
+        delivered_count: number;
+        date: string;
+      }> = [];
 
-      if (activitiesError) {
-        throw activitiesError;
+      while (true) {
+        const { data, error } = await supabase
+          .from('dailyactivity')
+          .select('staff_id, service_id, delivered_count, date')
+          .in('staff_id', accountants.map((a) => a.staff_id))
+          .order('activity_id', { ascending: true })
+          .range(from, from + pageSize - 1);
+
+        if (error) {
+          throw error;
+        }
+
+        if (!data || data.length === 0) {
+          break;
+        }
+
+        allActivities.push(...data);
+
+        if (data.length < pageSize) {
+          break;
+        }
+
+        from += pageSize;
       }
 
       const deliveredByKey = new Map<string, number>();
-      (activities || []).forEach((activity) => {
+      allActivities.forEach((activity) => {
         if (
           activity.staff_id == null ||
           activity.service_id == null ||
@@ -442,16 +467,16 @@ export const StaffTracker: React.FC = () => {
             rows.push({
               Accountant: sanitizeCsvCell(accountant.name),
               Date: displayDate,
-              'Financial Year': financialYearLabel,
               Service: sanitizeCsvCell(service.service_name),
               Delivered: deliveredByKey.get(deliveredKey) || 0,
+              'Financial Year': financialYearLabel,
             });
           }
         }
       }
 
       const csvBody = unparse({
-        fields: ['Accountant', 'Date', 'Financial Year', 'Service', 'Delivered'],
+        fields: ['Accountant', 'Date', 'Service', 'Delivered', 'Financial Year'],
         data: rows,
       });
 
