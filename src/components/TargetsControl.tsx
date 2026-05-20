@@ -95,6 +95,7 @@ export const TargetsControl: React.FC = () => {
   );
 
   const [selectedFinancialYear, setSelectedFinancialYear] = useState&lt;FinancialYear&gt;(() => getCurrentFinancialYear());
+  const [importFinancialYear, setImportFinancialYear] = useState&lt;FinancialYear&gt;(() => getCurrentFinancialYear());
 
   const [targetData, setTargetData] = useState&lt;TargetData[]&gt;([]);
   const [lastSavedSnapshot, setLastSavedSnapshot] = useState&lt;Record&lt;string, number&gt;&gt;({});
@@ -503,7 +504,7 @@ export const TargetsControl: React.FC = () => {
   const handleImportClick = () => {
     setImportState({
       step: 'select-fy',
-      selectedFY: selectedFinancialYear,
+      selectedFY: importFinancialYear,
       parsedRows: [],
       diffRows: [],
       error: null,
@@ -986,7 +987,10 @@ export const TargetsControl: React.FC = () => {
                 onChange={(e) => {
                   const [start, end] = e.target.value.split('-').map(Number);
                   const fy = financialYears.find(f => f.start === start && f.end === end);
-                  if (fy) setImportState(prev => ({ ...prev, selectedFY: fy }));
+                  if (fy) {
+                    setImportFinancialYear(fy);
+                    setImportState(prev => ({ ...prev, selectedFY: fy }));
+                  }
                 }}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               &gt;
