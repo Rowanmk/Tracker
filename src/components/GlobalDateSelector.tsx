@@ -1,6 +1,7 @@
 import React from "react";
 import { useDate } from "../context/DateContext";
 import { useDashboardView } from "../context/DashboardViewContext";
+import { MONTHS } from "../utils/financialYear";
 
 interface GlobalDateSelectorProps {
   showViewModeToggle?: boolean;
@@ -17,9 +18,7 @@ export const GlobalDateSelector: React.FC<GlobalDateSelectorProps> = ({
   };
 
   const getMonthName = (monthNum: number) => {
-    const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                   'July', 'August', 'September', 'October', 'November', 'December'];
-    return months[monthNum - 1];
+    return MONTHS[monthNum - 1];
   };
 
   const ValueModeToggle = () => (

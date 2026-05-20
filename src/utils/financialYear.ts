@@ -4,6 +4,15 @@ export interface FinancialYear {
   end: number;
 }
 
+export const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+export const getYearForMonth = (month: number, fy: FinancialYear): number => {
+  return month >= 4 ? fy.start : fy.end;
+};
+
 /**
  * Derive Financial Year from calendar month and year.
  * UK rules: April → March.

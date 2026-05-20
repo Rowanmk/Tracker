@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from "react";
 import { useDate } from "../context/DateContext";
 import { useWorkingDays } from "../hooks/useWorkingDays";
-import { getFinancialYears, getFinancialYearFromMonth } from "../utils/financialYear";
+import { getFinancialYears, getFinancialYearFromMonth, MONTHS } from "../utils/financialYear";
 import { calculateRunRateDelta } from "../utils/runRate";
 
 interface StaffPerformance {
@@ -17,11 +17,6 @@ interface Props {
   workingDaysUpToToday?: number;
   workingDays?: number;
 }
-
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
 
 export const StaffPerformanceBar: React.FC<Props> = ({
   staffPerformance,

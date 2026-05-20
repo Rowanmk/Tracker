@@ -1,5 +1,5 @@
 import React from 'react';
-import { FinancialYear, getFinancialYears } from '../utils/financialYear';
+import { FinancialYear, getFinancialYears, MONTHS } from '../utils/financialYear';
 
 interface CalendarMonthYearSelectorProps {
   month: number;
@@ -18,11 +18,6 @@ export const CalendarMonthYearSelector: React.FC<CalendarMonthYearSelectorProps>
   onYearChange,
   onFinancialYearChange,
 }) => {
-  const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-
   const financialYears = getFinancialYears();
   // Restrict year selection to 2024, 2025, 2026, and 2027 to align with FY 24/25, 25/26 and 26/27
   const years = [2024, 2025, 2026, 2027];
@@ -36,7 +31,7 @@ export const CalendarMonthYearSelector: React.FC<CalendarMonthYearSelectorProps>
           onChange={(e) => onMonthChange(parseInt(e.target.value))}
           className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 dark:hover:border-gray-500 transition-colors"
         >
-          {months.map((monthName, index) => (
+          {MONTHS.map((monthName, index) => (
             <option key={index} value={index + 1}>
               {monthName}
             </option>

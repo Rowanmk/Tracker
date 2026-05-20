@@ -1,6 +1,6 @@
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
-import type { FinancialYear } from './financialYear';
+import { getYearForMonth, type FinancialYear } from './financialYear';
 
 type MonthlyTarget = Database['public']['Tables']['monthlytargets']['Row'];
 
@@ -17,12 +17,8 @@ async function getBagelServiceId() {
   return cachedBagelServiceId;
 }
 
-function getExpectedYearForMonth(month: number, financialYear: FinancialYear): number {
-  return month >= 4 ? financialYear.start : financialYear.end;
-}
-
 export function isTargetInFinancialYear(month: number, year: number, financialYear: FinancialYear): boolean {
-  const expectedYear = getExpectedYearForMonth(month, financialYear);
+  const expectedYear = getYearForMonth(month, financialYear);
   return year === expectedYear;
 }
 
@@ -32,7 +28,7 @@ export async function loadTargets(
   staffId?: number,
   teamId?: number
 ) {
-  const expectedYear = getExpectedYearForMonth(month, financialYear);
+  const expectedYear = getYearForMonth(month, financialYear);
   const bagelServiceId = await getBagelServiceId();
 
   let query = supabase
@@ -57,7 +53,7 @@ export async function loadTargets(
   let totalTarget = 0;
 
   (data as MonthlyTarget[] || []).forEach((row) => {
-    const expected = getExpectedYearForMonth(row.month, financialYear);
+    const expected = getYearForMonth(row.month, financialYear);
     if (row.year !== expected) return;
     if (row.service_id == null) return;
     

@@ -3,14 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useServices } from '../hooks/useServices';
 import { supabase } from '../supabase/client';
-import { getFinancialYearMonths, getFinancialYears, getCurrentFinancialYear } from '../utils/financialYear';
+import { getFinancialYearMonths, getFinancialYears, getCurrentFinancialYear, getYearForMonth } from '../utils/financialYear';
 import { isTargetInFinancialYear } from '../utils/loadTargets';
 import { unparse, parse } from 'papaparse';
 import type { FinancialYear } from '../utils/financialYear';
 import type { Database } from '../supabase/types';
 import { logMonthlyTargetsSaved } from '../utils/auditLog';
-// FIX B: Use shared isAccountantStaff utility instead of local helper.
-// PRE-FIX-5: local const isAccountant = (staffMember: Staff) => ... defined inline.
 import { isAccountantStaff } from '../utils/staff';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
@@ -68,11 +66,68 @@ interface ImportState {
   error: string | null;
 }
 
-const getYearForMonth = (month: number, fy: FinancialYear): number => {
-  return month >= 4 ? fy.start : fy.end;
-};
-
 const buildMonthColKey = (monthName: string, year: number) => `${monthName}_${year}`;
+
+const persistStaffTargets = async (
+  staffMember: TargetData,
+  fy: FinancialYear,
+  targetableServices: { service_id: number; service_name: string }[]
+) => {
+  const monthData = getFinancialYearMonths();
+
+  const monthsByYear: Record<number, number[]> = {};
+  monthData.forEach((m) => {
+    const calYear = getYearForMonth(m.number, fy);
+    if (!monthsByYear[calYear]) monthsByYear[calYear] = [];
+    monthsByYear[calYear].push(m.number);
+  });
+
+  for (const [calYearStr, months] of Object.entries(monthsByYear)) {
+    const calYear = Number(calYearStr);
+    const { error: deleteError } = await supabase
+      .from('monthlytargets')
+      .delete()
+      .eq('staff_id', staffMember.staff_id)
+      .eq('year', calYear)
+      .in('month', months);
+      
+    if (deleteError) throw deleteError;
+  }
+
+  const inserts: Array<{
+    staff_id: number;
+    service_id: number;
+    month: number;
+    year: number;
+    target_value: number;
+  }> = [];
+
+  Object.entries(staffMember.targets).forEach(([monthStr, monthTargets]) => {
+    const month = Number(monthStr);
+    const year = getYearForMonth(month, fy);
+
+    Object.entries(monthTargets).forEach(([serviceName, value]) => {
+      const service = targetableServices.find((s) => s.service_name === serviceName);
+      if (service) {
+        inserts.push({
+          staff_id: staffMember.staff_id,
+          service_id: service.service_id,
+          month,
+          year,
+          target_value: value ?? 0,
+        });
+      }
+    });
+  });
+
+  if (inserts.length > 0) {
+    const { error: insertError } = await supabase
+      .from('monthlytargets')
+      .insert(inserts);
+
+    if (insertError) throw insertError;
+  }
+};
 
 export const TargetsControl: React.FC = () => {
   const navigate = useNavigate();
@@ -86,7 +141,7 @@ export const TargetsControl: React.FC = () => {
 
   const targetableServices = useMemo(() => services.filter(s => s.service_name !== 'Bagel Days'), [services]);
 
-  const activeAccountants = useMemo&lt;Staff[]&gt;(
+  const activeAccountants = useMemo<Staff[]>(
     () =>
       allStaff
         .filter((staffMember) => !staffMember.is_hidden && isAccountantStaff(staffMember))
@@ -94,20 +149,20 @@ export const TargetsControl: React.FC = () => {
     [allStaff]
   );
 
-  const [selectedFinancialYear, setSelectedFinancialYear] = useState&lt;FinancialYear&gt;(() => getCurrentFinancialYear());
-  const [importFinancialYear, setImportFinancialYear] = useState&lt;FinancialYear&gt;(() => getCurrentFinancialYear());
+  const [selectedFinancialYear, setSelectedFinancialYear] = useState<FinancialYear>(() => getCurrentFinancialYear());
+  const [importFinancialYear, setImportFinancialYear] = useState<FinancialYear>(() => getCurrentFinancialYear());
 
-  const [targetData, setTargetData] = useState&lt;TargetData[]&gt;([]);
-  const [lastSavedSnapshot, setLastSavedSnapshot] = useState&lt;Record&lt;string, number&gt;&gt;({});
+  const [targetData, setTargetData] = useState<TargetData[]>([]);
+  const [lastSavedSnapshot, setLastSavedSnapshot] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState&lt;string | null&gt;(null);
-  const [saveMessage, setSaveMessage] = useState&lt;string | null&gt;(null);
-  const [localInputState, setLocalInputState] = useState&lt;LocalInputState&gt;({});
+  const [error, setError] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [localInputState, setLocalInputState] = useState<LocalInputState>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [pendingAction, setPendingAction] = useState&lt;(() => void) | null&gt;(null);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
-  const [importState, setImportState] = useState&lt;ImportState&gt;({
+  const [importState, setImportState] = useState<ImportState>({
     step: 'idle',
     selectedFY: null,
     parsedRows: [],
@@ -115,12 +170,12 @@ export const TargetsControl: React.FC = () => {
     error: null,
   });
 
-  const fileInputRef = useRef&lt;HTMLInputElement&gt;(null);
-  const inputRefs = useRef&lt;Map&lt;string, HTMLInputElement&gt;&gt;(new Map());
-  const scrollPositionsRef = useRef&lt;Record&lt;number, number&gt;&gt;({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const scrollPositionsRef = useRef<Record<number, number>>({});
 
   const buildSnapshot = (data: TargetData[]) => {
-    const snapshot: Record&lt;string, number&gt; = {};
+    const snapshot: Record<string, number> = {};
     data.forEach((staffMember) => {
       Object.entries(staffMember.targets).forEach(([monthStr, monthTargets]) => {
         const month = Number(monthStr);
@@ -263,7 +318,7 @@ export const TargetsControl: React.FC = () => {
   };
 
   const handleKeyDown = (
-    e: React.KeyboardEvent&lt;HTMLInputElement&gt;,
+    e: React.KeyboardEvent<HTMLInputElement>,
     staffId: number,
     month: number,
     serviceName: string,
@@ -286,11 +341,11 @@ export const TargetsControl: React.FC = () => {
 
     if (e.shiftKey) {
       nextMonthIndex--;
-      if (nextMonthIndex &lt; 0) {
+      if (nextMonthIndex < 0) {
         nextServiceIndex--;
-        if (nextServiceIndex &lt; 0) {
+        if (nextServiceIndex < 0) {
           nextStaffIndex--;
-          if (nextStaffIndex &lt; 0) {
+          if (nextStaffIndex < 0) {
             nextStaffIndex = targetData.length - 1;
           }
           nextServiceIndex = targetableServices.length - 1;
@@ -329,67 +384,14 @@ export const TargetsControl: React.FC = () => {
     }
   };
 
-  const handleSaveTargets = async (): Promise&lt;boolean&gt; => {
+  const handleSaveTargets = async (): Promise<boolean> => {
     setSaveMessage(null);
     setError(null);
 
     try {
       await Promise.all(
         targetData.map(async (staffMember) => {
-          const monthData = getFinancialYearMonths();
-
-          const monthsByYear: Record&lt;number, number[]&gt; = {};
-          monthData.forEach((m) => {
-            const calYear = getYearForMonth(m.number, selectedFinancialYear);
-            if (!monthsByYear[calYear]) monthsByYear[calYear] = [];
-            monthsByYear[calYear].push(m.number);
-          });
-
-          for (const [calYearStr, months] of Object.entries(monthsByYear)) {
-            const calYear = Number(calYearStr);
-            const { error: deleteError } = await supabase
-              .from('monthlytargets')
-              .delete()
-              .eq('staff_id', staffMember.staff_id)
-              .eq('year', calYear)
-              .in('month', months);
-              
-            if (deleteError) throw deleteError;
-          }
-
-          const inserts: Array&lt;{
-            staff_id: number;
-            service_id: number;
-            month: number;
-            year: number;
-            target_value: number;
-          }&gt; = [];
-
-          Object.entries(staffMember.targets).forEach(([monthStr, monthTargets]) => {
-            const month = Number(monthStr);
-            const year = getYearForMonth(month, selectedFinancialYear);
-
-            Object.entries(monthTargets).forEach(([serviceName, value]) => {
-              const service = targetableServices.find((s) => s.service_name === serviceName);
-              if (service) {
-                inserts.push({
-                  staff_id: staffMember.staff_id,
-                  service_id: service.service_id,
-                  month,
-                  year,
-                  target_value: value ?? 0,
-                });
-              }
-            });
-          });
-
-          if (inserts.length > 0) {
-            const { error: insertError } = await supabase
-              .from('monthlytargets')
-              .insert(inserts);
-
-            if (insertError) throw insertError;
-          }
+          await persistStaffTargets(staffMember, selectedFinancialYear, targetableServices);
         })
       );
 
@@ -464,11 +466,11 @@ export const TargetsControl: React.FC = () => {
       return { key: buildMonthColKey(m.name, year), month: m, year };
     });
 
-    const rows: Record&lt;string, string | number&gt;[] = [];
+    const rows: Record<string, string | number>[] = [];
 
     targetableServices.forEach((service) => {
       targetData.forEach((staffMember) => {
-        const row: Record&lt;string, string | number&gt; = {
+        const row: Record<string, string | number> = {
           service_name: service.service_name,
           accountant_name: staffMember.name,
           staff_id: staffMember.staff_id,
@@ -520,7 +522,7 @@ export const TargetsControl: React.FC = () => {
   };
 
   const handleFileSelected = useCallback(
-    (e: React.ChangeEvent&lt;HTMLInputElement&gt;) => {
+    (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file || !importState.selectedFY) return;
 
@@ -539,7 +541,7 @@ export const TargetsControl: React.FC = () => {
           textToParse = lines.slice(headerIndex).join('\n');
         }
 
-        const result = parse&lt;Record&lt;string, string&gt;&gt;(textToParse, {
+        const result = parse<Record<string, string>>(textToParse, {
           header: true,
           skipEmptyLines: true,
         });
@@ -629,7 +631,7 @@ export const TargetsControl: React.FC = () => {
           return;
         }
 
-        const monthLabelMap: Record&lt;number, string&gt; = {};
+        const monthLabelMap: Record<number, string> = {};
         monthData.forEach(m => { monthLabelMap[m.number] = m.name; });
 
         const diffRows: ImportDiffRow[] = [];
@@ -701,58 +703,7 @@ export const TargetsControl: React.FC = () => {
 
       await Promise.all(
         newTargetData.map(async (staffMember) => {
-          const monthData = getFinancialYearMonths();
-          const monthsByYear: Record&lt;number, number[]&gt; = {};
-          monthData.forEach((m) => {
-            const calYear = getYearForMonth(m.number, fy);
-            if (!monthsByYear[calYear]) monthsByYear[calYear] = [];
-            monthsByYear[calYear].push(m.number);
-          });
-
-          for (const [calYearStr, months] of Object.entries(monthsByYear)) {
-            const calYear = Number(calYearStr);
-            const { error: deleteError } = await supabase
-              .from('monthlytargets')
-              .delete()
-              .eq('staff_id', staffMember.staff_id)
-              .eq('year', calYear)
-              .in('month', months);
-              
-            if (deleteError) throw deleteError;
-          }
-
-          const inserts: Array&lt;{
-            staff_id: number;
-            service_id: number;
-            month: number;
-            year: number;
-            target_value: number;
-          }&gt; = [];
-
-          Object.entries(staffMember.targets).forEach(([monthStr, monthTargets]) => {
-            const month = Number(monthStr);
-            const year = getYearForMonth(month, fy);
-
-            Object.entries(monthTargets).forEach(([serviceName, value]) => {
-              const service = targetableServices.find((s) => s.service_name === serviceName);
-              if (service) {
-                inserts.push({
-                  staff_id: staffMember.staff_id,
-                  service_id: service.service_id,
-                  month,
-                  year,
-                  target_value: value ?? 0,
-                });
-              }
-            });
-          });
-
-          if (inserts.length > 0) {
-            const { error: insertError } = await supabase
-              .from('monthlytargets')
-              .insert(inserts);
-            if (insertError) throw insertError;
-          }
+          await persistStaffTargets(staffMember, fy, targetableServices);
         })
       );
 
@@ -832,17 +783,17 @@ export const TargetsControl: React.FC = () => {
 
   if (loading || authLoading || servicesLoading) {
     return (
-      &lt;div className="py-6 text-center text-gray-500"&gt;
+      <div className="py-6 text-center text-gray-500">
         Loading targets...
-      &lt;/div&gt;
+      </div>
     );
   }
 
   if (authError || servicesError) {
     return (
-      &lt;div className="p-4 bg-red-50 border border-red-200 rounded-md"&gt;
-        &lt;p className="text-red-800"&gt;⚠️ {authError || servicesError}&lt;/p&gt;
-      &lt;/div&gt;
+      <div className="p-4 bg-red-50 border border-red-200 rounded-md">
+        <p className="text-red-800">⚠️ {authError || servicesError}</p>
+      </div>
     );
   }
 
@@ -893,54 +844,54 @@ export const TargetsControl: React.FC = () => {
   const diffMonthData = getFinancialYearMonths();
 
   return (
-    &lt;div className="space-y-4"&gt;
-      &lt;input
+    <div className="space-y-4">
+      <input
         ref={fileInputRef}
         type="file"
         accept=".csv"
         className="hidden"
         onChange={handleFileSelected}
-      /&gt;
+      />
 
-      &lt;div className="page-header mb-4"&gt;
-        &lt;h2 className="page-title"&gt;Targets Control&lt;/h2&gt;
-        &lt;p className="page-subtitle"&gt;
+      <div className="page-header mb-4">
+        <h2 className="page-title">Targets Control</h2>
+        <p className="page-subtitle">
           Set monthly targets for {selectedFinancialYear.label}
-        &lt;/p&gt;
-      &lt;/div&gt;
+        </p>
+      </div>
 
       {error && (
-        &lt;div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-sm"&gt;
-          &lt;p className="text-red-800 dark:text-red-200"&gt;❌ {error}&lt;/p&gt;
-        &lt;/div&gt;
+        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-sm">
+          <p className="text-red-800 dark:text-red-200">❌ {error}</p>
+        </div>
       )}
 
       {saveMessage && (
-        &lt;div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md text-sm"&gt;
-          &lt;p className="text-green-800 dark:text-green-200"&gt;{saveMessage}&lt;/p&gt;
-        &lt;/div&gt;
+        <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md text-sm">
+          <p className="text-green-800 dark:text-green-200">{saveMessage}</p>
+        </div>
       )}
 
       {showConfirmDialog && (
-        &lt;div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]"&gt;
-          &lt;div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4 w-full animate-slide-up"&gt;
-            &lt;div className="flex items-start gap-3 mb-6"&gt;
-              &lt;div className="bg-yellow-100 dark:bg-yellow-900/30 p-2 rounded-full flex-shrink-0"&gt;
-                &lt;svg className="w-6 h-6 text-yellow-600 dark:text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"&gt;
-                  &lt;path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /&gt;
-                &lt;/svg&gt;
-              &lt;/div&gt;
-              &lt;div&gt;
-                &lt;h3 className="text-lg font-bold text-gray-900 dark:text-white"&gt;
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4 w-full animate-slide-up">
+            <div className="flex items-start gap-3 mb-6">
+              <div className="bg-yellow-100 dark:bg-yellow-900/30 p-2 rounded-full flex-shrink-0">
+                <svg className="w-6 h-6 text-yellow-600 dark:text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
                   Unsaved Changes
-                &lt;/h3&gt;
-                &lt;p className="text-sm text-gray-600 dark:text-gray-400 mt-1"&gt;
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                   You have entries that have not yet been saved. Please choose an action.
-                &lt;/p&gt;
-              &lt;/div&gt;
-            &lt;/div&gt;
-            &lt;div className="flex gap-3 justify-end"&gt;
-              &lt;button
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
                 onClick={() => {
                   setShowConfirmDialog(false);
                   setHasUnsavedChanges(false);
@@ -950,10 +901,10 @@ export const TargetsControl: React.FC = () => {
                   }
                 }}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-md transition-colors"
-              &gt;
+              >
                 Ignore
-              &lt;/button&gt;
-              &lt;button
+              </button>
+              <button
                 onClick={async () => {
                   const success = await handleSaveTargets();
                   if (success) {
@@ -965,24 +916,24 @@ export const TargetsControl: React.FC = () => {
                   }
                 }}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-md transition-colors shadow-sm"
-              &gt;
+              >
                 Save updates
-              &lt;/button&gt;
-            &lt;/div&gt;
-          &lt;/div&gt;
-        &lt;/div&gt;
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {importState.step === 'select-fy' && (
-        &lt;div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]"&gt;
-          &lt;div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm mx-4 w-full animate-slide-up"&gt;
-            &lt;h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2"&gt;Import Targets&lt;/h3&gt;
-            &lt;p className="text-sm text-gray-600 dark:text-gray-400 mb-4"&gt;
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm mx-4 w-full animate-slide-up">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Import Targets</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
               Select the financial year you are importing targets for. Only month columns matching this financial year will be accepted.
-            &lt;/p&gt;
-            &lt;div className="mb-5"&gt;
-              &lt;label className="block text-xs font-bold text-gray-500 uppercase mb-1"&gt;Financial Year&lt;/label&gt;
-              &lt;select
+            </p>
+            <div className="mb-5">
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Financial Year</label>
+              <select
                 value={importState.selectedFY ? `${importState.selectedFY.start}-${importState.selectedFY.end}` : ''}
                 onChange={(e) => {
                   const [start, end] = e.target.value.split('-').map(Number);
@@ -993,70 +944,70 @@ export const TargetsControl: React.FC = () => {
                   }
                 }}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              &gt;
+              >
                 {financialYears.map((fy) => (
-                  &lt;option key={`${fy.start}-${fy.end}`} value={`${fy.start}-${fy.end}`}&gt;
+                  <option key={`${fy.start}-${fy.end}`} value={`${fy.start}-${fy.end}`}>
                     {fy.label}
-                  &lt;/option&gt;
+                  </option>
                 ))}
-              &lt;/select&gt;
-            &lt;/div&gt;
+              </select>
+            </div>
             {importState.error && (
-              &lt;div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-800 dark:text-red-200 whitespace-pre-line"&gt;
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-800 dark:text-red-200 whitespace-pre-line">
                 {importState.error}
-              &lt;/div&gt;
+              </div>
             )}
-            &lt;div className="flex gap-3 justify-end"&gt;
-              &lt;button
+            <div className="flex gap-3 justify-end">
+              <button
                 onClick={handleCancelImport}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-md transition-colors"
-              &gt;
+              >
                 Cancel
-              &lt;/button&gt;
-              &lt;button
+              </button>
+              <button
                 onClick={handleImportFYConfirm}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-md transition-colors shadow-sm"
-              &gt;
+              >
                 Choose CSV File
-              &lt;/button&gt;
-            &lt;/div&gt;
-          &lt;/div&gt;
-        &lt;/div&gt;
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {(importState.step === 'preview' || importState.step === 'importing') && (
-        &lt;div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4"&gt;
-          &lt;div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col animate-slide-up"&gt;
-            &lt;div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0"&gt;
-              &lt;div&gt;
-                &lt;h3 className="text-lg font-bold text-gray-900 dark:text-white"&gt;
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col animate-slide-up">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
                   Import Preview — FY {importState.selectedFY?.label}
-                &lt;/h3&gt;
-                &lt;p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5"&gt;
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                   {importState.parsedRows.length} cell(s) in file •{' '}
-                  &lt;span className={changedCount > 0 ? 'text-amber-600 font-semibold' : 'text-green-600 font-semibold'}&gt;
+                  <span className={changedCount > 0 ? 'text-amber-600 font-semibold' : 'text-green-600 font-semibold'}>
                     {changedCount} change(s)
-                  &lt;/span&gt;
+                  </span>
                   {' '}detected vs current data
-                &lt;/p&gt;
-              &lt;/div&gt;
-              &lt;div className="flex items-center gap-2"&gt;
-                &lt;span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-800"&gt;
-                  &lt;span className="w-2 h-2 rounded-full bg-green-500 inline-block"&gt;&lt;/span&gt; No change
-                &lt;/span&gt;
-                &lt;span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800"&gt;
-                  &lt;span className="w-2 h-2 rounded-full bg-amber-500 inline-block"&gt;&lt;/span&gt; Changed
-                &lt;/span&gt;
-              &lt;/div&gt;
-            &lt;/div&gt;
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-800">
+                  <span className="w-2 h-2 rounded-full bg-green-500 inline-block"></span> No change
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span> Changed
+                </span>
+              </div>
+            </div>
 
             {importState.error && (
-              &lt;div className="mx-6 mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-800 dark:text-red-200 whitespace-pre-line flex-shrink-0"&gt;
+              <div className="mx-6 mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-800 dark:text-red-200 whitespace-pre-line flex-shrink-0">
                 {importState.error}
-              &lt;/div&gt;
+              </div>
             )}
 
-            &lt;div className="flex-1 overflow-auto"&gt;
+            <div className="flex-1 overflow-auto">
               {(() => {
                 const fy = importState.selectedFY;
                 if (!fy) return null;
@@ -1067,7 +1018,7 @@ export const TargetsControl: React.FC = () => {
                 });
 
                 type DiffKey = string;
-                const grouped = new Map&lt;DiffKey, Map&lt;number, ImportDiffRow&gt;&gt;();
+                const grouped = new Map<DiffKey, Map<number, ImportDiffRow>>();
 
                 importState.diffRows.forEach(row => {
                   const key: DiffKey = `${row.service_name}||${row.staff_name}||${row.staff_id}`;
@@ -1083,32 +1034,32 @@ export const TargetsControl: React.FC = () => {
                 });
 
                 return (
-                  &lt;table className="w-full text-sm border-collapse" style={{ minWidth: '900px' }}&gt;
-                    &lt;thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 z-10"&gt;
-                      &lt;tr&gt;
-                        &lt;th className="px-3 py-2.5 text-left text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap"&gt;Service&lt;/th&gt;
-                        &lt;th className="px-3 py-2.5 text-left text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap"&gt;Accountant&lt;/th&gt;
+                  <table className="w-full text-sm border-collapse" style={{ minWidth: '900px' }}>
+                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 z-10">
+                      <tr>
+                        <th className="px-3 py-2.5 text-left text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap">Service</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap">Accountant</th>
                         {monthCols.map(mc => (
-                          &lt;th key={`${mc.month}-${mc.year}`} className="px-2 py-2.5 text-center text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap"&gt;
-                            &lt;div&gt;{mc.name}&lt;/div&gt;
-                            &lt;div className="text-[9px] font-normal text-gray-400"&gt;{mc.year}&lt;/div&gt;
-                          &lt;/th&gt;
+                          <th key={`${mc.month}-${mc.year}`} className="px-2 py-2.5 text-center text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap">
+                            <div>{mc.name}</div>
+                            <div className="text-[9px] font-normal text-gray-400">{mc.year}</div>
+                          </th>
                         ))}
-                      &lt;/tr&gt;
-                    &lt;/thead&gt;
-                    &lt;tbody&gt;
+                      </tr>
+                    </thead>
+                    <tbody>
                       {sortedKeys.map((key, idx) => {
                         const monthMap = grouped.get(key)!;
                         const [serviceName, staffName] = key.split('||');
                         const rowHasChange = monthCols.some(mc => monthMap.get(mc.month)?.changed);
 
                         return (
-                          &lt;tr
+                          <tr
                             key={key}
                             className={`${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/50 dark:bg-gray-700/30'} ${rowHasChange ? 'ring-1 ring-inset ring-amber-200 dark:ring-amber-700' : ''}`}
-                          &gt;
-                            &lt;td className="px-3 py-2 text-gray-900 dark:text-white font-semibold whitespace-nowrap"&gt;{serviceName}&lt;/td&gt;
-                            &lt;td className="px-3 py-2 text-gray-700 dark:text-gray-300 whitespace-nowrap"&gt;{staffName}&lt;/td&gt;
+                          >
+                            <td className="px-3 py-2 text-gray-900 dark:text-white font-semibold whitespace-nowrap">{serviceName}</td>
+                            <td className="px-3 py-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">{staffName}</td>
                             {monthCols.map(mc => {
                               const cell = monthMap.get(mc.month);
                               const changed = cell?.changed ?? false;
@@ -1116,60 +1067,60 @@ export const TargetsControl: React.FC = () => {
                               const importVal = cell?.import_value ?? 0;
 
                               return (
-                                &lt;td key={`${mc.month}-${mc.year}`} className={`px-2 py-2 text-center ${changed ? 'bg-amber-50 dark:bg-amber-900/20' : ''}`}&gt;
+                                <td key={`${mc.month}-${mc.year}`} className={`px-2 py-2 text-center ${changed ? 'bg-amber-50 dark:bg-amber-900/20' : ''}`}>
                                   {changed ? (
-                                    &lt;div className="flex flex-col items-center gap-0.5"&gt;
-                                      &lt;span className="text-xs text-gray-400 line-through"&gt;{currentVal}&lt;/span&gt;
-                                      &lt;span className="text-xs font-bold text-amber-700 dark:text-amber-400"&gt;{importVal}&lt;/span&gt;
-                                    &lt;/div&gt;
+                                    <div className="flex flex-col items-center gap-0.5">
+                                      <span className="text-xs text-gray-400 line-through">{currentVal}</span>
+                                      <span className="text-xs font-bold text-amber-700 dark:text-amber-400">{importVal}</span>
+                                    </div>
                                   ) : (
-                                    &lt;span className="text-xs font-mono text-gray-600 dark:text-gray-400"&gt;{importVal}&lt;/span&gt;
+                                    <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{importVal}</span>
                                   )}
-                                &lt;/td&gt;
+                                </td>
                               );
                             })}
-                          &lt;/tr&gt;
+                          </tr>
                         );
                       })}
-                    &lt;/tbody&gt;
-                  &lt;/table&gt;
+                    </tbody>
+                  </table>
                 );
               })()}
-            &lt;/div&gt;
+            </div>
 
-            &lt;div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0 bg-white dark:bg-gray-800"&gt;
-              &lt;p className="text-xs text-gray-500 dark:text-gray-400"&gt;
+            <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0 bg-white dark:bg-gray-800">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
                 {changedCount === 0
                   ? 'No changes detected. The imported file matches the current data.'
                   : `Confirming will overwrite ${changedCount} value(s) in the database for FY ${importState.selectedFY?.label}. Changed cells show old → new.`}
-              &lt;/p&gt;
-              &lt;div className="flex gap-3"&gt;
-                &lt;button
+              </p>
+              <div className="flex gap-3">
+                <button
                   onClick={handleCancelImport}
                   disabled={importState.step === 'importing'}
                   className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-md transition-colors disabled:opacity-50"
-                &gt;
+                >
                   Cancel
-                &lt;/button&gt;
-                &lt;button
+                </button>
+                <button
                   onClick={handleConfirmImport}
                   disabled={importState.step === 'importing' || changedCount === 0}
                   className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-md transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                &gt;
+                >
                   {importState.step === 'importing' ? 'Importing…' : `Confirm Import (${changedCount} change${changedCount !== 1 ? 's' : ''})`}
-                &lt;/button&gt;
-              &lt;/div&gt;
-            &lt;/div&gt;
-          &lt;/div&gt;
-        &lt;/div&gt;
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
-      &lt;div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4"&gt;
-        &lt;div className="flex flex-col gap-1"&gt;
-          &lt;label className="text-xs font-medium text-gray-700 dark:text-gray-300"&gt;
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
             Financial Year
-          &lt;/label&gt;
-          &lt;select
+          </label>
+          <select
             value={`${selectedFinancialYear.start}-${selectedFinancialYear.end}`}
             onChange={(e) => {
               const [start, end] = e.target.value.split('-').map(Number);
@@ -1177,53 +1128,53 @@ export const TargetsControl: React.FC = () => {
               if (fy) handleFinancialYearChange(fy);
             }}
             className="px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-          &gt;
+          >
             {financialYears.map((fy) => (
-              &lt;option key={`${fy.start}-${fy.end}`} value={`${fy.start}-${fy.end}`}&gt;
+              <option key={`${fy.start}-${fy.end}`} value={`${fy.start}-${fy.end}`}>
                 {fy.label}
-              &lt;/option&gt;
+              </option>
             ))}
-          &lt;/select&gt;
-        &lt;/div&gt;
+          </select>
+        </div>
 
-        &lt;div className="flex gap-2"&gt;
-          &lt;button
+        <div className="flex gap-2">
+          <button
             onClick={handleImportClick}
             className="px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs font-medium"
-          &gt;
+          >
             📤 Import CSV
-          &lt;/button&gt;
-          &lt;button
+          </button>
+          <button
             onClick={handleExportCSV}
             className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium"
-          &gt;
+          >
             📥 Export CSV
-          &lt;/button&gt;
-          &lt;button
+          </button>
+          <button
             onClick={() => {
               void handleSaveTargets();
             }}
             disabled={!hasUnsavedChanges}
             className="px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          &gt;
+          >
             💾 Save Targets
-          &lt;/button&gt;
-        &lt;/div&gt;
-      &lt;/div&gt;
+          </button>
+        </div>
+      </div>
 
-      &lt;div className="space-y-4"&gt;
+      <div className="space-y-4">
         {targetData.map((staffMember) => (
-          &lt;div
+          <div
             key={staffMember.staff_id}
             className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden"
-          &gt;
-            &lt;div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-4 py-2"&gt;
-              &lt;h4 className="text-base font-bold text-white"&gt;
+          >
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-4 py-2">
+              <h4 className="text-base font-bold text-white">
                 {staffMember.name}
-              &lt;/h4&gt;
-            &lt;/div&gt;
+              </h4>
+            </div>
 
-            &lt;div
+            <div
               className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800"
               style={{ scrollBehavior: 'smooth' }}
               onScroll={(e) => saveScrollPosition(staffMember.staff_id, e.currentTarget.scrollLeft)}
@@ -1235,62 +1186,62 @@ export const TargetsControl: React.FC = () => {
                   }
                 }
               }}
-            &gt;
-              &lt;div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600"&gt;
-                &lt;div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600"&gt;
-                  &lt;span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block"&gt;
+            >
+              <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600">
+                  <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                     Service
-                  &lt;/span&gt;
-                &lt;/div&gt;
+                  </span>
+                </div>
 
-                &lt;div className="flex flex-1 w-full"&gt;
+                <div className="flex flex-1 w-full">
                   {monthData.map((m) => {
                     const calYear = getYearForMonth(m.number, selectedFinancialYear);
                     return (
-                      &lt;div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600"&gt;
-                        &lt;span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block"&gt;
+                      <div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600">
+                        <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
                           {m.name}
-                        &lt;/span&gt;
-                        &lt;span className="text-[9px] text-gray-400 dark:text-gray-500 block"&gt;
+                        </span>
+                        <span className="text-[9px] text-gray-400 dark:text-gray-500 block">
                           {calYear}
-                        &lt;/span&gt;
-                      &lt;/div&gt;
+                        </span>
+                      </div>
                     );
                   })}
-                &lt;/div&gt;
+                </div>
 
-                &lt;div className="w-20 flex-shrink-0 px-2 py-1.5 text-center border-l border-gray-200 dark:border-gray-600"&gt;
-                  &lt;span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block"&gt;
+                <div className="w-20 flex-shrink-0 px-2 py-1.5 text-center border-l border-gray-200 dark:border-gray-600">
+                  <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                     Total
-                  &lt;/span&gt;
-                &lt;/div&gt;
-              &lt;/div&gt;
+                  </span>
+                </div>
+              </div>
 
-              &lt;div className="border-b border-gray-200 dark:border-gray-700"&gt;
+              <div className="border-b border-gray-200 dark:border-gray-700">
                 {targetableServices.map((service, serviceIdx) => {
                   const annualTotal = calculateAnnualTotal(staffMember.staff_id, service.service_name);
 
                   return (
-                    &lt;div
+                    <div
                       key={service.service_id}
                       className={`flex w-full ${
                         serviceIdx % 2 === 0
                           ? 'bg-white dark:bg-gray-800'
                           : 'bg-gray-50 dark:bg-gray-700'
                       } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
-                    &gt;
-                      &lt;div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center"&gt;
-                        &lt;span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis"&gt;
+                    >
+                      <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center">
+                        <span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
                           {service.service_name}
-                        &lt;/span&gt;
-                      &lt;/div&gt;
+                        </span>
+                      </div>
 
-                      &lt;div className="flex flex-1 w-full"&gt;
+                      <div className="flex flex-1 w-full">
                         {monthData.map((m) => {
                           const inputKey = getInputKey(staffMember.staff_id, m.number, service.service_name);
                           return (
-                            &lt;div key={m.number} className="flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600"&gt;
-                              &lt;input
+                            <div key={m.number} className="flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600">
+                              <input
                                 ref={(el) => {
                                   if (el) {
                                     inputRefs.current.set(inputKey, el);
@@ -1330,177 +1281,177 @@ export const TargetsControl: React.FC = () => {
                                   )
                                 }
                                 className="w-full h-full px-1 py-1.5 bg-transparent border-0 text-center text-xs font-medium text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-colors no-spinner"
-                              /&gt;
-                            &lt;/div&gt;
+                              />
+                            </div>
                           );
                         })}
-                      &lt;/div&gt;
+                      </div>
 
-                      &lt;div className="w-20 flex-shrink-0 p-0 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center bg-gray-50 dark:bg-gray-700/50"&gt;
-                        &lt;span className="text-xs font-bold text-gray-900 dark:text-white py-1.5"&gt;
+                      <div className="w-20 flex-shrink-0 p-0 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center bg-gray-50 dark:bg-gray-700/50">
+                        <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">
                           {annualTotal}
-                        &lt;/span&gt;
-                      &lt;/div&gt;
-                    &lt;/div&gt;
+                        </span>
+                      </div>
+                    </div>
                   );
                 })}
 
-                &lt;div className="flex w-full bg-gray-200 dark:bg-gray-600 border-t border-gray-300 dark:border-gray-500"&gt;
-                  &lt;div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-300 dark:border-gray-500 flex items-center"&gt;
-                    &lt;span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis"&gt;
+                <div className="flex w-full bg-gray-200 dark:bg-gray-600 border-t border-gray-300 dark:border-gray-500">
+                  <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-300 dark:border-gray-500 flex items-center">
+                    <span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
                       Monthly Total
-                    &lt;/span&gt;
-                  &lt;/div&gt;
+                    </span>
+                  </div>
 
-                  &lt;div className="flex flex-1 w-full"&gt;
+                  <div className="flex flex-1 w-full">
                     {monthData.map((m) => {
                       const monthTotal = calculateMonthlyTotal(staffMember.staff_id, m.number);
                       return (
-                        &lt;div key={`total-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-gray-300 dark:border-gray-500 flex items-center justify-center"&gt;
-                          &lt;span className="text-xs font-bold text-gray-900 dark:text-white py-1.5"&gt;
+                        <div key={`total-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-gray-300 dark:border-gray-500 flex items-center justify-center">
+                          <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">
                             {monthTotal}
-                          &lt;/span&gt;
-                        &lt;/div&gt;
+                          </span>
+                        </div>
                       );
                     })}
-                  &lt;/div&gt;
+                  </div>
 
-                  &lt;div className="w-20 flex-shrink-0 p-0 border-l border-gray-300 dark:border-gray-500 flex items-center justify-center bg-blue-600 dark:bg-blue-700"&gt;
-                    &lt;span className="text-xs font-bold text-white py-1.5"&gt;
+                  <div className="w-20 flex-shrink-0 p-0 border-l border-gray-300 dark:border-gray-500 flex items-center justify-center bg-blue-600 dark:bg-blue-700">
+                    <span className="text-xs font-bold text-white py-1.5">
                       {monthData.reduce((sum, m) => sum + calculateMonthlyTotal(staffMember.staff_id, m.number), 0)}
-                    &lt;/span&gt;
-                  &lt;/div&gt;
-                &lt;/div&gt;
-              &lt;/div&gt;
-            &lt;/div&gt;
-          &lt;/div&gt;
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         ))}
 
         {targetData.length === 0 && (
-          &lt;div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-6"&gt;
-            &lt;p className="text-sm text-gray-500 dark:text-gray-400"&gt;
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-6">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
               No active accountants found for this year.
-            &lt;/p&gt;
-          &lt;/div&gt;
+            </p>
+          </div>
         )}
-      &lt;/div&gt;
+      </div>
 
-      &lt;div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden mt-4"&gt;
-        &lt;div className="bg-gradient-to-r from-purple-600 to-purple-700 dark:from-purple-700 dark:to-purple-800 px-4 py-2"&gt;
-          &lt;h4 className="text-base font-bold text-white"&gt;
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden mt-4">
+        <div className="bg-gradient-to-r from-purple-600 to-purple-700 dark:from-purple-700 dark:to-purple-800 px-4 py-2">
+          <h4 className="text-base font-bold text-white">
             Service Totals by Month
-          &lt;/h4&gt;
-          &lt;p className="text-xs text-purple-100 mt-0.5"&gt;
+          </h4>
+          <p className="text-xs text-purple-100 mt-0.5">
             Aggregated targets across all active accountants (Read-Only)
-          &lt;/p&gt;
-        &lt;/div&gt;
+          </p>
+        </div>
 
-        &lt;div
+        <div
           className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800"
           style={{ scrollBehavior: 'smooth' }}
-        &gt;
-          &lt;div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600"&gt;
-            &lt;div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600"&gt;
-              &lt;span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block"&gt;
+        >
+          <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+            <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600">
+              <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                 Service
-              &lt;/span&gt;
-            &lt;/div&gt;
+              </span>
+            </div>
 
-            &lt;div className="flex flex-1 w-full"&gt;
+            <div className="flex flex-1 w-full">
               {monthData.map((m) => {
                 const calYear = getYearForMonth(m.number, selectedFinancialYear);
                 return (
-                  &lt;div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600"&gt;
-                    &lt;span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block"&gt;
+                  <div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600">
+                    <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
                       {m.name}
-                    &lt;/span&gt;
-                    &lt;span className="text-[9px] text-gray-400 dark:text-gray-500 block"&gt;
+                    </span>
+                    <span className="text-[9px] text-gray-400 dark:text-gray-500 block">
                       {calYear}
-                    &lt;/span&gt;
-                  &lt;/div&gt;
+                    </span>
+                  </div>
                 );
               })}
-            &lt;/div&gt;
+            </div>
 
-            &lt;div className="w-20 flex-shrink-0 px-2 py-1.5 text-center border-l border-gray-200 dark:border-gray-600"&gt;
-              &lt;span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block"&gt;
+            <div className="w-20 flex-shrink-0 px-2 py-1.5 text-center border-l border-gray-200 dark:border-gray-600">
+              <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
                 Total
-              &lt;/span&gt;
-            &lt;/div&gt;
-          &lt;/div&gt;
+              </span>
+            </div>
+          </div>
 
-          &lt;div className="border-b border-gray-200 dark:border-gray-700"&gt;
+          <div className="border-b border-gray-200 dark:border-gray-700">
             {targetableServices.map((service, serviceIdx) => {
               const annualTotal = calculateServiceAnnualTotal(service.service_name);
 
               return (
-                &lt;div
+                <div
                   key={`service-total-${service.service_id}`}
                   className={`flex w-full ${
                     serviceIdx % 2 === 0
                       ? 'bg-white dark:bg-gray-800'
                       : 'bg-gray-50 dark:bg-gray-700'
                   } hover:bg-purple-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
-                &gt;
-                  &lt;div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center"&gt;
-                    &lt;span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis"&gt;
+                >
+                  <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center">
+                    <span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
                       {service.service_name}
-                    &lt;/span&gt;
-                  &lt;/div&gt;
+                    </span>
+                  </div>
 
-                  &lt;div className="flex flex-1 w-full"&gt;
+                  <div className="flex flex-1 w-full">
                     {monthData.map((m) => {
                       const monthTotal = calculateServiceMonthlyTotal(m.number, service.service_name);
                       return (
-                        &lt;div key={`${service.service_id}-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600 flex items-center justify-center"&gt;
-                          &lt;span className="text-xs font-bold text-gray-900 dark:text-white py-1.5"&gt;
+                        <div key={`${service.service_id}-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600 flex items-center justify-center">
+                          <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">
                             {monthTotal}
-                          &lt;/span&gt;
-                        &lt;/div&gt;
+                          </span>
+                        </div>
                       );
                     })}
-                  &lt;/div&gt;
+                  </div>
 
-                  &lt;div className="w-20 flex-shrink-0 p-0 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center bg-purple-50 dark:bg-purple-900/20"&gt;
-                    &lt;span className="text-xs font-bold text-purple-900 dark:text-purple-200 py-1.5"&gt;
+                  <div className="w-20 flex-shrink-0 p-0 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center bg-purple-50 dark:bg-purple-900/20">
+                    <span className="text-xs font-bold text-purple-900 dark:text-purple-200 py-1.5">
                       {annualTotal}
-                    &lt;/span&gt;
-                  &lt;/div&gt;
-                &lt;/div&gt;
+                    </span>
+                  </div>
+                </div>
               );
             })}
 
-            &lt;div className="flex w-full bg-purple-200 dark:bg-purple-900/50 border-t border-purple-300 dark:border-purple-700"&gt;
-              &lt;div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-purple-300 dark:border-purple-700 flex items-center"&gt;
-                &lt;span className="text-xs font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis"&gt;
+            <div className="flex w-full bg-purple-200 dark:bg-purple-900/50 border-t border-purple-300 dark:border-purple-700">
+              <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-purple-300 dark:border-purple-700 flex items-center">
+                <span className="text-xs font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
                   Grand Total
-                &lt;/span&gt;
-              &lt;/div&gt;
+                </span>
+              </div>
 
-              &lt;div className="flex flex-1 w-full"&gt;
+              <div className="flex flex-1 w-full">
                 {monthData.map((m) => {
                   const monthGrandTotal = targetableServices.reduce((sum, service) => {
                     return sum + calculateServiceMonthlyTotal(m.number, service.service_name);
                   }, 0);
                   return (
-                    &lt;div key={`grand-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-purple-300 dark:border-purple-700 flex items-center justify-center"&gt;
-                      &lt;span className="text-xs font-bold text-purple-900 dark:text-purple-200 py-1.5"&gt;
+                    <div key={`grand-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-purple-300 dark:border-purple-700 flex items-center justify-center">
+                      <span className="text-xs font-bold text-purple-900 dark:text-purple-200 py-1.5">
                         {monthGrandTotal}
-                      &lt;/span&gt;
-                    &lt;/div&gt;
+                      </span>
+                    </div>
                   );
                 })}
-              &lt;/div&gt;
+              </div>
 
-              &lt;div className="w-20 flex-shrink-0 p-0 border-l border-purple-300 dark:border-purple-700 flex items-center justify-center bg-purple-600 dark:bg-purple-700"&gt;
-                &lt;span className="text-xs font-bold text-white py-1.5"&gt;
+              <div className="w-20 flex-shrink-0 p-0 border-l border-purple-300 dark:border-purple-700 flex items-center justify-center bg-purple-600 dark:bg-purple-700">
+                <span className="text-xs font-bold text-white py-1.5">
                   {targetableServices.reduce((sum, service) => sum + calculateServiceAnnualTotal(service.service_name), 0)}
-                &lt;/span&gt;
-              &lt;/div&gt;
-            &lt;/div&gt;
-          &lt;/div&gt;
-        &lt;/div&gt;
-      &lt;/div&gt;
-    &lt;/div&gt;
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };
