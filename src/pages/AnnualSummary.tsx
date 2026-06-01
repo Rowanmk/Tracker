@@ -1,4 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import {
+  BarChart,
+  Card,
+  DonutChart,
+  Flex,
+  Grid,
+  Legend,
+  Metric,
+  Text,
+  Title,
+} from '@tremor/react';
 import { supabase } from '../supabase/client';
 import { useServices } from '../hooks/useServices';
 import { useAuth } from '../context/AuthContext';
@@ -138,6 +149,8 @@ const SERVICE_COLORS = [
   '#DB2777',
 ];
 
+const TREMOR_SERVICE_COLORS = ['blue', 'emerald', 'violet'];
+
 const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const toIsoDate = (date: Date) => {
@@ -202,375 +215,33 @@ const formatPct = (value: number | null, digits = 1) => {
 
 const formatDeltaNumber = (value: number) => `${value >= 0 ? '+' : ''}${formatNumber(value)}`;
 
-const getBarHeight = (value: number, max: number, chartHeight: number) => {
-  if (max <= 0) return 0;
-  return (value / max) * chartHeight;
-};
-
-const polarToCartesian = (cx: number, cy: number, r: number, angleDeg: number) => {
-  const angleRad = ((angleDeg - 90) * Math.PI) / 180.0;
-  return {
-    x: cx + r * Math.cos(angleRad),
-    y: cy + r * Math.sin(angleRad),
-  };
-};
-
-const describeArc = (cx: number, cy: number, r: number, startAngle: number, endAngle: number) => {
-  const start = polarToCartesian(cx, cy, r, endAngle);
-  const end = polarToCartesian(cx, cy, r, startAngle);
-  const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
-  return [`M`, start.x, start.y, `A`, r, r, 0, largeArcFlag, 0, end.x, end.y].join(' ');
-};
-
 const getMondayFirstDOW = (dateIso: string) => {
   const date = new Date(`${dateIso}T00:00:00`);
   const raw = date.getDay();
   return raw === 0 ? 6 : raw - 1;
 };
 
-const DonutChart: React.FC<{
-  data: Array<{ service_name: string; total: number; pct: number; color: string }>;
-}> = ({ data }) => {
-  const size = 280;
-  const strokeWidth = 42;
-  const radius = (size - strokeWidth) / 2;
-  const center = size / 2;
-  let currentAngle = 0;
-
-  return (
-    <div className="flex flex-col items-center">
-      <svg viewBox={`0 0 ${size} ${size}`} className="w-64 h-64">
-        <circle
-          cx={center}
-          cy={center}
-          r={radius}
-          fill="none"
-          stroke="#E5E7EB"
-          strokeWidth={strokeWidth}
-        />
-        {data.map((segment) => {
-          const angle = (segment.pct / 100) * 360;
-          const startAngle = currentAngle;
-          const endAngle = currentAngle + angle;
-          currentAngle += angle;
-          if (segment.total <= 0) return null;
-
-          return (
-            <path
-              key={segment.service_name}
-              d={describeArc(center, center, radius, startAngle, endAngle)}
-              fill="none"
-              stroke={segment.color}
-              strokeWidth={strokeWidth}
-              strokeLinecap="butt"
-            />
-          );
-        })}
-        <circle cx={center} cy={center} r={radius - strokeWidth / 2} fill="white" />
-        <text
-          x={center}
-          y={center - 4}
-          textAnchor="middle"
-          className="fill-[#001B47]"
-          style={{ fontSize: 18, fontWeight: 700 }}
-        >
-          Service Mix
-        </text>
-        <text
-          x={center}
-          y={center + 20}
-          textAnchor="middle"
-          className="fill-gray-500"
-          style={{ fontSize: 12 }}
-        >
-          12 month total
-        </text>
-      </svg>
-
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
-        {data.map((segment) => (
-          <div key={segment.service_name} className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: segment.color }} />
-              <span className="text-sm font-medium text-gray-700 truncate">{segment.service_name}</span>
-            </div>
-            <span className="text-sm font-bold text-gray-900">{segment.pct.toFixed(1)}%</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const MonthlyStackedBarChart: React.FC<{
-  data: MonthKeyData[];
-  services: Array<{ service_id: number; service_name: string; color: string }>;
-}> = ({ data, services }) => {
-  const width = 900;
-  const height = 360;
-  const chartHeight = 250;
-  const chartWidth = 760;
-  const left = 56;
-  const top = 18;
-  const slotWidth = chartWidth / Math.max(data.length, 1);
-  const barWidth = Math.min(42, slotWidth * 0.74);
-  const maxValue = Math.max(...data.map((month) => month.total), 1);
-
-  return (
-    <div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-[360px]">
-        {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-          const y = top + chartHeight - ratio * chartHeight;
-          const value = Math.round(maxValue * ratio);
-          return (
-            <g key={ratio}>
-              <text x={left - 8} y={y + 4} textAnchor="end" className="fill-gray-500 text-[10px]">
-                {value}
-              </text>
-              <line x1={left} y1={y} x2={left + chartWidth} y2={y} stroke="#E5E7EB" strokeDasharray={ratio === 0 ? '' : '4 4'} />
-            </g>
-          );
-        })}
-
-        {data.map((month, index) => {
-          const x = left + index * slotWidth + (slotWidth - barWidth) / 2;
-          let currentY = top + chartHeight;
-
-          return (
-            <g key={month.key}>
-              {services.map((service) => {
-                const value = month.byService[service.service_id] || 0;
-                if (value <= 0) return null;
-                const segmentHeight = getBarHeight(value, maxValue, chartHeight);
-                currentY -= segmentHeight;
-                return (
-                  <rect
-                    key={service.service_id}
-                    x={x}
-                    y={currentY}
-                    width={barWidth}
-                    height={segmentHeight}
-                    rx={segmentHeight < 8 ? 1 : 2}
-                    fill={service.color}
-                  >
-                    <title>{`${month.longLabel} · ${service.service_name}: ${value}`}</title>
-                  </rect>
-                );
-              })}
-              <text x={x + barWidth / 2} y={top + chartHeight + 18} textAnchor="middle" className="fill-gray-600 text-[10px] font-medium">
-                {month.label}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-
-      <div className="mt-3 flex flex-wrap gap-3">
-        {services.map((service) => (
-          <div key={service.service_id} className="flex items-center gap-2 text-xs text-gray-600">
-            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: service.color }} />
-            <span>{service.service_name}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const HorizontalStackedLeaderboard: React.FC<{
-  rows: LeaderboardRow[];
-  services: Array<{ service_id: number; service_name: string; color: string }>;
-}> = ({ rows, services }) => {
-  const width = 920;
-  const rowHeight = 38;
-  const left = 150;
-  const right = 76;
-  const top = 10;
-  const chartWidth = width - left - right;
-  const height = top + rows.length * rowHeight + 24;
-  const maxValue = Math.max(...rows.map((row) => row.total), 1);
-
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
-      {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-        const x = left + ratio * chartWidth;
-        const value = Math.round(maxValue * ratio);
-        return (
-          <g key={ratio}>
-            <line x1={x} y1={top} x2={x} y2={height - 20} stroke="#E5E7EB" strokeDasharray={ratio === 0 ? '' : '4 4'} />
-            <text x={x} y={height - 4} textAnchor="middle" className="fill-gray-500 text-[10px]">
-              {value}
-            </text>
-          </g>
-        );
-      })}
-
-      {rows.map((row, index) => {
-        const y = top + index * rowHeight + 8;
-        let currentX = left;
-
-        return (
-          <g key={row.staff_id}>
-            <text x={left - 12} y={y + 12} textAnchor="end" className="fill-gray-700 text-[12px] font-medium">
-              {row.name}
-            </text>
-            {services.map((service) => {
-              const value = row.byService[service.service_id] || 0;
-              if (value <= 0) return null;
-              const segmentWidth = (value / maxValue) * chartWidth;
-              const rect = (
-                <rect
-                  key={service.service_id}
-                  x={currentX}
-                  y={y}
-                  width={segmentWidth}
-                  height={16}
-                  fill={service.color}
-                  rx={2}
-                >
-                  <title>{`${row.name} · ${service.service_name}: ${value}`}</title>
-                </rect>
-              );
-              currentX += segmentWidth;
-              return rect;
-            })}
-            <text x={left + (row.total / maxValue) * chartWidth + 8} y={y + 12} className="fill-gray-800 text-[12px] font-bold">
-              {row.total}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-};
-
-const HorizontalBarChart: React.FC<{
-  rows: Array<{ label: string; value: number }>;
-  color?: string;
-}> = ({ rows, color = '#0060B8' }) => {
-  const width = 900;
-  const rowHeight = 34;
-  const top = 12;
-  const left = 160;
-  const right = 70;
-  const chartWidth = width - left - right;
-  const height = top + rows.length * rowHeight + 18;
-  const maxValue = Math.max(...rows.map((row) => row.value), 1);
-
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
-      {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-        const x = left + ratio * chartWidth;
-        return (
-          <line
-            key={ratio}
-            x1={x}
-            y1={top}
-            x2={x}
-            y2={height - 14}
-            stroke="#E5E7EB"
-            strokeDasharray={ratio === 0 ? '' : '4 4'}
-          />
-        );
-      })}
-
-      {rows.map((row, index) => {
-        const y = top + index * rowHeight + 6;
-        const barWidth = (row.value / maxValue) * chartWidth;
-        return (
-          <g key={row.label}>
-            <text x={left - 12} y={y + 11} textAnchor="end" className="fill-gray-700 text-[12px] font-medium">
-              {row.label}
-            </text>
-            <rect x={left} y={y} width={barWidth} height={16} rx={3} fill={color} />
-            <text x={left + barWidth + 8} y={y + 12} className="fill-gray-800 text-[12px] font-bold">
-              {row.value.toFixed(1)}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-};
-
-const WeekdayBarChart: React.FC<{
-  rows: Array<{ label: string; value: number }>;
-}> = ({ rows }) => {
-  const width = 760;
-  const height = 300;
-  const left = 40;
-  const top = 12;
-  const chartHeight = 220;
-  const chartWidth = 680;
-  const slotWidth = chartWidth / Math.max(rows.length, 1);
-  const barWidth = Math.min(54, slotWidth * 0.62);
-  const maxValue = Math.max(...rows.map((row) => row.value), 1);
-
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-[300px]">
-      {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-        const y = top + chartHeight - ratio * chartHeight;
-        const value = Math.round(maxValue * ratio);
-        return (
-          <g key={ratio}>
-            <text x={left - 8} y={y + 4} textAnchor="end" className="fill-gray-500 text-[10px]">
-              {value}
-            </text>
-            <line x1={left} y1={y} x2={left + chartWidth} y2={y} stroke="#E5E7EB" strokeDasharray={ratio === 0 ? '' : '4 4'} />
-          </g>
-        );
-      })}
-
-      {rows.map((row, index) => {
-        const x = left + index * slotWidth + (slotWidth - barWidth) / 2;
-        const barHeight = getBarHeight(row.value, maxValue, chartHeight);
-        const y = top + chartHeight - barHeight;
-
-        return (
-          <g key={row.label}>
-            <rect x={x} y={y} width={barWidth} height={barHeight} rx={4} fill="#FF8A2A" />
-            <text x={x + barWidth / 2} y={y - 6} textAnchor="middle" className="fill-gray-700 text-[11px] font-bold">
-              {row.value}
-            </text>
-            <text x={x + barWidth / 2} y={top + chartHeight + 18} textAnchor="middle" className="fill-gray-600 text-[10px] font-medium">
-              {row.label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-};
-
-const ReportCard: React.FC<{ title?: string; className?: string; children: React.ReactNode }> = ({
+const TremorInsightCard: React.FC<{ title?: string; className?: string; children: React.ReactNode }> = ({
   title,
   className = '',
   children,
 }) => (
-  <div className={`bg-white rounded-xl shadow-md border border-gray-200 tile-brand overflow-hidden ${className}`}>
-    {title ? <div className="tile-header px-4 py-2">{title}</div> : null}
-    <div className="p-4">{children}</div>
-  </div>
+  <Card className={`annual-card border-0 shadow-sm ring-1 ring-slate-200/80 ${className}`}>
+    {title ? <Title className="text-slate-900">{title}</Title> : null}
+    <div className={title ? 'mt-4' : ''}>{children}</div>
+  </Card>
 );
 
-const KpiTile: React.FC<{
+const KpiCard: React.FC<{
   label: string;
   value: string;
   subValue?: string;
 }> = ({ label, value, subValue }) => (
-  <div className="bg-white rounded-xl shadow-md border border-gray-200 tile-brand overflow-hidden">
-    <div className="tile-header px-4 py-2">{label}</div>
-    <div className="min-h-[132px] p-4 flex flex-col justify-between">
-      <div className="flex-1 flex items-center">
-        <div className="text-3xl md:text-[2rem] leading-tight font-extrabold text-[#001B47] break-words">
-          {value}
-        </div>
-      </div>
-      <div className="pt-3 min-h-[44px] flex items-end">
-        {subValue ? <div className="text-sm text-gray-500 leading-snug">{subValue}</div> : <div />}
-      </div>
-    </div>
-  </div>
+  <Card className="annual-card border-0 shadow-sm ring-1 ring-slate-200/80">
+    <Text className="text-slate-500">{label}</Text>
+    <Metric className="mt-3 text-slate-950 break-words">{value}</Metric>
+    <Text className="mt-3 min-h-[2.5rem] text-slate-500">{subValue || ' '}</Text>
+  </Card>
 );
 
 export const AnnualSummary: React.FC = () => {
@@ -941,6 +612,36 @@ export const AnnualSummary: React.FC = () => {
 
   const selectedPeriodLabel = periodOptions.find((option) => option.value === selectedPeriod)?.label || '';
 
+  const monthlyBarData = useMemo(() => {
+    return computed
+      ? computed.monthlyServiceData.map((month) => {
+          const row: Record<string, string | number> = {
+            month: month.label,
+          };
+
+          printableServiceLegend.forEach((service) => {
+            row[service.service_name] = month.byService[service.service_id] || 0;
+          });
+
+          return row;
+        })
+      : [];
+  }, [computed, printableServiceLegend]);
+
+  const donutChartData = useMemo(
+    () =>
+      computed?.donutData.map((segment) => ({
+        name: segment.service_name,
+        value: segment.total,
+      })) || [],
+    [computed]
+  );
+
+  const legendCategories = useMemo(
+    () => printableServiceLegend.map((service) => service.service_name),
+    [printableServiceLegend]
+  );
+
   const handlePrint = () => {
     window.print();
   };
@@ -1016,11 +717,13 @@ export const AnnualSummary: React.FC = () => {
               break-before: page;
             }
 
-            .tile-brand,
-            .annual-card {
+            .annual-card,
+            .annual-summary-delivery-insights .tr-card,
+            .annual-summary-delivery-insights [data-testid="tremor-card"] {
               break-inside: avoid;
               page-break-inside: avoid;
               box-shadow: none !important;
+              overflow: visible !important;
             }
 
             .annual-page-grid-2 {
@@ -1031,9 +734,20 @@ export const AnnualSummary: React.FC = () => {
               grid-template-columns: 1fr 1fr 1fr 1fr !important;
             }
 
-            .annual-tight-svg {
-              height: auto !important;
+            .annual-chart-print-fix {
+              min-height: 230px !important;
+              height: 230px !important;
+              overflow: visible !important;
+            }
+
+            .annual-chart-print-fix svg,
+            .annual-chart-print-fix canvas {
               max-height: 230px !important;
+            }
+
+            .annual-summary-delivery-insights .recharts-wrapper,
+            .annual-summary-delivery-insights .recharts-surface {
+              overflow: visible !important;
             }
           }
         `}
@@ -1075,98 +789,166 @@ export const AnnualSummary: React.FC = () => {
 
       <div className="annual-summary-print-root space-y-8">
         <section className="annual-page space-y-6">
-          <div className="bg-white rounded-xl shadow-md border border-gray-200 tile-brand overflow-hidden">
-            <div className="tile-header px-4 py-2">Delivery Insights Overview</div>
-            <div className="p-4">
-              <h3 className="text-2xl font-bold text-[#001B47]">{computed.headerTitle}</h3>
-              <p className="mt-2 text-sm text-gray-500">Reporting period ends {selectedPeriodLabel}</p>
-            </div>
-          </div>
+          <Card className="annual-card border-0 shadow-sm ring-1 ring-slate-200/80 bg-slate-50/70">
+            <Text className="text-slate-500">Delivery Insights Overview</Text>
+            <Title className="mt-3 text-slate-950">{computed.headerTitle}</Title>
+            <Text className="mt-2 text-slate-500">Reporting period ends {selectedPeriodLabel}</Text>
+          </Card>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 annual-page-grid-4">
-            <KpiTile
+          <Grid numItems={1} numItemsMd={2} numItemsLg={4} className="gap-4 annual-page-grid-4">
+            <KpiCard
               label="Total jobs delivered"
               value={formatNumber(computed.totalJobsDelivered)}
+              subValue={`YoY delta ${formatDeltaNumber(computed.yoyChangeAbs)} · ${formatPct(computed.yoyChangePct, 1)}`}
             />
-            <KpiTile
-              label="Year-on-year change"
+            <KpiCard
+              label="Year-on-year"
               value={`${formatDeltaNumber(computed.yoyChangeAbs)} · ${formatPct(computed.yoyChangePct, 1)}`}
               subValue={`Prior 12m: ${formatNumber(computed.priorTotalJobsDelivered)}`}
             />
-            <KpiTile
+            <KpiCard
               label="Peak month"
-              value={computed.peakMonth ? `${computed.peakMonth.label}` : '—'}
+              value={computed.peakMonth ? computed.peakMonth.label : '—'}
               subValue={computed.peakMonth ? `${formatNumber(computed.peakMonth.total)} jobs` : 'No data'}
             />
-            <KpiTile
+            <KpiCard
               label="Active delivery days"
               value={formatNumber(computed.activeDeliveryDays)}
               subValue={`Avg ${computed.avgJobsPerActiveDay.toFixed(1)} jobs/day`}
             />
-          </div>
+          </Grid>
 
-          <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-6 annual-page-grid-2">
-            <ReportCard title="Monthly deliveries by service" className="annual-card">
-              <div className="annual-tight-svg">
-                <MonthlyStackedBarChart data={computed.monthlyServiceData} services={printableServiceLegend} />
+          <Grid numItems={1} numItemsLg={3} className="gap-6 annual-page-grid-2">
+            <div className="lg:col-span-2">
+              <TremorInsightCard title="Monthly deliveries by service">
+                <div className="annual-chart-print-fix h-[360px]">
+                  <BarChart
+                    className="h-full"
+                    data={monthlyBarData}
+                    index="month"
+                    categories={legendCategories}
+                    colors={TREMOR_SERVICE_COLORS}
+                    stack
+                    showLegend={false}
+                    showTooltip
+                    showAnimation={false}
+                    showGridLines
+                    yAxisWidth={1}
+                    showYAxis={false}
+                    showXAxis
+                    valueFormatter={(value) => formatNumber(Number(value))}
+                    layout="vertical"
+                  />
+                </div>
+              </TremorInsightCard>
+            </div>
+
+            <TremorInsightCard title="Service mix">
+              <div className="annual-chart-print-fix flex flex-col items-center justify-center">
+                <DonutChart
+                  className="mx-auto h-64"
+                  data={donutChartData}
+                  category="value"
+                  index="name"
+                  colors={TREMOR_SERVICE_COLORS}
+                  valueFormatter={(value) => formatNumber(Number(value))}
+                  showTooltip
+                  showAnimation={false}
+                />
+                <Legend
+                  className="mt-6 justify-center"
+                  categories={legendCategories}
+                  colors={TREMOR_SERVICE_COLORS}
+                />
               </div>
-            </ReportCard>
+            </TremorInsightCard>
+          </Grid>
 
-            <ReportCard title="Service mix" className="annual-card">
-              <DonutChart data={computed.donutData} />
-            </ReportCard>
-          </div>
-
-          <ReportCard title="What jumped out" className="annual-card">
+          <TremorInsightCard title="What jumped out">
             <ul className="space-y-3">
               {computed.overviewInsights.map((insight) => (
-                <li key={insight} className="flex items-start gap-3 text-sm text-gray-700">
-                  <span className="mt-1 w-2 h-2 rounded-full bg-[#FF8A2A] shrink-0" />
+                <li key={insight} className="flex items-start gap-3 text-sm text-slate-700">
+                  <span className="mt-1.5 h-2 w-2 rounded-full bg-blue-500 shrink-0" />
                   <span>{insight}</span>
                 </li>
               ))}
             </ul>
-          </ReportCard>
+          </TremorInsightCard>
         </section>
 
         <section className="annual-page annual-page-break space-y-6">
-          <div className="bg-white rounded-xl shadow-md border border-gray-200 tile-brand overflow-hidden">
-            <div className="tile-header px-4 py-2">Team & Rhythm</div>
-            <div className="p-4">
-              <h3 className="text-2xl font-bold text-[#001B47]">{computed.headerTitle}</h3>
-              <p className="mt-2 text-sm text-gray-500">Page 2 · Team contribution, cadence and talking points</p>
-            </div>
-          </div>
+          <Card className="annual-card border-0 shadow-sm ring-1 ring-slate-200/80 bg-slate-50/70">
+            <Text className="text-slate-500">Team & Rhythm</Text>
+            <Title className="mt-3 text-slate-950">{computed.headerTitle}</Title>
+            <Text className="mt-2 text-slate-500">Page 2 · Team contribution, cadence and talking points</Text>
+          </Card>
 
-          <ReportCard title="Team leaderboard" className="annual-card">
-            <HorizontalStackedLeaderboard rows={computed.leaderboard} services={printableServiceLegend} />
-          </ReportCard>
-
-          <ReportCard title="Year-on-year per accountant" className="annual-card">
+          <TremorInsightCard title="Team leaderboard">
             <div className="overflow-x-auto">
-              <table className="min-w-full text-sm divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full text-sm divide-y divide-slate-200">
+                <thead className="bg-slate-50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-gray-500">Accountant</th>
-                    <th className="px-4 py-3 text-right text-xs font-bold uppercase text-gray-500">Current 12m</th>
-                    <th className="px-4 py-3 text-right text-xs font-bold uppercase text-gray-500">Prior 12m</th>
-                    <th className="px-4 py-3 text-right text-xs font-bold uppercase text-gray-500">Δ</th>
-                    <th className="px-4 py-3 text-right text-xs font-bold uppercase text-gray-500">Δ %</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-slate-500">Accountant</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold uppercase text-slate-500">Current 12m</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold uppercase text-slate-500">Prior 12m</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold uppercase text-slate-500">Δ</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold uppercase text-slate-500">Δ %</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold uppercase text-slate-500">Avg / Active Day</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {computed.accountantYoY.map((row) => {
+                <tbody className="divide-y divide-slate-100">
+                  {computed.leaderboard.map((row) => {
                     const highlightClass =
                       row.deltaPct !== null && row.deltaPct > 50
-                        ? 'bg-green-50'
+                        ? 'bg-green-50/60'
                         : row.deltaPct !== null && row.deltaPct < -25
-                        ? 'bg-red-50'
+                        ? 'bg-red-50/60'
                         : '';
                     return (
                       <tr key={row.staff_id} className={highlightClass}>
-                        <td className="px-4 py-3 font-medium text-gray-900">{row.name}</td>
-                        <td className="px-4 py-3 text-right text-gray-700">{formatNumber(row.current)}</td>
-                        <td className="px-4 py-3 text-right text-gray-700">{formatNumber(row.prior)}</td>
+                        <td className="px-4 py-3 font-medium text-slate-900">{row.name}</td>
+                        <td className="px-4 py-3 text-right text-slate-700">{formatNumber(row.total)}</td>
+                        <td className="px-4 py-3 text-right text-slate-700">{formatNumber(row.priorTotal)}</td>
+                        <td className={`px-4 py-3 text-right font-bold ${row.delta >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                          {formatDeltaNumber(row.delta)}
+                        </td>
+                        <td className={`px-4 py-3 text-right font-bold ${row.deltaPct !== null && row.deltaPct >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                          {row.deltaPct === null ? '—' : `${row.deltaPct >= 0 ? '+' : ''}${row.deltaPct.toFixed(1)}%`}
+                        </td>
+                        <td className="px-4 py-3 text-right text-slate-700">{row.avgJobsPerActiveDay.toFixed(1)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </TremorInsightCard>
+
+          <TremorInsightCard title="Year-on-year per accountant">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm divide-y divide-slate-200">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-slate-500">Accountant</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold uppercase text-slate-500">Current 12m</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold uppercase text-slate-500">Prior 12m</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold uppercase text-slate-500">Δ</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold uppercase text-slate-500">Δ %</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {computed.accountantYoY.map((row) => {
+                    const highlightClass =
+                      row.deltaPct !== null && row.deltaPct > 50
+                        ? 'bg-green-50/60'
+                        : row.deltaPct !== null && row.deltaPct < -25
+                        ? 'bg-red-50/60'
+                        : '';
+                    return (
+                      <tr key={row.staff_id} className={highlightClass}>
+                        <td className="px-4 py-3 font-medium text-slate-900">{row.name}</td>
+                        <td className="px-4 py-3 text-right text-slate-700">{formatNumber(row.current)}</td>
+                        <td className="px-4 py-3 text-right text-slate-700">{formatNumber(row.prior)}</td>
                         <td className={`px-4 py-3 text-right font-bold ${row.delta >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                           {formatDeltaNumber(row.delta)}
                         </td>
@@ -1179,34 +961,60 @@ export const AnnualSummary: React.FC = () => {
                 </tbody>
               </table>
             </div>
-          </ReportCard>
+          </TremorInsightCard>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 annual-page-grid-2">
-            <ReportCard title="Average jobs per active day" className="annual-card">
-              <HorizontalBarChart
-                rows={computed.leaderboard.map((row) => ({
-                  label: row.name,
-                  value: row.avgJobsPerActiveDay,
-                }))}
-                color="#0060B8"
-              />
-            </ReportCard>
+          <Grid numItems={1} numItemsLg={2} className="gap-6 annual-page-grid-2">
+            <TremorInsightCard title="Average jobs per active day">
+              <div className="annual-chart-print-fix h-[320px]">
+                <BarChart
+                  className="h-full"
+                  data={computed.leaderboard.map((row) => ({
+                    accountant: row.name,
+                    'Avg jobs/day': Number(row.avgJobsPerActiveDay.toFixed(1)),
+                  }))}
+                  index="accountant"
+                  categories={['Avg jobs/day']}
+                  colors={['blue']}
+                  showLegend={false}
+                  showTooltip
+                  showAnimation={false}
+                  valueFormatter={(value) => Number(value).toFixed(1)}
+                  yAxisWidth={42}
+                />
+              </div>
+            </TremorInsightCard>
 
-            <ReportCard title="Weekday distribution" className="annual-card">
-              <WeekdayBarChart rows={computed.weekdayDistribution} />
-            </ReportCard>
-          </div>
+            <TremorInsightCard title="Weekday distribution">
+              <div className="annual-chart-print-fix h-[320px]">
+                <BarChart
+                  className="h-full"
+                  data={computed.weekdayDistribution.map((row) => ({
+                    day: row.label,
+                    Delivered: row.value,
+                  }))}
+                  index="day"
+                  categories={['Delivered']}
+                  colors={['amber']}
+                  showLegend={false}
+                  showTooltip
+                  showAnimation={false}
+                  valueFormatter={(value) => formatNumber(Number(value))}
+                  yAxisWidth={42}
+                />
+              </div>
+            </TremorInsightCard>
+          </Grid>
 
-          <ReportCard title="Insights & talking points" className="annual-card">
+          <TremorInsightCard title="Insights & talking points">
             <ul className="space-y-3">
               {computed.teamInsights.map((insight) => (
-                <li key={insight} className="flex items-start gap-3 text-sm text-gray-700">
-                  <span className="mt-1 w-2 h-2 rounded-full bg-[#0060B8] shrink-0" />
+                <li key={insight} className="flex items-start gap-3 text-sm text-slate-700">
+                  <span className="mt-1.5 h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
                   <span>{insight}</span>
                 </li>
               ))}
             </ul>
-          </ReportCard>
+          </TremorInsightCard>
         </section>
       </div>
     </div>
