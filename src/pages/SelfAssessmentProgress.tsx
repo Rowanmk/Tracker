@@ -8,11 +8,6 @@ import { FinancialYearSelector } from '../components/FinancialYearSelector';
 import { getFinancialYears, getFinancialYearMonths } from '../utils/financialYear';
 import { supabase } from '../supabase/client';
 import type { FinancialYear } from '../utils/financialYear';
-// FIX B: Use shared isAccountantStaff utility instead of local helper.
-// PRE-FIX-5: local const isAccountant = (staffMember: Staff) => ... defined inline.
-// (No remaining call sites in this file after consolidation; import retained for any future use within this module.)
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { isAccountantStaff } from '../utils/staff';
 
 function calcRunRatePercent(
   submitted: number,
@@ -69,6 +64,39 @@ function calcRunRatePercent(
   return (submitted / expectedByToday) * 100;
 }
 
+function calcMonthlyRunRatePercent(
+  submitted: number,
+  target: number,
+  monthNum: number,
+  financialYear: FinancialYear
+): number | null {
+  if (target <= 0) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const year = monthNum >= 4 ? financialYear.end : financialYear.end + 1;
+  const monthStart = new Date(year, monthNum - 1, 1);
+  const monthEnd = new Date(year, monthNum, 0);
+  const effectiveMonthStart = monthNum === 4 ? new Date(year, 3, 6) : monthStart;
+
+  if (today > monthEnd) {
+    return (submitted / target) * 100;
+  }
+
+  if (today < effectiveMonthStart) {
+    return null;
+  }
+
+  const totalDaysInMonth = monthEnd.getDate() - effectiveMonthStart.getDate() + 1;
+  const daysElapsed = today.getDate() - effectiveMonthStart.getDate() + 1;
+  const fraction = Math.max(0, Math.min(1, daysElapsed / totalDaysInMonth));
+  const expectedByToday = target * fraction;
+
+  if (expectedByToday <= 0) return null;
+  return (submitted / expectedByToday) * 100;
+}
+
 function getRunRateColor(pct: number): string {
   if (pct >= 95) return 'text-green-700 bg-green-50';
   if (pct >= 75) return 'text-orange-700 bg-orange-50';
@@ -82,7 +110,13 @@ function getPctBadgeColor(pct: number, target: number): string {
   return 'text-red-700 bg-red-50';
 }
 
-function getBarColor(pct: number): string {
+/**
+ * Returns the Tailwind bar colour class driven by the run-rate percentage.
+ * When runRatePct is null (no expected value yet) we fall back to the
+ * completion-percentage colour so the bar is never invisible.
+ */
+function getProgressBarColor(runRatePct: number | null, completionPct: number): string {
+  const pct = runRatePct !== null ? runRatePct : completionPct;
   if (pct >= 95) return 'bg-green-500';
   if (pct >= 75) return 'bg-orange-500';
   return 'bg-red-500';
@@ -270,6 +304,7 @@ export const SelfAssessmentProgress: React.FC = () => {
 
     const perAccountantRaw = sortedVisibleTeams.map(entry => ({
       name: entry.name,
+      team_id: entry.team_id,
       submitted: monthlyData[entry.team_id]?.[selectedMonth]?.submitted || 0,
       target: monthlyData[entry.team_id]?.[selectedMonth]?.target || 0,
     })).filter(e => e.submitted > 0 || e.target > 0);
@@ -333,6 +368,7 @@ export const SelfAssessmentProgress: React.FC = () => {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
+        {/* Monthly tile */}
         <div className="bg-white rounded-xl shadow-md border tile-brand overflow-hidden flex flex-col">
           <div className="tile-header px-4 py-1.5 flex items-center justify-between">
             <span>Self Assessment Data — {monthlyTileData?.monthName ?? MONTH_NAMES[selectedMonth - 1]}</span>
@@ -360,6 +396,12 @@ export const SelfAssessmentProgress: React.FC = () => {
                       <th className="px-4 py-3 text-center text-xs font-bold uppercase">Submitted</th>
                       <th className="px-4 py-3 text-center text-xs font-bold uppercase">% Complete</th>
                       <th className="px-4 py-3 text-left text-xs font-bold uppercase">Progress</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold uppercase leading-tight">
+                        Run Rate %
+                        <div className="text-[9px] font-normal text-gray-400 normal-case tracking-normal mt-0.5">
+                          vs today's expected
+                        </div>
+                      </th>
                     </tr>
                   </thead>
 
@@ -367,6 +409,13 @@ export const SelfAssessmentProgress: React.FC = () => {
                     {monthlyTileData.perAccountant.map((entry, idx) => {
                       const pct = entry.target > 0 ? (entry.submitted / entry.target) * 100 : 0;
                       const isSelected = selectedName === entry.name;
+                      const runRatePct = calcMonthlyRunRatePercent(
+                        entry.submitted,
+                        entry.target,
+                        selectedMonth,
+                        localFinancialYear
+                      );
+                      const progressBarColor = getProgressBarColor(runRatePct, pct);
 
                       return (
                         <tr
@@ -395,10 +444,21 @@ export const SelfAssessmentProgress: React.FC = () => {
                           <td className="px-4 py-3">
                             <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden min-w-[80px]">
                               <div
-                                className={`h-full rounded-full transition-all duration-300 ${getBarColor(pct)}`}
+                                className={`h-full rounded-full transition-all duration-300 ${progressBarColor}`}
                                 style={{ width: `${Math.min(pct, 100)}%` }}
                               />
                             </div>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {runRatePct === null ? (
+                              <span className="text-xs text-gray-400">—</span>
+                            ) : (
+                              <span
+                                className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-bold ${getRunRateColor(runRatePct)}`}
+                              >
+                                {Math.round(runRatePct)}%
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -420,10 +480,37 @@ export const SelfAssessmentProgress: React.FC = () => {
                       <td className="px-4 py-3">
                         <div className="w-full h-2 bg-gray-300 rounded-full overflow-hidden min-w-[80px]">
                           <div
-                            className={`h-full rounded-full transition-all duration-300 ${getBarColor(monthlyTileData.pct)}`}
+                            className={`h-full rounded-full transition-all duration-300 ${getProgressBarColor(
+                              calcMonthlyRunRatePercent(
+                                monthlyTileData.submitted,
+                                monthlyTileData.target,
+                                selectedMonth,
+                                localFinancialYear
+                              ),
+                              monthlyTileData.pct
+                            )}`}
                             style={{ width: `${Math.min(monthlyTileData.pct, 100)}%` }}
                           />
                         </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {(() => {
+                          const totalRunRatePct = calcMonthlyRunRatePercent(
+                            monthlyTileData.submitted,
+                            monthlyTileData.target,
+                            selectedMonth,
+                            localFinancialYear
+                          );
+                          return totalRunRatePct === null ? (
+                            <span className="text-xs text-gray-400">—</span>
+                          ) : (
+                            <span
+                              className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-bold ${getRunRateColor(totalRunRatePct)}`}
+                            >
+                              {Math.round(totalRunRatePct)}%
+                            </span>
+                          );
+                        })()}
                       </td>
                     </tr>
                   </tfoot>
@@ -438,6 +525,7 @@ export const SelfAssessmentProgress: React.FC = () => {
           )}
         </div>
 
+        {/* Full-year tile */}
         <div className="bg-white rounded-xl shadow-md border tile-brand overflow-hidden flex flex-col">
           <div className="tile-header px-4 py-1.5">Self Assessment Data — Full Year</div>
 
@@ -474,6 +562,7 @@ export const SelfAssessmentProgress: React.FC = () => {
                     monthlyData
                   );
 
+                  const progressBarColor = getProgressBarColor(runRatePct, pct);
                   const isSelected = selectedName === entry.name;
 
                   return (
@@ -499,7 +588,7 @@ export const SelfAssessmentProgress: React.FC = () => {
                       <td className="px-4 py-3">
                         <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden min-w-[80px]">
                           <div
-                            className={`h-full rounded-full transition-all duration-300 ${getBarColor(pct)}`}
+                            className={`h-full rounded-full transition-all duration-300 ${progressBarColor}`}
                             style={{ width: `${Math.min(pct, 100)}%` }}
                           />
                         </div>
@@ -535,7 +624,7 @@ export const SelfAssessmentProgress: React.FC = () => {
                   <td className="px-4 py-3">
                     <div className="w-full h-2 bg-gray-300 rounded-full overflow-hidden min-w-[80px]">
                       <div
-                        className={`h-full rounded-full transition-all duration-300 ${getBarColor(totalPercentAchieved)}`}
+                        className={`h-full rounded-full transition-all duration-300 ${getProgressBarColor(totalRunRatePct, totalPercentAchieved)}`}
                         style={{ width: `${Math.min(totalPercentAchieved, 100)}%` }}
                       />
                     </div>
@@ -557,10 +646,10 @@ export const SelfAssessmentProgress: React.FC = () => {
           </div>
 
           <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 flex flex-wrap gap-3 text-xs text-gray-500">
-            <span className="font-semibold text-gray-600">Run Rate % key:</span>
+            <span className="font-semibold text-gray-600">Progress bar colour key:</span>
             <span className="inline-flex items-center gap-1">
               <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span>
-              ≥95% — on or ahead
+              ≥95% run rate — on or ahead
             </span>
             <span className="inline-flex items-center gap-1">
               <span className="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block"></span>
