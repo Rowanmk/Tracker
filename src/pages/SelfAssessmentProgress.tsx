@@ -110,16 +110,15 @@ function getPctBadgeColor(pct: number, target: number): string {
   return 'text-red-700 bg-red-50';
 }
 
-/**
- * Returns the Tailwind bar colour class driven by the run-rate percentage.
- * When runRatePct is null (no expected value yet) we fall back to the
- * completion-percentage colour so the bar is never invisible.
- */
 function getProgressBarColor(runRatePct: number | null, completionPct: number): string {
   const pct = runRatePct !== null ? runRatePct : completionPct;
   if (pct >= 95) return 'bg-green-500';
   if (pct >= 75) return 'bg-orange-500';
   return 'bg-red-500';
+}
+
+function getCompletionPercent(submitted: number, target: number): number {
+  return target > 0 ? (submitted / target) * 100 : 0;
 }
 
 const MONTH_NAMES = [
@@ -256,17 +255,23 @@ export const SelfAssessmentProgress: React.FC = () => {
     fetchMonthlyData();
   }, [localFinancialYear, services, teamProgress]);
 
-  const visibleTeams = teamProgress.filter((t) => t.fullYearTarget > 0 || t.submitted > 0);
+  const visibleTeams = useMemo(
+    () => teamProgress.filter((t) => t.fullYearTarget > 0 || t.submitted > 0),
+    [teamProgress]
+  );
 
   const sortedVisibleTeams = useMemo(() => {
     return [...visibleTeams].sort((a, b) => {
-      const percentA = a.fullYearTarget > 0 ? (a.submitted / a.fullYearTarget) * 100 : 0;
-      const percentB = b.fullYearTarget > 0 ? (b.submitted / b.fullYearTarget) * 100 : 0;
-      return percentB - percentA;
+      const percentA = getCompletionPercent(a.submitted, a.fullYearTarget);
+      const percentB = getCompletionPercent(b.submitted, b.fullYearTarget);
+      if (percentB !== percentA) {
+        return percentB - percentA;
+      }
+      return a.name.localeCompare(b.name);
     });
   }, [visibleTeams]);
 
-  const chartTeamProgress = useMemo(() => visibleTeams, [visibleTeams]);
+  const chartTeamProgress = useMemo(() => sortedVisibleTeams, [sortedVisibleTeams]);
 
   const totals = sortedVisibleTeams.reduce(
     (acc, t) => {
@@ -310,9 +315,12 @@ export const SelfAssessmentProgress: React.FC = () => {
     })).filter(e => e.submitted > 0 || e.target > 0);
 
     const perAccountant = [...perAccountantRaw].sort((a, b) => {
-      const pctA = a.target > 0 ? (a.submitted / a.target) * 100 : 0;
-      const pctB = b.target > 0 ? (b.submitted / b.target) * 100 : 0;
-      return pctB - pctA;
+      const pctA = getCompletionPercent(a.submitted, a.target);
+      const pctB = getCompletionPercent(b.submitted, b.target);
+      if (pctB !== pctA) {
+        return pctB - pctA;
+      }
+      return a.name.localeCompare(b.name);
     });
 
     return {
@@ -407,7 +415,7 @@ export const SelfAssessmentProgress: React.FC = () => {
 
                   <tbody>
                     {monthlyTileData.perAccountant.map((entry, idx) => {
-                      const pct = entry.target > 0 ? (entry.submitted / entry.target) * 100 : 0;
+                      const pct = getCompletionPercent(entry.submitted, entry.target);
                       const isSelected = selectedName === entry.name;
                       const runRatePct = calcMonthlyRunRatePercent(
                         entry.submitted,
@@ -549,10 +557,7 @@ export const SelfAssessmentProgress: React.FC = () => {
 
               <tbody>
                 {sortedVisibleTeams.map((entry, idx) => {
-                  const pct =
-                    entry.fullYearTarget > 0
-                      ? (entry.submitted / entry.fullYearTarget) * 100
-                      : 0;
+                  const pct = getCompletionPercent(entry.submitted, entry.fullYearTarget);
 
                   const runRatePct = calcRunRatePercent(
                     entry.submitted,
