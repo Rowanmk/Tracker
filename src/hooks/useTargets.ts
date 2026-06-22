@@ -1,65 +1,62 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../supabase/client';
-import { useAuth } from '../context/AuthContext';
-import type { Database } from '../supabase/types';
+    import { supabase } from '../supabase/client';
+    import { useAuth } from '../context/AuthContext';
+    import type { Database } from '../supabase/types';
 
-type Target = Database['public']['Tables']['monthlytargets']['Row'];
+    type Target = Database['public']['Tables']['monthlytargets']['Row'];
 
-export const useTargets = (month: number, year: number) => {
-  const [targets, setTargets] = useState<Target[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { currentStaff } = useAuth();
+    export const useTargets = (month: number, year: number) => {
+      const [targets, setTargets] = useState<Target[]>([]);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState<string | null>(null);
+      const { currentStaff } = useAuth();
 
-  const fetchTargets = async () => {
-    if (!currentStaff) {
-      setLoading(false);
-      return;
-    }
+      const fetchTargets = async () => {
+        if (!currentStaff) {
+          setLoading(false);
+          return;
+        }
 
-    setLoading(true);
-    setError(null);
+        setLoading(true);
+        setError(null);
 
-    try {
-      const { data, error: targetsError } = await supabase
-        .from('monthlytargets')
-        .select('*')
-        .eq('staff_id', currentStaff.staff_id)
-        .eq('month', month)
-        .eq('year', year);
+        try {
+          const { data, error: targetsError } = await supabase
+            .from('monthlytargets')
+            .select('*')
+            .eq('staff_id', currentStaff.staff_id)
+            .eq('month', month)
+            .eq('year', year);
 
-      if (targetsError) {
-        setError('Failed to load targets');
-        setTargets([]);
-      } else {
-        setTargets(data || []);
-      }
-    } catch (err) {
-      // FIX 6: Log caught errors with file context.
-      // PRE-FIX-6: catch {} with no parameter and no logging.
-      console.error('[useTargets] fetch targets:', err);
-      setError('Failed to connect to database');
-      setTargets([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+          if (targetsError) {
+            setError('Failed to load targets');
+            setTargets([]);
+          } else {
+            setTargets(data || []);
+          }
+        } catch {
+          setError('Failed to connect to database');
+          setTargets([]);
+        } finally {
+          setLoading(false);
+        }
+      };
 
-  useEffect(() => {
-    fetchTargets();
-  }, [currentStaff?.staff_id, month, year]);
+      useEffect(() => {
+        fetchTargets();
+      }, [currentStaff?.staff_id, month, year]);
 
-  useEffect(() => {
-    const handler = () => {
-      void fetchTargets();
+      useEffect(() => {
+        const handler = () => {
+          void fetchTargets();
+        };
+        window.addEventListener('activity-updated', handler);
+        window.addEventListener('targets-updated', handler);
+        return () => {
+          window.removeEventListener('activity-updated', handler);
+          window.removeEventListener('targets-updated', handler);
+        };
+      }, [currentStaff?.staff_id, month, year]);
+
+      return { targets, loading, error, refetch: fetchTargets };
     };
-    window.addEventListener('activity-updated', handler);
-    window.addEventListener('targets-updated', handler);
-    return () => {
-      window.removeEventListener('activity-updated', handler);
-      window.removeEventListener('targets-updated', handler);
-    };
-  }, [currentStaff?.staff_id, month, year]);
-
-  return { targets, loading, error, refetch: fetchTargets };
-};

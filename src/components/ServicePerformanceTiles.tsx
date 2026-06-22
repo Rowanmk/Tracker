@@ -1,174 +1,168 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { loadTargets } from '../utils/loadTargets';
-import type { FinancialYear } from '../utils/financialYear';
+    import { loadTargets } from '../utils/loadTargets';
+    import type { FinancialYear } from '../utils/financialYear';
 
-interface ServicePerformanceTilesProps {
-  services: Array<{
-    service_id: number;
-    service_name: string;
-  }>;
-  staffPerformance: Array<{
-    staff_id: number;
-    name: string;
-    services: { [key: string]: number };
-    total: number;
-  }>;
-  dashboardMode?: "team" | "individual";
-  currentStaff?: { staff_id: number; name: string } | null;
-  workingDays: number;
-  workingDaysUpToToday: number;
-  month: number;
-  financialYear: FinancialYear;
-}
+    interface ServicePerformanceTilesProps {
+      services: Array<{
+        service_id: number;
+        service_name: string;
+      }>;
+      staffPerformance: Array<{
+        staff_id: number;
+        name: string;
+        services: { [key: string]: number };
+        total: number;
+      }>;
+      dashboardMode?: "team" | "individual";
+      currentStaff?: { staff_id: number; name: string } | null;
+      workingDays: number;
+      workingDaysUpToToday: number;
+      month: number;
+      financialYear: FinancialYear;
+    }
 
-export const ServicePerformanceTiles: React.FC<ServicePerformanceTilesProps> = ({
-  services,
-  staffPerformance,
-  dashboardMode = "team",
-  currentStaff,
-  workingDays,
-  workingDaysUpToToday,
-  month,
-  financialYear,
-}) => {
-  const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
-  const [loading, setLoading] = useState(false);
+    export const ServicePerformanceTiles: React.FC<ServicePerformanceTilesProps> = ({
+      services,
+      staffPerformance,
+      dashboardMode = "team",
+      currentStaff,
+      workingDays,
+      workingDaysUpToToday,
+      month,
+      financialYear,
+    }) => {
+      const [serviceTargets, setServiceTargets] = useState<Record<number, number>>({});
+      const [loading, setLoading] = useState(false);
 
-  const effectiveStaffPerformance =
-    dashboardMode === "individual" && currentStaff
-      ? staffPerformance.filter(s => s.staff_id === currentStaff.staff_id)
-      : staffPerformance;
+      const effectiveStaffPerformance =
+        dashboardMode === "individual" && currentStaff
+          ? staffPerformance.filter(s => s.staff_id === currentStaff.staff_id)
+          : staffPerformance;
 
-  const staffIdsString = useMemo(() => 
-    effectiveStaffPerformance.map(s => s.staff_id).sort().join(','), 
-  [effectiveStaffPerformance]);
+      const staffIdsString = useMemo(() =>
+        effectiveStaffPerformance.map(s => s.staff_id).sort().join(','),
+      [effectiveStaffPerformance]);
 
-  useEffect(() => {
-    const fetchServiceTargets = async () => {
-      setLoading(true);
-      try {
-        const targetMap: Record<number, number> = {};
+      useEffect(() => {
+        const fetchServiceTargets = async () => {
+          setLoading(true);
+          try {
+            const targetMap: Record<number, number> = {};
 
-        if (dashboardMode === "individual" && currentStaff) {
-          const { perService } = await loadTargets(month, financialYear, currentStaff.staff_id);
-          Object.entries(perService).forEach(([sid, val]) => {
-            targetMap[Number(sid)] = val;
-          });
-        } else {
-          const staffIds = staffIdsString ? staffIdsString.split(',').map(Number) : [];
-          for (const staffId of staffIds) {
-            const { perService } = await loadTargets(month, financialYear, staffId);
-            Object.entries(perService).forEach(([sid, val]) => {
-              const id = Number(sid);
-              targetMap[id] = (targetMap[id] || 0) + val;
-            });
+            if (dashboardMode === "individual" && currentStaff) {
+              const { perService } = await loadTargets(month, financialYear, currentStaff.staff_id);
+              Object.entries(perService).forEach(([sid, val]) => {
+                targetMap[Number(sid)] = val;
+              });
+            } else {
+              const staffIds = staffIdsString ? staffIdsString.split(',').map(Number) : [];
+              for (const staffId of staffIds) {
+                const { perService } = await loadTargets(month, financialYear, staffId);
+                Object.entries(perService).forEach(([sid, val]) => {
+                  const id = Number(sid);
+                  targetMap[id] = (targetMap[id] || 0) + val;
+                });
+              }
+            }
+
+            setServiceTargets(targetMap);
+          } catch {
+            setServiceTargets({});
+          } finally {
+            setLoading(false);
           }
+        };
+
+        if (staffIdsString || (dashboardMode === "individual" && currentStaff)) {
+          fetchServiceTargets();
         }
 
-        setServiceTargets(targetMap);
-      } catch (err) {
-        // FIX 6: Log caught errors with file context.
-        // PRE-FIX-6: catch {} with no parameter and no logging.
-        console.error('[ServicePerformanceTiles] fetch service targets:', err);
-        setServiceTargets({});
-      } finally {
-        setLoading(false);
-      }
-    };
+        const handler = () => {
+          if (staffIdsString || (dashboardMode === "individual" && currentStaff)) {
+            fetchServiceTargets();
+          }
+        };
+        window.addEventListener('activity-updated', handler);
+        window.addEventListener('targets-updated', handler);
+        return () => {
+          window.removeEventListener('activity-updated', handler);
+          window.removeEventListener('targets-updated', handler);
+        };
+      }, [dashboardMode, currentStaff?.staff_id, month, financialYear, staffIdsString]);
 
-    if (staffIdsString || (dashboardMode === "individual" && currentStaff)) {
-      fetchServiceTargets();
-    }
+      const getStatus = (delivered: number, expected: number) => {
+        if (expected <= 0) {
+          return { pct: 0, bg: 'bg-gray-100', text: 'text-gray-600', bar: 'bg-gray-400' };
+        }
 
-    const handler = () => {
-      if (staffIdsString || (dashboardMode === "individual" && currentStaff)) {
-        fetchServiceTargets();
-      }
-    };
-    window.addEventListener('activity-updated', handler);
-    window.addEventListener('targets-updated', handler);
-    return () => {
-      window.removeEventListener('activity-updated', handler);
-      window.removeEventListener('targets-updated', handler);
-    };
-  }, [dashboardMode, currentStaff?.staff_id, month, financialYear, staffIdsString]);
+        const pct = (delivered / expected) * 100;
 
-  const getStatus = (delivered: number, expected: number) => {
-    if (expected <= 0) {
-      return { pct: 0, bg: 'bg-gray-100', text: 'text-gray-600', bar: 'bg-gray-400' };
-    }
+        if (pct >= 90) return { pct, bg: 'bg-green-100', text: 'text-green-700', bar: 'bg-green-500' };
+        if (pct >= 75) return { pct, bg: 'bg-orange-100', text: 'text-orange-700', bar: 'bg-orange-500' };
+        return { pct, bg: 'bg-red-100', text: 'text-red-700', bar: 'bg-red-500' };
+      };
 
-    const pct = (delivered / expected) * 100;
+      if (loading) return null;
 
-    if (pct >= 90) return { pct, bg: 'bg-green-100', text: 'text-green-700', bar: 'bg-green-500' };
-    if (pct >= 75) return { pct, bg: 'bg-orange-100', text: 'text-orange-700', bar: 'bg-orange-500' };
-    return { pct, bg: 'bg-red-100', text: 'text-red-700', bar: 'bg-red-500' };
-  };
+      return (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {services.map(service => {
+            const delivered = effectiveStaffPerformance.reduce(
+              (sum, s) => sum + (s.services[service.service_name] || 0),
+              0
+            );
 
-  if (loading) return null;
+            const target = serviceTargets[service.service_id] || 0;
+            const expectedSoFar =
+              workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
 
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      {services.map(service => {
-        const delivered = effectiveStaffPerformance.reduce(
-          (sum, s) => sum + (s.services[service.service_name] || 0),
-          0
-        );
+            const variance = Math.round(delivered - expectedSoFar);
+            const status = getStatus(delivered, expectedSoFar);
 
-        const target = serviceTargets[service.service_id] || 0;
-        const expectedSoFar =
-          workingDays > 0 ? (target / workingDays) * workingDaysUpToToday : 0;
-
-        const variance = Math.round(delivered - expectedSoFar);
-        const status = getStatus(delivered, expectedSoFar);
-
-        return (
-          <div
-            key={service.service_id}
-            className={`p-4 rounded-lg border shadow-sm ${status.bg}`}
-          >
-            <div className="flex justify-between mb-2">
-              <h3 className="text-sm font-bold">{service.service_name}</h3>
-              <span className={`text-xs font-bold ${status.text}`}>
-                {Math.round(status.pct)}%
-              </span>
-            </div>
-
-            <div className="text-sm space-y-1 mb-3">
-              <div className="flex justify-between"><span>Delivered</span><span className="font-bold">{Math.round(delivered)}</span></div>
-              <div className="flex justify-between"><span>Target</span><span className="font-bold">{target}</span></div>
-              <div className="flex justify-between"><span>Expected</span><span className="font-bold">{Math.round(expectedSoFar)}</span></div>
-            </div>
-
-            {/* Progress bar */}
-            <div className="relative w-full h-2 bg-gray-300 rounded overflow-hidden">
-              {/* Actual progress */}
+            return (
               <div
-                className={`h-full ${status.bar} transition-all duration-300 ease-in-out`}
-                style={{ width: `${Math.min(status.pct, 100)}%` }}
-              />
+                key={service.service_id}
+                className={`p-4 rounded-lg border shadow-sm ${status.bg}`}
+              >
+                <div className="flex justify-between mb-2">
+                  <h3 className="text-sm font-bold">{service.service_name}</h3>
+                  <span className={`text-xs font-bold ${status.text}`}>
+                    {Math.round(status.pct)}%
+                  </span>
+                </div>
 
-              {/* Target marker */}
-              {expectedSoFar > 0 && (
-                <>
+                <div className="text-sm space-y-1 mb-3">
+                  <div className="flex justify-between"><span>Delivered</span><span className="font-bold">{Math.round(delivered)}</span></div>
+                  <div className="flex justify-between"><span>Target</span><span className="font-bold">{target}</span></div>
+                  <div className="flex justify-between"><span>Expected</span><span className="font-bold">{Math.round(expectedSoFar)}</span></div>
+                </div>
+
+                <div className="relative w-full h-2 bg-gray-300 rounded overflow-hidden">
                   <div
-                    className="absolute top-0 bottom-0 w-[2px] bg-black transition-all duration-300 ease-in-out"
-                    style={{ left: '100%' }}
+                    className={`h-full ${status.bar} transition-all duration-300 ease-in-out`}
+                    style={{ width: `${Math.min(status.pct, 100)}%` }}
                   />
-                  <div
-                    className={`absolute -top-5 text-xs font-bold transition-all duration-300 ease-in-out ${
-                      variance >= 0 ? 'text-green-700' : 'text-red-700'
-                    }`}
-                    style={{ left: '100%', transform: 'translateX(4px)' }}
-                  >
-                    {variance >= 0 ? `+${variance}` : variance}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
+
+                  {expectedSoFar > 0 && (
+                    <>
+                      <div
+                        className="absolute top-0 bottom-0 w-[2px] bg-black transition-all duration-300 ease-in-out"
+                        style={{ left: '100%' }}
+                      />
+                      <div
+                        className={`absolute -top-5 text-xs font-bold transition-all duration-300 ease-in-out ${
+                          variance >= 0 ? 'text-green-700' : 'text-red-700'
+                        }`}
+                        style={{ left: '100%', transform: 'translateX(4px)' }}
+                      >
+                        {variance >= 0 ? `+${variance}` : variance}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    };
