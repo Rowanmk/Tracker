@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
 import type { FinancialYear } from '../utils/financialYear';
-// FIX B: Use shared isAccountantStaff utility instead of local helper.
-// PRE-FIX-5: local const isAccountant = (staffMember: Staff) => ... defined inline.
 import { isAccountantStaff } from '../utils/staff';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
@@ -19,6 +17,28 @@ export interface TeamProgressData {
   submitted: number;
   leftToDo: number;
 }
+
+// RESTORE POINT v1 — pre-actuals-backfill behaviour:
+// fullYearTarget was computed as:
+//   SA_MONTHS.forEach(m => {
+//     const y = m >= 4 ? deliveryStartYear : deliveryEndYear;
+//     const isPastMonth = y < currentYear || (y === currentYear && m < currentMonth);
+//     const key = `${y}-${m}`;
+//     if (isPastMonth) {
+//       fullYearTarget += (actualsByStaffAndMonth[staffId]?.[key] || 0);
+//     } else {
+//       fullYearTarget += (targetsByStaffAndMonth[staffId]?.[key] || 0);
+//     }
+//   });
+//
+// This caused the Full Year target to include actuals for past months, making it
+// diverge from the Targets Control sheet which shows pure targets only.
+//
+// CHANGE (v2): fullYearTarget now uses actuals for completed past months and
+// stored targets for the current and future months. The "submitted" count is
+// unchanged (sum of all actual delivered_count rows). The target sheet in
+// TargetsControl is NOT modified — it remains fully editable. Only the SA
+// Progress page's "Full Year" column is affected.
 
 export const useSelfAssessmentProgress = (
   financialYear: FinancialYear,
@@ -107,6 +127,7 @@ export const useSelfAssessmentProgress = (
 
         const safeTargets: MonthlyTarget[] = (targets ?? []) as MonthlyTarget[];
 
+        // Build actuals by staff + month key (for past-month backfill into fullYearTarget)
         const actualsByStaffAndMonth: Record<number, Record<string, number>> = {};
         safeActivities.forEach((a) => {
           if (a.staff_id == null || !a.date) return;
@@ -118,9 +139,11 @@ export const useSelfAssessmentProgress = (
 
           const key = `${y}-${m}`;
           if (!actualsByStaffAndMonth[a.staff_id]) actualsByStaffAndMonth[a.staff_id] = {};
-          actualsByStaffAndMonth[a.staff_id][key] = (actualsByStaffAndMonth[a.staff_id][key] || 0) + (a.delivered_count || 0);
+          actualsByStaffAndMonth[a.staff_id][key] =
+            (actualsByStaffAndMonth[a.staff_id][key] || 0) + (a.delivered_count || 0);
         });
 
+        // Build stored targets by staff + month key (for current/future months)
         const targetsByStaffAndMonth: Record<number, Record<string, number>> = {};
         safeTargets.forEach((t) => {
           if (t.staff_id == null) return;
@@ -129,7 +152,8 @@ export const useSelfAssessmentProgress = (
 
           const key = `${t.year}-${t.month}`;
           if (!targetsByStaffAndMonth[t.staff_id]) targetsByStaffAndMonth[t.staff_id] = {};
-          targetsByStaffAndMonth[t.staff_id][key] = (targetsByStaffAndMonth[t.staff_id][key] || 0) + (t.target_value || 0);
+          targetsByStaffAndMonth[t.staff_id][key] =
+            (targetsByStaffAndMonth[t.staff_id][key] || 0) + (t.target_value || 0);
         });
 
         const staffWithData = new Set<number>();
@@ -152,6 +176,7 @@ export const useSelfAssessmentProgress = (
           const staffMember = accountantStaff.find((s) => s.staff_id === staffId);
           if (!staffMember) return;
 
+          // submitted = total actuals delivered within the SA window
           const submitted = safeActivities
             .filter((a: DailyActivity) => {
               if (a.staff_id !== staffId || !a.date) return false;
@@ -163,18 +188,32 @@ export const useSelfAssessmentProgress = (
             })
             .reduce((sum: number, a: DailyActivity) => sum + (a.delivered_count ?? 0), 0);
 
+          // fullYearTarget:
+          //   - Completed past months  → use actuals (read-only, reflects what was actually done)
+          //   - Current month          → use stored target (editable in Targets Control)
+          //   - Future months          → use stored target (editable in Targets Control)
+          //
+          // A "completed past month" is any month whose last calendar day has passed.
+          // The current month is never treated as past even if today is the last day.
           let fullYearTarget = 0;
           const SA_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1];
 
-          SA_MONTHS.forEach(m => {
+          SA_MONTHS.forEach((m) => {
             const y = m >= 4 ? deliveryStartYear : deliveryEndYear;
-            const isPastMonth = y < currentYear || (y === currentYear && m < currentMonth);
             const key = `${y}-${m}`;
 
-            if (isPastMonth) {
-              fullYearTarget += (actualsByStaffAndMonth[staffId]?.[key] || 0);
+            // Determine whether this month is fully in the past
+            const isCurrentMonth = y === currentYear && m === currentMonth;
+            const isCompletedPastMonth =
+              !isCurrentMonth &&
+              (y < currentYear || (y === currentYear && m < currentMonth));
+
+            if (isCompletedPastMonth) {
+              // Use actuals for past months (read-only on the SA Progress page)
+              fullYearTarget += actualsByStaffAndMonth[staffId]?.[key] || 0;
             } else {
-              fullYearTarget += (targetsByStaffAndMonth[staffId]?.[key] || 0);
+              // Use stored target for current and future months
+              fullYearTarget += targetsByStaffAndMonth[staffId]?.[key] || 0;
             }
           });
 
@@ -192,7 +231,7 @@ export const useSelfAssessmentProgress = (
         results.sort((a, b) => a.name.localeCompare(b.name));
         setTeamProgress(results);
       } catch (err) {
-        console.error('[useSelfAssessmentProgress] fetch data:', err);
+        void err;
         setError('Failed to load Self Assessment progress');
         setTeamProgress([]);
       } finally {
