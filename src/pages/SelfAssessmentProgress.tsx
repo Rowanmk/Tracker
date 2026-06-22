@@ -16,7 +16,7 @@ function calcRunRatePercent(
   teamId: number | 'total',
   monthlyData: Record<number, Record<number, { submitted: number; target: number }>>
 ): number | null {
-  if (fullYearTarget <= 0) return null;
+  if (fullYearTarget &lt;= 0) return null;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -24,9 +24,9 @@ function calcRunRatePercent(
   const windowStart = new Date(financialYear.end, 3, 6);
   const windowEnd = new Date(financialYear.end + 1, 0, 31);
 
-  if (today < windowStart) return null;
+  if (today &lt; windowStart) return null;
 
-  if (today > windowEnd) {
+  if (today &gt; windowEnd) {
     return (submitted / fullYearTarget) * 100;
   }
 
@@ -34,21 +34,21 @@ function calcRunRatePercent(
   const SA_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1];
 
   for (const monthNum of SA_MONTHS) {
-    const year = monthNum >= 4 ? financialYear.end : financialYear.end + 1;
+    const year = monthNum &gt;= 4 ? financialYear.end : financialYear.end + 1;
     const monthStart = new Date(year, monthNum - 1, 1);
     const monthEnd = new Date(year, monthNum, 0);
     const effectiveMonthStart = monthNum === 4 ? new Date(year, 3, 6) : monthStart;
 
     let monthTarget = 0;
     if (teamId === 'total') {
-      monthTarget = Object.values(monthlyData).reduce((sum, teamData) => sum + (teamData[monthNum]?.target || 0), 0);
+      monthTarget = Object.values(monthlyData).reduce((sum, teamData) =&gt; sum + (teamData[monthNum]?.target || 0), 0);
     } else {
       monthTarget = monthlyData[teamId]?.[monthNum]?.target || 0;
     }
 
-    if (today > monthEnd) {
+    if (today &gt; monthEnd) {
       expectedByToday += monthTarget;
-    } else if (today >= effectiveMonthStart && today <= monthEnd) {
+    } else if (today &gt;= effectiveMonthStart &amp;&amp; today &lt;= monthEnd) {
       const totalDaysInMonth = monthEnd.getDate() - effectiveMonthStart.getDate() + 1;
       const daysElapsed = today.getDate() - effectiveMonthStart.getDate() + 1;
       const fraction = Math.max(0, Math.min(1, daysElapsed / totalDaysInMonth));
@@ -59,7 +59,7 @@ function calcRunRatePercent(
     }
   }
 
-  if (expectedByToday <= 0) return null;
+  if (expectedByToday &lt;= 0) return null;
 
   return (submitted / expectedByToday) * 100;
 }
@@ -70,21 +70,21 @@ function calcMonthlyRunRatePercent(
   monthNum: number,
   financialYear: FinancialYear
 ): number | null {
-  if (target <= 0) return null;
+  if (target &lt;= 0) return null;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const year = monthNum >= 4 ? financialYear.end : financialYear.end + 1;
+  const year = monthNum &gt;= 4 ? financialYear.end : financialYear.end + 1;
   const monthStart = new Date(year, monthNum - 1, 1);
   const monthEnd = new Date(year, monthNum, 0);
   const effectiveMonthStart = monthNum === 4 ? new Date(year, 3, 6) : monthStart;
 
-  if (today > monthEnd) {
+  if (today &gt; monthEnd) {
     return (submitted / target) * 100;
   }
 
-  if (today < effectiveMonthStart) {
+  if (today &lt; effectiveMonthStart) {
     return null;
   }
 
@@ -93,32 +93,32 @@ function calcMonthlyRunRatePercent(
   const fraction = Math.max(0, Math.min(1, daysElapsed / totalDaysInMonth));
   const expectedByToday = target * fraction;
 
-  if (expectedByToday <= 0) return null;
+  if (expectedByToday &lt;= 0) return null;
   return (submitted / expectedByToday) * 100;
 }
 
 function getRunRateColor(pct: number): string {
-  if (pct >= 95) return 'text-green-700 bg-green-50';
-  if (pct >= 75) return 'text-orange-700 bg-orange-50';
+  if (pct &gt;= 95) return 'text-green-700 bg-green-50';
+  if (pct &gt;= 75) return 'text-orange-700 bg-orange-50';
   return 'text-red-700 bg-red-50';
 }
 
 function getPctBadgeColor(pct: number, target: number): string {
   if (target === 0) return 'text-gray-500 bg-gray-50';
-  if (pct >= 95) return 'text-green-700 bg-green-50';
-  if (pct >= 75) return 'text-orange-700 bg-orange-50';
+  if (pct &gt;= 95) return 'text-green-700 bg-green-50';
+  if (pct &gt;= 75) return 'text-orange-700 bg-orange-50';
   return 'text-red-700 bg-red-50';
 }
 
 function getProgressBarColor(runRatePct: number | null, completionPct: number): string {
   const pct = runRatePct !== null ? runRatePct : completionPct;
-  if (pct >= 95) return 'bg-green-500';
-  if (pct >= 75) return 'bg-orange-500';
+  if (pct &gt;= 95) return 'bg-green-500';
+  if (pct &gt;= 75) return 'bg-orange-500';
   return 'bg-red-500';
 }
 
 function getCompletionPercent(submitted: number, target: number): number {
-  return target > 0 ? (submitted / target) * 100 : 0;
+  return target &gt; 0 ? (submitted / target) * 100 : 0;
 }
 
 const MONTH_NAMES = [
@@ -126,7 +126,7 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-export const SelfAssessmentProgress: React.FC = () => {
+export const SelfAssessmentProgress: React.FC = () =&gt; {
   const { selectedFinancialYear, selectedMonth } = useDate();
   const { allStaff, teams, loading: authLoading } = useAuth();
   const { services, loading: servicesLoading } = useServices();
@@ -161,7 +161,7 @@ export const SelfAssessmentProgress: React.FC = () => {
       setLoadingMonthly(true);
 
       try {
-        const saService = services.find((s) => s.service_name === 'Self Assessments');
+        const saService = services.find((s) =&gt; s.service_name === 'Self Assessments');
 
         if (!saService) {
           setMonthlyData({});
