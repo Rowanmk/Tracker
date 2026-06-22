@@ -161,7 +161,7 @@ export const SelfAssessmentProgress: React.FC = () => {
       setLoadingMonthly(true);
 
       try {
-        const saService = services.find((s) =&gt; s.service_name === 'Self Assessments');
+        const saService = services.find((s) => s.service_name === 'Self Assessments');
 
         if (!saService) {
           setMonthlyData({});
