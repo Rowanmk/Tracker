@@ -1,60 +1,62 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../supabase/client';
-import { useAuth } from '../context/AuthContext';
-import type { Database } from '../supabase/types';
+import { useState, useEffect } from 'react';
+    import { supabase } from '../supabase/client';
+    import { useAuth } from '../context/AuthContext';
+    import type { Database } from '../supabase/types';
 
-type Target = Database['public']['Tables']['monthlytargets']['Row'];
+    type Target = Database['public']['Tables']['monthlytargets']['Row'];
 
-export const useTargets = (month: number, year: number) => {
-  const [targets, setTargets] = useState<Target[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { currentStaff } = useAuth();
+    export const useTargets = (month: number, year: number) => {
+      const [targets, setTargets] = useState<Target[]>([]);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState<string | null>(null);
+      const { currentStaff } = useAuth();
 
-  const fetchTargets = useCallback(async () => {
-    if (!currentStaff) {
-      setLoading(false);
-      return;
-    }
+      const fetchTargets = async () => {
+        if (!currentStaff) {
+          setLoading(false);
+          return;
+        }
 
-    setLoading(true);
-    setError(null);
+        setLoading(true);
+        setError(null);
 
-    try {
-      const { data, error: targetsError } = await supabase
-        .from('monthlytargets')
-        .select('*')
-        .eq('staff_id', currentStaff.staff_id)
-        .eq('month', month)
-        .eq('year', year);
+        try {
+          const { data, error: targetsError } = await supabase
+            .from('monthlytargets')
+            .select('*')
+            .eq('staff_id', currentStaff.staff_id)
+            .eq('month', month)
+            .eq('year', year);
 
-      if (targetsError) {
-        setError('Failed to load targets');
-        setTargets([]);
-      } else {
-        setTargets(data || []);
-      }
-    } catch {
-      setError('Failed to connect to database');
-      setTargets([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentStaff, month, year]);
+          if (targetsError) {
+            setError('Failed to load targets');
+            setTargets([]);
+          } else {
+            setTargets(data || []);
+          }
+        } catch {
+          setError('Failed to connect to database');
+          setTargets([]);
+        } finally {
+          setLoading(false);
+        }
+      };
 
-  useEffect(() => {
-    void fetchTargets();
-  }, [fetchTargets]);
+      useEffect(() => {
+        fetchTargets();
+      }, [currentStaff?.staff_id, month, year]);
 
-  useEffect(() => {
-    const handler = () => { void fetchTargets(); };
-    window.addEventListener('activity-updated', handler);
-    window.addEventListener('targets-updated', handler);
-    return () => {
-      window.removeEventListener('activity-updated', handler);
-      window.removeEventListener('targets-updated', handler);
+      useEffect(() => {
+        const handler = () => {
+          void fetchTargets();
+        };
+        window.addEventListener('activity-updated', handler);
+        window.addEventListener('targets-updated', handler);
+        return () => {
+          window.removeEventListener('activity-updated', handler);
+          window.removeEventListener('targets-updated', handler);
+        };
+      }, [currentStaff?.staff_id, month, year]);
+
+      return { targets, loading, error, refetch: fetchTargets };
     };
-  }, [fetchTargets]);
-
-  return { targets, loading, error, refetch: fetchTargets };
-};

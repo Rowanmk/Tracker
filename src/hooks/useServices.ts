@@ -46,6 +46,7 @@ export const useServices = () => {
           .from('services')
           .select('*');
 
+        // Bagel Days is a synthetic service generated client-side and must never be written to the activities or monthlytargets tables.
         const injectBagelService = (rows: Service[]) =>
           sortServices([
             ...rows.filter((service) => service.service_name !== BAGEL_SERVICE_NAME),
@@ -53,9 +54,18 @@ export const useServices = () => {
           ]);
 
         const mockServices: Service[] = [
-          { service_id: 1, service_name: 'Accounts' },
-          { service_id: 2, service_name: 'VAT' },
-          { service_id: 3, service_name: 'Self Assessments' },
+          {
+            service_id: 1,
+            service_name: 'Accounts',
+          },
+          {
+            service_id: 2,
+            service_name: 'VAT',
+          },
+          {
+            service_id: 3,
+            service_name: 'Self Assessments',
+          },
         ];
 
         if (servicesError) {
@@ -65,16 +75,26 @@ export const useServices = () => {
         } else {
           setServices(injectBagelService(data || []));
         }
-      } catch {
+      } catch (err) {
+        console.error('[useServices] fetch services:', err);
         setError('Failed to connect to database');
         setShowFallbackWarning(true);
 
         const mockServices: Service[] = [
-          { service_id: 1, service_name: 'Accounts' },
-          { service_id: 2, service_name: 'VAT' },
-          { service_id: 3, service_name: 'Self Assessments' },
+          {
+            service_id: 1,
+            service_name: 'Accounts',
+          },
+          {
+            service_id: 2,
+            service_name: 'VAT',
+          },
+          {
+            service_id: 3,
+            service_name: 'Self Assessments',
+          },
         ];
-        setServices(sortServices([...mockServices, getBagelService()]));
+        setServices(injectBagelService(mockServices));
       } finally {
         setLoading(false);
       }

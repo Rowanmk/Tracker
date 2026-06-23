@@ -2,6 +2,12 @@ import React, { createContext, useContext, useEffect, useState, ReactNode, useCa
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
+// FIX 5: Use shared isAccountantStaff utility instead of local helper.
+// PRE-FIX-5: local isAccountant included a normalizedName.includes('accountant') fallback
+// that no other copy had. The role-only definition is canonical (used 7-to-1 across the app).
+// CALLOUT: Anyone previously matched only via the name-includes-'accountant' fallback will
+// no longer be treated as an accountant in AuthContext. Sanity-check seeded data where role
+// is not 'staff'/'admin' but the name contains "accountant".
 import { isAccountantStaff } from '../utils/staff';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
@@ -35,15 +41,16 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
-const normalizeFirstName = (name?: string | null): string =>
-  (name || '').split(' ')[0]?.trim().toLowerCase() || '';
+const normalizeFirstName = (name?: string | null): string => (name || '').split(' ')[0]?.trim().toLowerCase() || '';
 
 const enforceKnownAdminRole = (staffMember: Staff): Staff => {
   const firstName = normalizeFirstName(staffMember.name);
   const normalizedRole = (staffMember.role || '').toLowerCase();
+
   if ((firstName === 'rowan' || firstName === 'admin') && normalizedRole !== 'admin') {
     return { ...staffMember, role: 'admin' };
   }
+
   return staffMember;
 };
 
@@ -55,35 +62,57 @@ const normalizeStoredTeamSelection = (
   staffMember: Staff,
   availableStaff: Staff[]
 ): string => {
-  if (!storedTeamId) return String(staffMember.staff_id);
-  if (storedTeamId === 'all' || storedTeamId === 'team-view') return 'team-view';
+  if (!storedTeamId) {
+    return String(staffMember.staff_id);
+  }
+
+  if (storedTeamId === 'all' || storedTeamId === 'team-view') {
+    return 'team-view';
+  }
 
   const selectedStaffExists = availableStaff.some(
-    (s) => !s.is_hidden && isAccountantStaff(s) && String(s.staff_id) === storedTeamId
+    (availableStaffMember) =>
+      !availableStaffMember.is_hidden &&
+      isAccountantStaff(availableStaffMember) &&
+      String(availableStaffMember.staff_id) === storedTeamId
   );
 
-  return selectedStaffExists ? storedTeamId : String(staffMember.staff_id);
+  if (selectedStaffExists) {
+    return storedTeamId;
+  }
+
+  return String(staffMember.staff_id);
 };
 
 const findStaffForAuthUser = (authUser: User | null, availableStaff: Staff[]): Staff | null => {
   if (!authUser) return null;
 
   const directMatch = availableStaff.find(
-    (s) => !s.is_hidden && s.user_id === authUser.id
+    (staffMember) => !staffMember.is_hidden && staffMember.user_id === authUser.id
   );
-  if (directMatch) return directMatch;
+
+  if (directMatch) {
+    return directMatch;
+  }
 
   const metadata = (authUser.user_metadata ?? {}) as Record<string, unknown>;
-  const metadataName = typeof metadata.name === 'string' ? metadata.name
-    : typeof metadata.full_name === 'string' ? metadata.full_name : '';
+  const metadataNameValue = metadata.name;
+  const metadataFullNameValue = metadata.full_name;
+
+  const metadataName: string =
+    typeof metadataNameValue === 'string'
+      ? metadataNameValue
+      : typeof metadataFullNameValue === 'string'
+      ? metadataFullNameValue
+      : '';
 
   const metadataFirstName = normalizeFirstName(metadataName);
   const emailFirstName = normalizeFirstName(authUser.email?.split('@')[0] || '');
 
   return (
-    availableStaff.find((s) => {
-      if (s.is_hidden) return false;
-      const staffFirstName = normalizeFirstName(s.name);
+    availableStaff.find((staffMember) => {
+      if (staffMember.is_hidden) return false;
+      const staffFirstName = normalizeFirstName(staffMember.name);
       return Boolean(staffFirstName && (staffFirstName === metadataFirstName || staffFirstName === emailFirstName));
     }) || null
   );
@@ -97,6 +126,7 @@ const isValidFallbackPassword = (staffMember: Staff, password: string): boolean 
   if (!normalizedPassword) return false;
   if (storedPassword && normalizedPassword === storedPassword) return true;
   if (normalizedPassword === firstName) return true;
+
   return firstName === 'rowan' && normalizedPassword === 'rowan123!';
 };
 
@@ -152,7 +182,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         supabase.auth.getSession(),
       ]);
 
-      if (staffRes.error) throw staffRes.error;
+      if (staffRes.error) {
+        throw staffRes.error;
+      }
 
       const normalizedStaff = ((staffRes.data || []) as Staff[]).map(enforceKnownAdminRole);
       const visibleStaff = normalizedStaff.filter((s) => !s.is_hidden);
@@ -169,7 +201,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const matchedSessionStaff = findStaffForAuthUser(sessionUser, normalizedStaff);
       const matchedStoredStaff = storedStaffId
-        ? normalizedStaff.find((s) => String(s.staff_id) === storedStaffId && !s.is_hidden) || null
+        ? normalizedStaff.find((staffMember) => String(staffMember.staff_id) === storedStaffId && !staffMember.is_hidden) || null
         : null;
 
       if (matchedSessionStaff) {
@@ -183,6 +215,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setShowFallbackWarning(false);
       setLoadFailed(false);
     } catch (err) {
+      console.error('[AuthContext] fetch staff:', err);
       setAllStaff([]);
       setStaff([]);
       setTeams([]);
@@ -232,7 +265,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           await supabase.auth.signOut();
           setUser(null);
           applyCurrentStaff(null);
-          return { error: 'Signed in, but no matching staff record was found. Please contact an administrator.' };
+          return {
+            error: 'Signed in, but no matching staff record was found. Please contact an administrator.',
+          };
         }
 
         setUser(data.user);
@@ -242,17 +277,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       const matchedStaff = allStaff.find(
-        (s) => !s.is_hidden && normalizeFirstName(s.name) === normalizedIdentifier
+        (staffMember) =>
+          !staffMember.is_hidden &&
+          normalizeFirstName(staffMember.name) === normalizedIdentifier
       );
 
-      if (!matchedStaff) return { error: 'User not found.' };
-      if (!isValidFallbackPassword(matchedStaff, password)) return { error: 'Incorrect password.' };
+      if (!matchedStaff) {
+        return { error: 'User not found.' };
+      }
+
+      if (!isValidFallbackPassword(matchedStaff, password)) {
+        return { error: 'Incorrect password.' };
+      }
 
       setUser(null);
       applyCurrentStaff(matchedStaff, allStaff);
       setError(null);
       return {};
-    } catch {
+    } catch (err) {
+      console.error('[AuthContext] sign in with email:', err);
       return { error: 'Unable to sign in right now.' };
     }
   };
@@ -273,13 +316,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const resetPassword = async (email: string): Promise<{ error?: string }> => {
     const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail) return { error: 'Please enter your email address.' };
+
+    if (!normalizedEmail) {
+      return { error: 'Please enter your email address.' };
+    }
 
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
       redirectTo: `${window.location.origin}/login`,
     });
 
-    if (resetError) return { error: resetError.message };
+    if (resetError) {
+      return { error: resetError.message };
+    }
+
     return {};
   };
 
@@ -289,6 +338,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       localStorage.setItem('crew_tracker_team_id', 'team-view');
       return;
     }
+
     setSelectedTeamId(teamId.toString());
     localStorage.setItem('crew_tracker_team_id', teamId.toString());
   };
@@ -296,6 +346,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const hasPermission = useCallback((path: string): boolean => {
     const publicPaths = ['/login', '/forgot-password'];
     if (publicPaths.includes(path)) return true;
+
     if (!currentStaff) return false;
 
     const roleForPermissions = currentStaff.role === 'user' ? 'staff' : currentStaff.role;
@@ -306,13 +357,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const accountantStaff = useMemo(
     () =>
       allStaff
-        .filter((s) => !s.is_hidden && isAccountantStaff(s))
+        .filter((staffMember) => !staffMember.is_hidden && isAccountantStaff(staffMember))
         .sort((a, b) => a.name.localeCompare(b.name)),
     [allStaff]
   );
 
   const accountantTeams = useMemo(
-    () => teams.filter((team) => accountantStaff.some((s) => s.team_id === team.id)),
+    () =>
+      teams.filter((team) =>
+        accountantStaff.some((staffMember) => staffMember.team_id === team.id)
+      ),
     [teams, accountantStaff]
   );
 
