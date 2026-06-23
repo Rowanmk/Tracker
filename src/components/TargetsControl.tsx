@@ -25,14 +25,6 @@ interface TargetData {
   };
 }
 
-interface WideCSVRow {
-  service_name: string;
-  accountant_name: string;
-  staff_id: number;
-  service_id: number;
-  [monthCol: string]: string | number;
-}
-
 interface LocalInputState {
   [key: string]: string;
 }
@@ -122,30 +114,25 @@ const persistStaffTargets = async (
   });
 
   if (inserts.length > 0) {
-    const { error: insertError } = await supabase
-      .from('monthlytargets')
-      .insert(inserts);
-
+    const { error: insertError } = await supabase.from('monthlytargets').insert(inserts);
     if (insertError) throw insertError;
   }
 };
 
 export const TargetsControl: React.FC = () => {
   const navigate = useNavigate();
-  const {
-    allStaff,
-    loading: authLoading,
-    error: authError,
-    currentStaff,
-  } = useAuth();
+  const { allStaff, loading: authLoading, error: authError, currentStaff } = useAuth();
   const { services, loading: servicesLoading, error: servicesError } = useServices();
 
-  const targetableServices = useMemo(() => services.filter(s => s.service_id !== BAGEL_SERVICE_ID), [services]);
+  const targetableServices = useMemo(
+    () => services.filter((s) => s.service_id !== BAGEL_SERVICE_ID),
+    [services]
+  );
 
   const activeAccountants = useMemo<Staff[]>(
     () =>
       allStaff
-        .filter((staffMember) => !staffMember.is_hidden && isAccountantStaff(staffMember))
+        .filter((s) => !s.is_hidden && isAccountantStaff(s))
         .sort((a, b) => a.name.localeCompare(b.name)),
     [allStaff]
   );
@@ -188,7 +175,7 @@ export const TargetsControl: React.FC = () => {
     return snapshot;
   };
 
-  const fetchTargets = async (fy: FinancialYear) => {
+  const fetchTargets = useCallback(async (fy: FinancialYear) => {
     if (!activeAccountants.length || !targetableServices.length) {
       setTargetData([]);
       setLastSavedSnapshot({});
@@ -217,10 +204,7 @@ export const TargetsControl: React.FC = () => {
           });
 
           dbTargets?.forEach((t) => {
-            if (!isTargetInFinancialYear(t.month, t.year, fy)) {
-              return;
-            }
-
+            if (!isTargetInFinancialYear(t.month, t.year, fy)) return;
             const service = targetableServices.find((s) => s.service_id === t.service_id);
             if (service) {
               targets[t.month][service.service_name] = t.target_value ?? 0;
@@ -237,46 +221,31 @@ export const TargetsControl: React.FC = () => {
       setHasUnsavedChanges(false);
       inputRefs.current.clear();
       scrollPositionsRef.current = {};
-    } catch (err) {
-      console.error('[TargetsControl] fetch targets data:', err);
+    } catch {
       setError('Failed to load targets data');
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeAccountants, targetableServices]);
 
   useEffect(() => {
-    fetchTargets(selectedFinancialYear);
-  }, [selectedFinancialYear, activeAccountants, targetableServices]);
+    void fetchTargets(selectedFinancialYear);
+  }, [selectedFinancialYear, fetchTargets]);
 
   const saveScrollPosition = (staffId: number, scrollLeft: number) => {
     scrollPositionsRef.current[staffId] = scrollLeft;
   };
 
-  const getInputKey = (staffId: number, month: number, serviceName: string): string => {
-    return `${staffId}-${month}-${serviceName}`;
-  };
+  const getInputKey = (staffId: number, month: number, serviceName: string): string =>
+    `${staffId}-${month}-${serviceName}`;
 
-  const handleInputChange = (
-    staffId: number,
-    month: number,
-    serviceName: string,
-    value: string
-  ) => {
+  const handleInputChange = (staffId: number, month: number, serviceName: string, value: string) => {
     const key = getInputKey(staffId, month, serviceName);
-    setLocalInputState(prev => ({
-      ...prev,
-      [key]: value
-    }));
+    setLocalInputState((prev) => ({ ...prev, [key]: value }));
     setHasUnsavedChanges(true);
   };
 
-  const handleInputBlur = (
-    staffId: number,
-    month: number,
-    serviceName: string,
-    value: string
-  ) => {
+  const handleInputBlur = (staffId: number, month: number, serviceName: string, value: string) => {
     const key = getInputKey(staffId, month, serviceName);
 
     let numValue = 0;
@@ -285,7 +254,7 @@ export const TargetsControl: React.FC = () => {
       if (!isNaN(parsed) && parsed >= 0) {
         numValue = parsed;
       } else {
-        setLocalInputState(prev => {
+        setLocalInputState((prev) => {
           const newState = { ...prev };
           delete newState[key];
           return newState;
@@ -295,23 +264,14 @@ export const TargetsControl: React.FC = () => {
     }
 
     setTargetData((prev) =>
-      prev.map((staffMember) =>
-        staffMember.staff_id === staffId
-          ? {
-              ...staffMember,
-              targets: {
-                ...staffMember.targets,
-                [month]: {
-                  ...staffMember.targets[month],
-                  [serviceName]: numValue,
-                },
-              },
-            }
-          : staffMember
+      prev.map((s) =>
+        s.staff_id === staffId
+          ? { ...s, targets: { ...s.targets, [month]: { ...s.targets[month], [serviceName]: numValue } } }
+          : s
       )
     );
 
-    setLocalInputState(prev => {
+    setLocalInputState((prev) => {
       const newState = { ...prev };
       delete newState[key];
       return newState;
@@ -326,15 +286,14 @@ export const TargetsControl: React.FC = () => {
     value: string
   ) => {
     if (e.key !== 'Tab') return;
-
     e.preventDefault();
 
     handleInputBlur(staffId, month, serviceName, value);
 
     const monthData = getFinancialYearMonths();
-    const currentMonthIndex = monthData.findIndex(m => m.number === month);
-    const currentServiceIndex = targetableServices.findIndex(s => s.service_name === serviceName);
-    const currentStaffIndex = targetData.findIndex(t => t.staff_id === staffId);
+    const currentMonthIndex = monthData.findIndex((m) => m.number === month);
+    const currentServiceIndex = targetableServices.findIndex((s) => s.service_name === serviceName);
+    const currentStaffIndex = targetData.findIndex((t) => t.staff_id === staffId);
 
     let nextStaffIndex = currentStaffIndex;
     let nextServiceIndex = currentServiceIndex;
@@ -346,9 +305,7 @@ export const TargetsControl: React.FC = () => {
         nextServiceIndex--;
         if (nextServiceIndex < 0) {
           nextStaffIndex--;
-          if (nextStaffIndex < 0) {
-            nextStaffIndex = targetData.length - 1;
-          }
+          if (nextStaffIndex < 0) nextStaffIndex = targetData.length - 1;
           nextServiceIndex = targetableServices.length - 1;
         }
         nextMonthIndex = monthData.length - 1;
@@ -359,9 +316,7 @@ export const TargetsControl: React.FC = () => {
         nextServiceIndex++;
         if (nextServiceIndex >= targetableServices.length) {
           nextStaffIndex++;
-          if (nextStaffIndex >= targetData.length) {
-            nextStaffIndex = 0;
-          }
+          if (nextStaffIndex >= targetData.length) nextStaffIndex = 0;
           nextServiceIndex = 0;
         }
         nextMonthIndex = 0;
@@ -374,13 +329,9 @@ export const TargetsControl: React.FC = () => {
 
     if (nextStaff && nextService && nextMonth) {
       const nextKey = getInputKey(nextStaff.staff_id, nextMonth.number, nextService.service_name);
-
       requestAnimationFrame(() => {
         const nextInput = inputRefs.current.get(nextKey);
-        if (nextInput) {
-          nextInput.focus();
-          nextInput.select();
-        }
+        if (nextInput) { nextInput.focus(); nextInput.select(); }
       });
     }
   };
@@ -391,9 +342,7 @@ export const TargetsControl: React.FC = () => {
 
     try {
       await Promise.all(
-        targetData.map(async (staffMember) => {
-          await persistStaffTargets(staffMember, selectedFinancialYear, targetableServices);
-        })
+        targetData.map((staffMember) => persistStaffTargets(staffMember, selectedFinancialYear, targetableServices))
       );
 
       const monthData = getFinancialYearMonths();
@@ -430,7 +379,7 @@ export const TargetsControl: React.FC = () => {
             })),
           };
         })
-        .filter((staffMember) => staffMember.changed_cells > 0);
+        .filter((s) => s.changed_cells > 0);
 
       if (currentStaff && changedStaffSummaries.length > 0) {
         await logMonthlyTargetsSaved({
@@ -438,10 +387,10 @@ export const TargetsControl: React.FC = () => {
           actorName: currentStaff.name,
           financialYearLabel: selectedFinancialYear.label,
           changedStaffSummaries,
-          totalsByStaff: targetData.map((staffMember) => ({
-            staff_id: staffMember.staff_id,
-            name: staffMember.name,
-            annual_total: monthData.reduce((sum, m) => sum + calculateMonthlyTotal(staffMember.staff_id, m.number), 0),
+          totalsByStaff: targetData.map((s) => ({
+            staff_id: s.staff_id,
+            name: s.name,
+            annual_total: monthData.reduce((sum, m) => sum + calculateMonthlyTotal(s.staff_id, m.number), 0),
           })),
         });
       }
@@ -452,8 +401,7 @@ export const TargetsControl: React.FC = () => {
       window.dispatchEvent(new Event('targets-updated'));
       setTimeout(() => setSaveMessage(null), 3000);
       return true;
-    } catch (err) {
-      console.error('[TargetsControl] save targets:', err);
+    } catch {
       setError('Failed to save targets');
       return false;
     }
@@ -461,14 +409,12 @@ export const TargetsControl: React.FC = () => {
 
   const handleExportCSV = () => {
     const monthData = getFinancialYearMonths();
-
     const monthCols = monthData.map((m) => {
       const year = getYearForMonth(m.number, selectedFinancialYear);
       return { key: buildMonthColKey(m.name, year), month: m, year };
     });
 
     const rows: Record<string, string | number>[] = [];
-
     targetableServices.forEach((service) => {
       targetData.forEach((staffMember) => {
         const row: Record<string, string | number> = {
@@ -477,23 +423,14 @@ export const TargetsControl: React.FC = () => {
           staff_id: staffMember.staff_id,
           service_id: service.service_id,
         };
-
         monthCols.forEach(({ key, month }) => {
           row[key] = staffMember.targets[month.number]?.[service.service_name] ?? 0;
         });
-
         rows.push(row);
       });
     });
 
-    const fields = [
-      'service_name',
-      'accountant_name',
-      'staff_id',
-      'service_id',
-      ...monthCols.map((c) => c.key),
-    ];
-
+    const fields = ['service_name', 'accountant_name', 'staff_id', 'service_id', ...monthCols.map((c) => c.key)];
     const csv = unparse({ fields, data: rows });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -505,21 +442,12 @@ export const TargetsControl: React.FC = () => {
   };
 
   const handleImportClick = () => {
-    setImportState({
-      step: 'select-fy',
-      selectedFY: importFinancialYear,
-      parsedRows: [],
-      diffRows: [],
-      error: null,
-    });
+    setImportState({ step: 'select-fy', selectedFY: importFinancialYear, parsedRows: [], diffRows: [], error: null });
   };
 
   const handleImportFYConfirm = () => {
     if (!importState.selectedFY) return;
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-      fileInputRef.current.click();
-    }
+    if (fileInputRef.current) { fileInputRef.current.value = ''; fileInputRef.current.click(); }
   };
 
   const handleFileSelected = useCallback(
@@ -530,56 +458,40 @@ export const TargetsControl: React.FC = () => {
       const reader = new FileReader();
       reader.onload = (evt) => {
         const text = evt.target?.result as string;
-        if (!text) {
-          setImportState(prev => ({ ...prev, error: 'Could not read file.' }));
-          return;
-        }
+        if (!text) { setImportState((prev) => ({ ...prev, error: 'Could not read file.' })); return; }
 
         let textToParse = text;
         const lines = textToParse.split(/\r?\n/);
-        const headerIndex = lines.findIndex(line => line.includes('service_name') && line.includes('accountant_name'));
-        if (headerIndex > 0) {
-          textToParse = lines.slice(headerIndex).join('\n');
-        }
+        const headerIndex = lines.findIndex((line) => line.includes('service_name') && line.includes('accountant_name'));
+        if (headerIndex > 0) textToParse = lines.slice(headerIndex).join('\n');
 
-        const result = parse<Record<string, string>>(textToParse, {
-          header: true,
-          skipEmptyLines: true,
-        });
+        const result = parse<Record<string, string>>(textToParse, { header: true, skipEmptyLines: true });
 
         if (result.errors.length > 0) {
-          setImportState(prev => ({
-            ...prev,
-            error: `CSV parse error: ${result.errors[0].message}`,
-          }));
+          setImportState((prev) => ({ ...prev, error: `CSV parse error: ${result.errors[0].message}` }));
           return;
         }
 
         const headers = result.meta.fields || [];
-
         const requiredBase = ['service_name', 'accountant_name', 'staff_id', 'service_id'];
-        const missingBase = requiredBase.filter(col => !headers.includes(col));
+        const missingBase = requiredBase.filter((col) => !headers.includes(col));
         if (missingBase.length > 0) {
-          setImportState(prev => ({
-            ...prev,
-            error: `CSV is missing required columns: ${missingBase.join(', ')}. Please export a fresh CSV and re-edit it.`,
-          }));
+          setImportState((prev) => ({ ...prev, error: `CSV is missing required columns: ${missingBase.join(', ')}.` }));
           return;
         }
 
         const fy = importState.selectedFY!;
         const monthData = getFinancialYearMonths();
-
         const expectedMonthCols = monthData.map((m) => {
           const year = getYearForMonth(m.number, fy);
           return { key: buildMonthColKey(m.name, year), month: m.number, year };
         });
 
-        const foundMonthCols = expectedMonthCols.filter(mc => headers.includes(mc.key));
+        const foundMonthCols = expectedMonthCols.filter((mc) => headers.includes(mc.key));
         if (foundMonthCols.length === 0) {
-          setImportState(prev => ({
+          setImportState((prev) => ({
             ...prev,
-            error: `No month columns found for FY ${fy.label}. Expected columns like "${expectedMonthCols[0].key}". Please export a fresh CSV for this financial year.`,
+            error: `No month columns found for FY ${fy.label}. Expected columns like "${expectedMonthCols[0].key}".`,
           }));
           return;
         }
@@ -597,7 +509,6 @@ export const TargetsControl: React.FC = () => {
             parseErrors.push(`Row ${idx + 2}: invalid staff_id or service_id.`);
             return;
           }
-
           if (serviceId === BAGEL_SERVICE_ID) {
             parseErrors.push(`Row ${idx + 2}: Bagel Days cannot be imported as a target column.`);
             return;
@@ -606,31 +517,20 @@ export const TargetsControl: React.FC = () => {
           foundMonthCols.forEach(({ key, month, year }) => {
             const rawVal = row[key];
             const targetValue = rawVal !== undefined && rawVal !== '' ? parseInt(rawVal, 10) : 0;
-
             if (isNaN(targetValue)) {
               parseErrors.push(`Row ${idx + 2}, column "${key}": invalid numeric value "${rawVal}".`);
               return;
             }
-
             if (!isTargetInFinancialYear(month, year, fy)) {
               parseErrors.push(`Row ${idx + 2}: month ${month} / year ${year} does not belong to FY ${fy.label}.`);
               return;
             }
-
-            parsedRows.push({
-              staff_id: staffId,
-              staff_name: staffName,
-              service_id: serviceId,
-              service_name: serviceName,
-              month,
-              year,
-              target_value: Math.max(0, targetValue),
-            });
+            parsedRows.push({ staff_id: staffId, staff_name: staffName, service_id: serviceId, service_name: serviceName, month, year, target_value: Math.max(0, targetValue) });
           });
         });
 
         if (parseErrors.length > 0) {
-          setImportState(prev => ({
+          setImportState((prev) => ({
             ...prev,
             error: `Import validation failed:\n${parseErrors.slice(0, 5).join('\n')}${parseErrors.length > 5 ? `\n…and ${parseErrors.length - 5} more` : ''}`,
           }));
@@ -638,16 +538,12 @@ export const TargetsControl: React.FC = () => {
         }
 
         const monthLabelMap: Record<number, string> = {};
-        monthData.forEach(m => { monthLabelMap[m.number] = m.name; });
+        monthData.forEach((m) => { monthLabelMap[m.number] = m.name; });
 
-        const diffRows: ImportDiffRow[] = [];
-
-        parsedRows.forEach(row => {
-          const existingStaff = targetData.find(t => t.staff_id === row.staff_id);
+        const diffRows: ImportDiffRow[] = parsedRows.map((row) => {
+          const existingStaff = targetData.find((t) => t.staff_id === row.staff_id);
           const currentValue = existingStaff?.targets[row.month]?.[row.service_name] ?? 0;
-          const changed = currentValue !== row.target_value;
-
-          diffRows.push({
+          return {
             staff_id: row.staff_id,
             staff_name: row.staff_name,
             service_name: row.service_name,
@@ -656,8 +552,8 @@ export const TargetsControl: React.FC = () => {
             year: row.year,
             current_value: currentValue,
             import_value: row.target_value,
-            changed,
-          });
+            changed: currentValue !== row.target_value,
+          };
         });
 
         diffRows.sort((a, b) => {
@@ -666,83 +562,56 @@ export const TargetsControl: React.FC = () => {
           return a.month - b.month;
         });
 
-        setImportState(prev => ({
-          ...prev,
-          step: 'preview',
-          parsedRows,
-          diffRows,
-          error: null,
-        }));
+        setImportState((prev) => ({ ...prev, step: 'preview', parsedRows, diffRows, error: null }));
       };
 
       reader.readAsText(file);
     },
-    [importState.selectedFY, targetData, targetableServices]
+    [importState.selectedFY, targetData]
   );
 
   const handleConfirmImport = async () => {
     if (!importState.selectedFY || importState.parsedRows.length === 0) return;
-
-    setImportState(prev => ({ ...prev, step: 'importing', error: null }));
+    setImportState((prev) => ({ ...prev, step: 'importing', error: null }));
 
     try {
       const fy = importState.selectedFY;
-
-      const newTargetData: TargetData[] = targetData.map(staffMember => {
+      const newTargetData: TargetData[] = targetData.map((staffMember) => {
         const monthData = getFinancialYearMonths();
         const newTargets: TargetData['targets'] = {};
-
-        monthData.forEach(m => {
-          newTargets[m.number] = { ...staffMember.targets[m.number] };
-        });
+        monthData.forEach((m) => { newTargets[m.number] = { ...staffMember.targets[m.number] }; });
 
         importState.parsedRows
-          .filter(row => row.staff_id === staffMember.staff_id)
-          .forEach(row => {
-            if (newTargets[row.month]) {
-              newTargets[row.month][row.service_name] = row.target_value;
-            }
+          .filter((row) => row.staff_id === staffMember.staff_id)
+          .forEach((row) => {
+            if (newTargets[row.month]) newTargets[row.month][row.service_name] = row.target_value;
           });
 
         return { ...staffMember, targets: newTargets };
       });
 
-      await Promise.all(
-        newTargetData.map(async (staffMember) => {
-          await persistStaffTargets(staffMember, fy, targetableServices);
-        })
-      );
+      await Promise.all(newTargetData.map((s) => persistStaffTargets(s, fy, targetableServices)));
 
       setTargetData(newTargetData);
       setLastSavedSnapshot(buildSnapshot(newTargetData));
       setHasUnsavedChanges(false);
-
-      setImportState(prev => ({ ...prev, step: 'done' }));
-      setSaveMessage(`✅ Import complete — ${importState.diffRows.filter(r => r.changed).length} value(s) updated for FY ${fy.label}`);
+      setImportState((prev) => ({ ...prev, step: 'done' }));
+      setSaveMessage(`✅ Import complete — ${importState.diffRows.filter((r) => r.changed).length} value(s) updated for FY ${fy.label}`);
       window.dispatchEvent(new Event('targets-updated'));
       setTimeout(() => setSaveMessage(null), 5000);
-    } catch (err) {
-      console.error('[TargetsControl] confirm import:', err);
-      setImportState(prev => ({ ...prev, step: 'preview', error: 'Import failed. Please try again.' }));
+    } catch {
+      setImportState((prev) => ({ ...prev, step: 'preview', error: 'Import failed. Please try again.' }));
     }
   };
 
   const handleCancelImport = () => {
-    setImportState({
-      step: 'idle',
-      selectedFY: null,
-      parsedRows: [],
-      diffRows: [],
-      error: null,
-    });
+    setImportState({ step: 'idle', selectedFY: null, parsedRows: [], diffRows: [], error: null });
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleFinancialYearChange = (fy: FinancialYear) => {
     if (hasUnsavedChanges) {
-      setPendingAction(() => () => {
-        setSelectedFinancialYear(fy);
-      });
+      setPendingAction(() => () => setSelectedFinancialYear(fy));
       setShowConfirmDialog(true);
     } else {
       setSelectedFinancialYear(fy);
@@ -751,12 +620,8 @@ export const TargetsControl: React.FC = () => {
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasUnsavedChanges) {
-        e.preventDefault();
-        e.returnValue = '';
-      }
+      if (hasUnsavedChanges) { e.preventDefault(); e.returnValue = ''; }
     };
-
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasUnsavedChanges]);
@@ -765,10 +630,8 @@ export const TargetsControl: React.FC = () => {
     const handleClick = (e: MouseEvent) => {
       if (!hasUnsavedChanges) return;
       if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-
       const target = e.target as HTMLElement;
       const anchor = target.closest('a');
-
       if (anchor && anchor.href) {
         const url = new URL(anchor.href);
         if (url.origin === window.location.origin && url.pathname !== window.location.pathname) {
@@ -779,7 +642,6 @@ export const TargetsControl: React.FC = () => {
         }
       }
     };
-
     document.addEventListener('click', handleClick, { capture: true });
     return () => document.removeEventListener('click', handleClick, { capture: true });
   }, [hasUnsavedChanges, navigate]);
@@ -788,11 +650,7 @@ export const TargetsControl: React.FC = () => {
   const financialYears = getFinancialYears();
 
   if (loading || authLoading || servicesLoading) {
-    return (
-      <div className="py-6 text-center text-gray-500">
-        Loading targets...
-      </div>
-    );
+    return <div className="py-6 text-center text-gray-500">Loading targets...</div>;
   }
 
   if (authError || servicesError) {
@@ -804,66 +662,41 @@ export const TargetsControl: React.FC = () => {
   }
 
   const calculateMonthlyTotal = (staffId: number, month: number): number => {
-    const staffMember = targetData.find(t => t.staff_id === staffId);
+    const staffMember = targetData.find((t) => t.staff_id === staffId);
     if (!staffMember) return 0;
-
-    return targetableServices.reduce((sum, service) => {
-      return sum + (staffMember.targets[month]?.[service.service_name] ?? 0);
-    }, 0);
+    return targetableServices.reduce((sum, service) => sum + (staffMember.targets[month]?.[service.service_name] ?? 0), 0);
   };
 
   const calculateAnnualTotal = (staffId: number, serviceName: string): number => {
-    const staffMember = targetData.find(t => t.staff_id === staffId);
+    const staffMember = targetData.find((t) => t.staff_id === staffId);
     if (!staffMember) return 0;
-
-    return monthData.reduce((sum, m) => {
-      return sum + (staffMember.targets[m.number]?.[serviceName] ?? 0);
-    }, 0);
+    return monthData.reduce((sum, m) => sum + (staffMember.targets[m.number]?.[serviceName] ?? 0), 0);
   };
 
-  const calculateServiceMonthlyTotal = (month: number, serviceName: string): number => {
-    return targetData.reduce((sum, staffMember) => {
-      return sum + (staffMember.targets[month]?.[serviceName] ?? 0);
-    }, 0);
-  };
+  const calculateServiceMonthlyTotal = (month: number, serviceName: string): number =>
+    targetData.reduce((sum, s) => sum + (s.targets[month]?.[serviceName] ?? 0), 0);
 
-  const calculateServiceAnnualTotal = (serviceName: string): number => {
-    return monthData.reduce((sum, m) => {
-      return sum + calculateServiceMonthlyTotal(m.number, serviceName);
-    }, 0);
-  };
+  const calculateServiceAnnualTotal = (serviceName: string): number =>
+    monthData.reduce((sum, m) => sum + calculateServiceMonthlyTotal(m.number, serviceName), 0);
 
   const getInputValue = (staffId: number, month: number, serviceName: string): string => {
     const key = getInputKey(staffId, month, serviceName);
-
-    if (Object.prototype.hasOwnProperty.call(localInputState, key)) {
-      return localInputState[key];
-    }
-
-    const staffMember = targetData.find(t => t.staff_id === staffId);
+    if (Object.prototype.hasOwnProperty.call(localInputState, key)) return localInputState[key];
+    const staffMember = targetData.find((t) => t.staff_id === staffId);
     const value = staffMember?.targets[month]?.[serviceName] ?? 0;
     return value.toString();
   };
 
-  const changedCount = importState.diffRows.filter(r => r.changed).length;
-
+  const changedCount = importState.diffRows.filter((r) => r.changed).length;
   const diffMonthData = getFinancialYearMonths();
 
   return (
     <div className="space-y-4">
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".csv"
-        className="hidden"
-        onChange={handleFileSelected}
-      />
+      <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleFileSelected} />
 
       <div className="page-header mb-4">
         <h2 className="page-title">Targets Control</h2>
-        <p className="page-subtitle">
-          Set monthly targets for {selectedFinancialYear.label}
-        </p>
+        <p className="page-subtitle">Set monthly targets for {selectedFinancialYear.label}</p>
       </div>
 
       {error && (
@@ -888,12 +721,8 @@ export const TargetsControl: React.FC = () => {
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                  Unsaved Changes
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  You have entries that have not yet been saved. Please choose an action.
-                </p>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Unsaved Changes</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">You have entries that have not yet been saved. Please choose an action.</p>
               </div>
             </div>
             <div className="flex gap-3 justify-end">
@@ -901,10 +730,7 @@ export const TargetsControl: React.FC = () => {
                 onClick={() => {
                   setShowConfirmDialog(false);
                   setHasUnsavedChanges(false);
-                  if (pendingAction) {
-                    pendingAction();
-                    setPendingAction(null);
-                  }
+                  if (pendingAction) { pendingAction(); setPendingAction(null); }
                 }}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-md transition-colors"
               >
@@ -915,10 +741,7 @@ export const TargetsControl: React.FC = () => {
                   const success = await handleSaveTargets();
                   if (success) {
                     setShowConfirmDialog(false);
-                    if (pendingAction) {
-                      pendingAction();
-                      setPendingAction(null);
-                    }
+                    if (pendingAction) { pendingAction(); setPendingAction(null); }
                   }
                 }}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-md transition-colors shadow-sm"
@@ -934,48 +757,29 @@ export const TargetsControl: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm mx-4 w-full animate-slide-up">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Import Targets</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Select the financial year you are importing targets for. Only month columns matching this financial year will be accepted.
-            </p>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Select the financial year you are importing targets for.</p>
             <div className="mb-5">
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Financial Year</label>
               <select
                 value={importState.selectedFY ? `${importState.selectedFY.start}-${importState.selectedFY.end}` : ''}
                 onChange={(e) => {
                   const [start, end] = e.target.value.split('-').map(Number);
-                  const fy = financialYears.find(f => f.start === start && f.end === end);
-                  if (fy) {
-                    setImportFinancialYear(fy);
-                    setImportState(prev => ({ ...prev, selectedFY: fy }));
-                  }
+                  const fy = financialYears.find((f) => f.start === start && f.end === end);
+                  if (fy) { setImportFinancialYear(fy); setImportState((prev) => ({ ...prev, selectedFY: fy })); }
                 }}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {financialYears.map((fy) => (
-                  <option key={`${fy.start}-${fy.end}`} value={`${fy.start}-${fy.end}`}>
-                    {fy.label}
-                  </option>
+                  <option key={`${fy.start}-${fy.end}`} value={`${fy.start}-${fy.end}`}>{fy.label}</option>
                 ))}
               </select>
             </div>
             {importState.error && (
-              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-800 dark:text-red-200 whitespace-pre-line">
-                {importState.error}
-              </div>
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-800 dark:text-red-200 whitespace-pre-line">{importState.error}</div>
             )}
             <div className="flex gap-3 justify-end">
-              <button
-                onClick={handleCancelImport}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-md transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleImportFYConfirm}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-md transition-colors shadow-sm"
-              >
-                Choose CSV File
-              </button>
+              <button onClick={handleCancelImport} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-md transition-colors">Cancel</button>
+              <button onClick={handleImportFYConfirm} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-md transition-colors shadow-sm">Choose CSV File</button>
             </div>
           </div>
         </div>
@@ -986,66 +790,47 @@ export const TargetsControl: React.FC = () => {
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col animate-slide-up">
             <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
               <div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                  Import Preview — FY {importState.selectedFY?.label}
-                </h3>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Import Preview — FY {importState.selectedFY?.label}</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                   {importState.parsedRows.length} cell(s) in file •{' '}
-                  <span className={changedCount > 0 ? 'text-amber-600 font-semibold' : 'text-green-600 font-semibold'}>
-                    {changedCount} change(s)
-                  </span>
-                  {' '}detected vs current data
+                  <span className={changedCount > 0 ? 'text-amber-600 font-semibold' : 'text-green-600 font-semibold'}>{changedCount} change(s)</span> detected vs current data
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-800">
-                  <span className="w-2 h-2 rounded-full bg-green-500 inline-block"></span> No change
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span> Changed
-                </span>
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-800"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> No change</span>
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> Changed</span>
               </div>
             </div>
 
             {importState.error && (
-              <div className="mx-6 mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-800 dark:text-red-200 whitespace-pre-line flex-shrink-0">
-                {importState.error}
-              </div>
+              <div className="mx-6 mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-800 dark:text-red-200 whitespace-pre-line flex-shrink-0">{importState.error}</div>
             )}
 
             <div className="flex-1 overflow-auto">
               {(() => {
                 const fy = importState.selectedFY;
                 if (!fy) return null;
-
-                const monthCols = diffMonthData.map((m) => {
-                  const year = getYearForMonth(m.number, fy);
-                  return { month: m.number, name: m.name, year };
-                });
-
+                const monthCols = diffMonthData.map((m) => ({ month: m.number, name: m.name, year: getYearForMonth(m.number, fy) }));
                 type DiffKey = string;
                 const grouped = new Map<DiffKey, Map<number, ImportDiffRow>>();
-
-                importState.diffRows.forEach(row => {
+                importState.diffRows.forEach((row) => {
                   const key: DiffKey = `${row.service_name}||${row.staff_name}||${row.staff_id}`;
                   if (!grouped.has(key)) grouped.set(key, new Map());
                   grouped.get(key)!.set(row.month, row);
                 });
-
                 const sortedKeys = Array.from(grouped.keys()).sort((a, b) => {
                   const [sA, nA] = a.split('||');
                   const [sB, nB] = b.split('||');
                   if (sA !== sB) return sA.localeCompare(sB);
                   return nA.localeCompare(nB);
                 });
-
                 return (
                   <table className="w-full text-sm border-collapse" style={{ minWidth: '900px' }}>
                     <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700 z-10">
                       <tr>
                         <th className="px-3 py-2.5 text-left text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap">Service</th>
                         <th className="px-3 py-2.5 text-left text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap">Accountant</th>
-                        {monthCols.map(mc => (
+                        {monthCols.map((mc) => (
                           <th key={`${mc.month}-${mc.year}`} className="px-2 py-2.5 text-center text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap">
                             <div>{mc.name}</div>
                             <div className="text-[9px] font-normal text-gray-400">{mc.year}</div>
@@ -1057,21 +842,16 @@ export const TargetsControl: React.FC = () => {
                       {sortedKeys.map((key, idx) => {
                         const monthMap = grouped.get(key)!;
                         const [serviceName, staffName] = key.split('||');
-                        const rowHasChange = monthCols.some(mc => monthMap.get(mc.month)?.changed);
-
+                        const rowHasChange = monthCols.some((mc) => monthMap.get(mc.month)?.changed);
                         return (
-                          <tr
-                            key={key}
-                            className={`${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/50 dark:bg-gray-700/30'} ${rowHasChange ? 'ring-1 ring-inset ring-amber-200 dark:ring-amber-700' : ''}`}
-                          >
+                          <tr key={key} className={`${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/50 dark:bg-gray-700/30'} ${rowHasChange ? 'ring-1 ring-inset ring-amber-200 dark:ring-amber-700' : ''}`}>
                             <td className="px-3 py-2 text-gray-900 dark:text-white font-semibold whitespace-nowrap">{serviceName}</td>
                             <td className="px-3 py-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">{staffName}</td>
-                            {monthCols.map(mc => {
+                            {monthCols.map((mc) => {
                               const cell = monthMap.get(mc.month);
                               const changed = cell?.changed ?? false;
                               const currentVal = cell?.current_value ?? 0;
                               const importVal = cell?.import_value ?? 0;
-
                               return (
                                 <td key={`${mc.month}-${mc.year}`} className={`px-2 py-2 text-center ${changed ? 'bg-amber-50 dark:bg-amber-900/20' : ''}`}>
                                   {changed ? (
@@ -1096,23 +876,11 @@ export const TargetsControl: React.FC = () => {
 
             <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0 bg-white dark:bg-gray-800">
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                {changedCount === 0
-                  ? 'No changes detected. The imported file matches the current data.'
-                  : `Confirming will overwrite ${changedCount} value(s) in the database for FY ${importState.selectedFY?.label}. Changed cells show old → new.`}
+                {changedCount === 0 ? 'No changes detected.' : `Confirming will overwrite ${changedCount} value(s) in the database for FY ${importState.selectedFY?.label}.`}
               </p>
               <div className="flex gap-3">
-                <button
-                  onClick={handleCancelImport}
-                  disabled={importState.step === 'importing'}
-                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-md transition-colors disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmImport}
-                  disabled={importState.step === 'importing' || changedCount === 0}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-md transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                <button onClick={handleCancelImport} disabled={importState.step === 'importing'} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-md transition-colors disabled:opacity-50">Cancel</button>
+                <button onClick={handleConfirmImport} disabled={importState.step === 'importing' || changedCount === 0} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-md transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
                   {importState.step === 'importing' ? 'Importing…' : `Confirm Import (${changedCount} change${changedCount !== 1 ? 's' : ''})`}
                 </button>
               </div>
@@ -1123,61 +891,34 @@ export const TargetsControl: React.FC = () => {
 
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
-            Financial Year
-          </label>
+          <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Financial Year</label>
           <select
             value={`${selectedFinancialYear.start}-${selectedFinancialYear.end}`}
             onChange={(e) => {
               const [start, end] = e.target.value.split('-').map(Number);
-              const fy = financialYears.find(f => f.start === start && f.end === end);
+              const fy = financialYears.find((f) => f.start === start && f.end === end);
               if (fy) handleFinancialYearChange(fy);
             }}
             className="px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
           >
             {financialYears.map((fy) => (
-              <option key={`${fy.start}-${fy.end}`} value={`${fy.start}-${fy.end}`}>
-                {fy.label}
-              </option>
+              <option key={`${fy.start}-${fy.end}`} value={`${fy.start}-${fy.end}`}>{fy.label}</option>
             ))}
           </select>
         </div>
 
         <div className="flex gap-2">
-          <button
-            onClick={handleImportClick}
-            className="px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs font-medium"
-          >
-            📤 Import CSV
-          </button>
-          <button
-            onClick={handleExportCSV}
-            className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium"
-          >
-            📥 Export CSV
-          </button>
-          <button
-            onClick={() => {
-              void handleSaveTargets();
-            }}
-            disabled={!hasUnsavedChanges}
-            className="px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            💾 Save Targets
-          </button>
+          <button onClick={handleImportClick} className="px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs font-medium">📤 Import CSV</button>
+          <button onClick={handleExportCSV} className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium">📥 Export CSV</button>
+          <button onClick={() => { void handleSaveTargets(); }} disabled={!hasUnsavedChanges} className="px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed">💾 Save Targets</button>
         </div>
       </div>
 
       <div className="space-y-4">
         {targetData.map((staffMember) => (
-          <div
-            key={staffMember.staff_id}
-            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden"
-          >
+          <div key={staffMember.staff_id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden">
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-4 py-2">
-              <h4 className="text-base font-bold text-white">
-                {staffMember.name}
-              </h4>
+              <h4 className="text-base font-bold text-white">{staffMember.name}</h4>
             </div>
 
             <div
@@ -1187,61 +928,38 @@ export const TargetsControl: React.FC = () => {
               ref={(el) => {
                 if (el) {
                   const savedScroll = scrollPositionsRef.current[staffMember.staff_id] || 0;
-                  if (el.scrollLeft !== savedScroll) {
-                    el.scrollLeft = savedScroll;
-                  }
+                  if (el.scrollLeft !== savedScroll) el.scrollLeft = savedScroll;
                 }
               }}
             >
               <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                 <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600">
-                  <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
-                    Service
-                  </span>
+                  <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">Service</span>
                 </div>
-
                 <div className="flex flex-1 w-full">
                   {monthData.map((m) => {
                     const calYear = getYearForMonth(m.number, selectedFinancialYear);
                     return (
                       <div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600">
-                        <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
-                          {m.name}
-                        </span>
-                        <span className="text-[9px] text-gray-400 dark:text-gray-500 block">
-                          {calYear}
-                        </span>
+                        <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">{m.name}</span>
+                        <span className="text-[9px] text-gray-400 dark:text-gray-500 block">{calYear}</span>
                       </div>
                     );
                   })}
                 </div>
-
                 <div className="w-20 flex-shrink-0 px-2 py-1.5 text-center border-l border-gray-200 dark:border-gray-600">
-                  <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
-                    Total
-                  </span>
+                  <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">Total</span>
                 </div>
               </div>
 
               <div className="border-b border-gray-200 dark:border-gray-700">
                 {targetableServices.map((service, serviceIdx) => {
                   const annualTotal = calculateAnnualTotal(staffMember.staff_id, service.service_name);
-
                   return (
-                    <div
-                      key={service.service_id}
-                      className={`flex w-full ${
-                        serviceIdx % 2 === 0
-                          ? 'bg-white dark:bg-gray-800'
-                          : 'bg-gray-50 dark:bg-gray-700'
-                      } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
-                    >
+                    <div key={service.service_id} className={`flex w-full ${serviceIdx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'} hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}>
                       <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center">
-                        <span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
-                          {service.service_name}
-                        </span>
+                        <span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">{service.service_name}</span>
                       </div>
-
                       <div className="flex flex-1 w-full">
                         {monthData.map((m) => {
                           const inputKey = getInputKey(staffMember.staff_id, m.number, service.service_name);
@@ -1249,54 +967,24 @@ export const TargetsControl: React.FC = () => {
                             <div key={m.number} className="flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600">
                               <input
                                 ref={(el) => {
-                                  if (el) {
-                                    inputRefs.current.set(inputKey, el);
-                                  } else {
-                                    inputRefs.current.delete(inputKey);
-                                  }
+                                  if (el) inputRefs.current.set(inputKey, el);
+                                  else inputRefs.current.delete(inputKey);
                                 }}
                                 type="number"
                                 min="0"
                                 value={getInputValue(staffMember.staff_id, m.number, service.service_name)}
-                                onFocus={(e) => {
-                                  e.currentTarget.select();
-                                }}
-                                onChange={(e) =>
-                                  handleInputChange(
-                                    staffMember.staff_id,
-                                    m.number,
-                                    service.service_name,
-                                    e.target.value
-                                  )
-                                }
-                                onBlur={(e) =>
-                                  handleInputBlur(
-                                    staffMember.staff_id,
-                                    m.number,
-                                    service.service_name,
-                                    e.target.value
-                                  )
-                                }
-                                onKeyDown={(e) =>
-                                  handleKeyDown(
-                                    e,
-                                    staffMember.staff_id,
-                                    m.number,
-                                    service.service_name,
-                                    e.currentTarget.value
-                                  )
-                                }
+                                onFocus={(e) => e.currentTarget.select()}
+                                onChange={(e) => handleInputChange(staffMember.staff_id, m.number, service.service_name, e.target.value)}
+                                onBlur={(e) => handleInputBlur(staffMember.staff_id, m.number, service.service_name, e.target.value)}
+                                onKeyDown={(e) => handleKeyDown(e, staffMember.staff_id, m.number, service.service_name, e.currentTarget.value)}
                                 className="w-full h-full px-1 py-1.5 bg-transparent border-0 text-center text-xs font-medium text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-colors no-spinner"
                               />
                             </div>
                           );
                         })}
                       </div>
-
                       <div className="w-20 flex-shrink-0 p-0 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center bg-gray-50 dark:bg-gray-700/50">
-                        <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">
-                          {annualTotal}
-                        </span>
+                        <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">{annualTotal}</span>
                       </div>
                     </div>
                   );
@@ -1304,24 +992,18 @@ export const TargetsControl: React.FC = () => {
 
                 <div className="flex w-full bg-gray-200 dark:bg-gray-600 border-t border-gray-300 dark:border-gray-500">
                   <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-300 dark:border-gray-500 flex items-center">
-                    <span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
-                      Monthly Total
-                    </span>
+                    <span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">Monthly Total</span>
                   </div>
-
                   <div className="flex flex-1 w-full">
                     {monthData.map((m) => {
                       const monthTotal = calculateMonthlyTotal(staffMember.staff_id, m.number);
                       return (
                         <div key={`total-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-gray-300 dark:border-gray-500 flex items-center justify-center">
-                          <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">
-                            {monthTotal}
-                          </span>
+                          <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">{monthTotal}</span>
                         </div>
                       );
                     })}
                   </div>
-
                   <div className="w-20 flex-shrink-0 p-0 border-l border-gray-300 dark:border-gray-500 flex items-center justify-center bg-blue-600 dark:bg-blue-700">
                     <span className="text-xs font-bold text-white py-1.5">
                       {monthData.reduce((sum, m) => sum + calculateMonthlyTotal(staffMember.staff_id, m.number), 0)}
@@ -1335,93 +1017,58 @@ export const TargetsControl: React.FC = () => {
 
         {targetData.length === 0 && (
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-6">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              No active accountants found for this year.
-            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">No active accountants found for this year.</p>
           </div>
         )}
       </div>
 
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden mt-4">
         <div className="bg-gradient-to-r from-purple-600 to-purple-700 dark:from-purple-700 dark:to-purple-800 px-4 py-2">
-          <h4 className="text-base font-bold text-white">
-            Service Totals by Month
-          </h4>
-          <p className="text-xs text-purple-100 mt-0.5">
-            Aggregated targets across all active accountants (Read-Only)
-          </p>
+          <h4 className="text-base font-bold text-white">Service Totals by Month</h4>
+          <p className="text-xs text-purple-100 mt-0.5">Aggregated targets across all active accountants (Read-Only)</p>
         </div>
 
-        <div
-          className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800"
-          style={{ scrollBehavior: 'smooth' }}
-        >
+        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800" style={{ scrollBehavior: 'smooth' }}>
           <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
             <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600">
-              <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
-                Service
-              </span>
+              <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">Service</span>
             </div>
-
             <div className="flex flex-1 w-full">
               {monthData.map((m) => {
                 const calYear = getYearForMonth(m.number, selectedFinancialYear);
                 return (
                   <div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600">
-                    <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
-                      {m.name}
-                    </span>
-                    <span className="text-[9px] text-gray-400 dark:text-gray-500 block">
-                      {calYear}
-                    </span>
+                    <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">{m.name}</span>
+                    <span className="text-[9px] text-gray-400 dark:text-gray-500 block">{calYear}</span>
                   </div>
                 );
               })}
             </div>
-
             <div className="w-20 flex-shrink-0 px-2 py-1.5 text-center border-l border-gray-200 dark:border-gray-600">
-              <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
-                Total
-              </span>
+              <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">Total</span>
             </div>
           </div>
 
           <div className="border-b border-gray-200 dark:border-gray-700">
             {targetableServices.map((service, serviceIdx) => {
               const annualTotal = calculateServiceAnnualTotal(service.service_name);
-
               return (
-                <div
-                  key={`service-total-${service.service_id}`}
-                  className={`flex w-full ${
-                    serviceIdx % 2 === 0
-                      ? 'bg-white dark:bg-gray-800'
-                      : 'bg-gray-50 dark:bg-gray-700'
-                  } hover:bg-purple-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
-                >
+                <div key={`service-total-${service.service_id}`} className={`flex w-full ${serviceIdx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'} hover:bg-purple-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}>
                   <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center">
-                    <span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
-                      {service.service_name}
-                    </span>
+                    <span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">{service.service_name}</span>
                   </div>
-
                   <div className="flex flex-1 w-full">
                     {monthData.map((m) => {
                       const monthTotal = calculateServiceMonthlyTotal(m.number, service.service_name);
                       return (
                         <div key={`${service.service_id}-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600 flex items-center justify-center">
-                          <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">
-                            {monthTotal}
-                          </span>
+                          <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">{monthTotal}</span>
                         </div>
                       );
                     })}
                   </div>
-
                   <div className="w-20 flex-shrink-0 p-0 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center bg-purple-50 dark:bg-purple-900/20">
-                    <span className="text-xs font-bold text-purple-900 dark:text-purple-200 py-1.5">
-                      {annualTotal}
-                    </span>
+                    <span className="text-xs font-bold text-purple-900 dark:text-purple-200 py-1.5">{annualTotal}</span>
                   </div>
                 </div>
               );
@@ -1429,26 +1076,18 @@ export const TargetsControl: React.FC = () => {
 
             <div className="flex w-full bg-purple-200 dark:bg-purple-900/50 border-t border-purple-300 dark:border-purple-700">
               <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-purple-300 dark:border-purple-700 flex items-center">
-                <span className="text-xs font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
-                  Grand Total
-                </span>
+                <span className="text-xs font-bold text-purple-900 dark:text-purple-100 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">Grand Total</span>
               </div>
-
               <div className="flex flex-1 w-full">
                 {monthData.map((m) => {
-                  const monthGrandTotal = targetableServices.reduce((sum, service) => {
-                    return sum + calculateServiceMonthlyTotal(m.number, service.service_name);
-                  }, 0);
+                  const monthGrandTotal = targetableServices.reduce((sum, service) => sum + calculateServiceMonthlyTotal(m.number, service.service_name), 0);
                   return (
                     <div key={`grand-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-purple-300 dark:border-purple-700 flex items-center justify-center">
-                      <span className="text-xs font-bold text-purple-900 dark:text-purple-200 py-1.5">
-                        {monthGrandTotal}
-                      </span>
+                      <span className="text-xs font-bold text-purple-900 dark:text-purple-200 py-1.5">{monthGrandTotal}</span>
                     </div>
                   );
                 })}
               </div>
-
               <div className="w-20 flex-shrink-0 p-0 border-l border-purple-300 dark:border-purple-700 flex items-center justify-center bg-purple-600 dark:bg-purple-700">
                 <span className="text-xs font-bold text-white py-1.5">
                   {targetableServices.reduce((sum, service) => sum + calculateServiceAnnualTotal(service.service_name), 0)}

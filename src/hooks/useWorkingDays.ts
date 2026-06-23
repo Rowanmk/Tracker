@@ -1,218 +1,200 @@
 import { useEffect, useState } from 'react';
-    import { supabase } from '../supabase/client';
+import { supabase } from '../supabase/client';
 
-    interface BankHolidayRow {
-      date: string;
-      region?: string | null;
-    }
+interface BankHolidayRow {
+  date: string;
+  region?: string | null;
+}
 
-    interface StaffLeaveRow {
-      start_date: string;
-      end_date: string;
-    }
+interface StaffLeaveRow {
+  start_date: string;
+  end_date: string;
+}
 
-    interface StaffRegionRow {
-      home_region: string | null;
-    }
+interface StaffRegionRow {
+  home_region: string | null;
+}
 
-    interface Params {
-      financialYear: { start: number; end: number };
-      month: number;
-      staffId?: number;
-    }
+interface Params {
+  financialYear: { start: number; end: number };
+  month: number;
+  staffId?: number;
+}
 
-    interface Result {
-      teamWorkingDays: number;
-      staffWorkingDays: number;
-      workingDaysUpToToday: number;
-      loading: boolean;
-      error: string | null;
-      showFallbackWarning: boolean;
-    }
+interface Result {
+  teamWorkingDays: number;
+  staffWorkingDays: number;
+  workingDaysUpToToday: number;
+  loading: boolean;
+  error: string | null;
+  showFallbackWarning: boolean;
+}
 
-    const localDateISO = (year: number, month: number, day: number) =>
-      `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+const localDateISO = (year: number, month: number, day: number) =>
+  `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-    const startOfMonthISO = (year: number, month: number) =>
-      localDateISO(year, month, 1);
+const startOfMonthISO = (year: number, month: number) => localDateISO(year, month, 1);
 
-    const endOfMonthISO = (year: number, month: number) =>
-      localDateISO(year, month, new Date(year, month, 0).getDate());
+const endOfMonthISO = (year: number, month: number) =>
+  localDateISO(year, month, new Date(year, month, 0).getDate());
 
-    const isWeekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
+const isWeekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
 
-    export const useWorkingDays = (params: Params): Result => {
-      const [teamWorkingDays, setTeamWorkingDays] = useState<number>(0);
-      const [staffWorkingDays, setStaffWorkingDays] = useState<number>(0);
-      const [workingDaysUpToToday, setWorkingDaysUpToToday] = useState<number>(0);
-      const [loading, setLoading] = useState<boolean>(true);
-      const [error, setError] = useState<string | null>(null);
-      const [showFallbackWarning, setShowFallbackWarning] = useState<boolean>(false);
+export const useWorkingDays = (params: Params): Result => {
+  const [teamWorkingDays, setTeamWorkingDays] = useState<number>(0);
+  const [staffWorkingDays, setStaffWorkingDays] = useState<number>(0);
+  const [workingDaysUpToToday, setWorkingDaysUpToToday] = useState<number>(0);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showFallbackWarning, setShowFallbackWarning] = useState<boolean>(false);
 
-      const fyStart = params.financialYear.start;
-      const fyEnd = params.financialYear.end;
-      const month = params.month;
-      const staffId = params.staffId;
+  const fyStart = params.financialYear.start;
+  const fyEnd = params.financialYear.end;
+  const month = params.month;
+  const staffId = params.staffId;
 
-      useEffect(() => {
-        const run = async () => {
-          setLoading(true);
-          setError(null);
-          setShowFallbackWarning(false);
+  useEffect(() => {
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+      setShowFallbackWarning(false);
 
-          try {
-            const year = month >= 4 ? fyStart : fyEnd;
-            const daysInMonth = new Date(year, month, 0).getDate();
+      try {
+        const year = month >= 4 ? fyStart : fyEnd;
+        const daysInMonth = new Date(year, month, 0).getDate();
 
-            const now = new Date();
-            const todayIso = localDateISO(now.getFullYear(), now.getMonth() + 1, now.getDate());
+        const now = new Date();
+        const todayIso = localDateISO(now.getFullYear(), now.getMonth() + 1, now.getDate());
 
-            const startIso = startOfMonthISO(year, month);
-            const endIso = endOfMonthISO(year, month);
+        const startIso = startOfMonthISO(year, month);
+        const endIso = endOfMonthISO(year, month);
 
-            const selectedMonthStart = new Date(year, month - 1, 1);
-            const nowMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const selectedMonthStart = new Date(year, month - 1, 1);
+        const nowMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-            const isCurrentMonth = selectedMonthStart.getTime() === nowMonthStart.getTime();
-            const isPastMonth = selectedMonthStart.getTime() < nowMonthStart.getTime();
-            const isFutureMonth = selectedMonthStart.getTime() > nowMonthStart.getTime();
+        const isCurrentMonth = selectedMonthStart.getTime() === nowMonthStart.getTime();
+        const isPastMonth = selectedMonthStart.getTime() < nowMonthStart.getTime();
+        const isFutureMonth = selectedMonthStart.getTime() > nowMonthStart.getTime();
 
-            let baseWorking = 0;
+        let baseWorking = 0;
+        for (let day = 1; day <= daysInMonth; day++) {
+          const d = new Date(year, month - 1, day);
+          if (!isWeekend(d)) baseWorking++;
+        }
 
-            for (let day = 1; day <= daysInMonth; day++) {
-              const d = new Date(year, month - 1, day);
-              if (!isWeekend(d)) {
-                baseWorking++;
-              }
-            }
+        const { data: teamHolidays, error: teamHolErr } = await supabase
+          .from('bank_holidays')
+          .select('date, region')
+          .eq('region', 'england-and-wales')
+          .gte('date', startIso)
+          .lte('date', endIso);
 
-            const { data: teamHolidays, error: teamHolErr } = await supabase
-              .from('bank_holidays')
-              .select('date, region')
-              .eq('region', 'england-and-wales')
-              .gte('date', startIso)
-              .lte('date', endIso);
+        if (teamHolErr) setError('Failed to calculate working days');
 
-            if (teamHolErr) {
-              setError('Failed to calculate working days');
-            }
+        const teamHolidayDates = new Set<string>();
+        (teamHolidays as BankHolidayRow[] | null)?.forEach((h) => {
+          if (h?.date) teamHolidayDates.add(h.date);
+        });
 
-            const teamHolidayDates = new Set<string>();
-            (teamHolidays as BankHolidayRow[] | null)?.forEach((h) => {
-              if (h?.date) teamHolidayDates.add(h.date);
-            });
+        let teamWorking = baseWorking;
+        teamHolidayDates.forEach((dateStr) => {
+          const d = new Date(`${dateStr}T00:00:00`);
+          if (!isWeekend(d)) teamWorking--;
+        });
 
-            let teamWorking = baseWorking;
-
-            teamHolidayDates.forEach((dateStr) => {
-              const d = new Date(`${dateStr}T00:00:00`);
-              if (!isWeekend(d)) {
-                teamWorking--;
-              }
-            });
-
-            let teamWorkingToToday = 0;
-
-            if (isFutureMonth) {
-              teamWorkingToToday = 0;
-            } else if (isPastMonth) {
-              teamWorkingToToday = teamWorking;
-            } else if (isCurrentMonth) {
-              for (let day = 1; day <= daysInMonth; day++) {
-                const d = new Date(year, month - 1, day);
-                const dateStr = localDateISO(year, month, day);
-
-                if (isWeekend(d)) continue;
-                if (teamHolidayDates.has(dateStr)) continue;
-
-                if (dateStr <= todayIso) {
-                  teamWorkingToToday++;
-                }
-              }
-            }
-
-            let staffWorkingCalc = teamWorking;
-
-            if (staffId) {
-              const { data: staffRow, error: staffErr } = await supabase
-                .from('staff')
-                .select('home_region')
-                .eq('staff_id', staffId)
-                .maybeSingle();
-
-              if (staffErr) {
-                setError('Failed to calculate working days');
-              }
-
-              const typedStaffRow = staffRow as StaffRegionRow | null;
-              const staffRegion = typedStaffRow?.home_region || 'england-and-wales';
-
-              staffWorkingCalc = baseWorking;
-
-              const { data: staffHolidays, error: staffHolErr } = await supabase
-                .from('bank_holidays')
-                .select('date, region')
-                .eq('region', staffRegion)
-                .gte('date', startIso)
-                .lte('date', endIso);
-
-              if (staffHolErr) {
-                setError('Failed to calculate working days');
-              }
-
-              const staffHolidayDates = new Set<string>();
-              (staffHolidays as BankHolidayRow[] | null)?.forEach((h) => {
-                if (h?.date) staffHolidayDates.add(h.date);
-              });
-
-              staffHolidayDates.forEach((dateStr) => {
-                const d = new Date(`${dateStr}T00:00:00`);
-                if (!isWeekend(d)) staffWorkingCalc--;
-              });
-
-              const { data: leaveRows, error: leaveErr } = await supabase
-                .from('staff_leave')
-                .select('start_date, end_date')
-                .eq('staff_id', staffId)
-                .or(`and(start_date.lte.${endIso},end_date.gte.${startIso})`);
-
-              if (leaveErr) {
-                setError('Failed to calculate working days');
-              }
-
-              (leaveRows as StaffLeaveRow[] | null)?.forEach((l) => {
-                const from = new Date(Math.max(new Date(`${l.start_date}T00:00:00`).getTime(), new Date(`${startIso}T00:00:00`).getTime()));
-                const to = new Date(Math.min(new Date(`${l.end_date}T00:00:00`).getTime(), new Date(`${endIso}T00:00:00`).getTime()));
-
-                for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
-                  if (!isWeekend(d)) staffWorkingCalc--;
-                }
-              });
-            }
-
-            setTeamWorkingDays(Math.max(0, teamWorking));
-            setWorkingDaysUpToToday(Math.max(0, teamWorkingToToday));
-            setStaffWorkingDays(Math.max(0, staffWorkingCalc));
-          } catch {
-            setError('Failed to calculate working days');
-            setShowFallbackWarning(true);
-            setTeamWorkingDays(0);
-            setStaffWorkingDays(0);
-            setWorkingDaysUpToToday(0);
-          } finally {
-            setLoading(false);
+        let teamWorkingToToday = 0;
+        if (isFutureMonth) {
+          teamWorkingToToday = 0;
+        } else if (isPastMonth) {
+          teamWorkingToToday = teamWorking;
+        } else if (isCurrentMonth) {
+          for (let day = 1; day <= daysInMonth; day++) {
+            const d = new Date(year, month - 1, day);
+            const dateStr = localDateISO(year, month, day);
+            if (isWeekend(d)) continue;
+            if (teamHolidayDates.has(dateStr)) continue;
+            if (dateStr <= todayIso) teamWorkingToToday++;
           }
-        };
+        }
 
-        void run();
-      }, [fyStart, fyEnd, month, staffId]);
+        let staffWorkingCalc = teamWorking;
 
-      return {
-        teamWorkingDays,
-        staffWorkingDays,
-        workingDaysUpToToday,
-        loading,
-        error,
-        showFallbackWarning,
-      };
+        if (staffId) {
+          const { data: staffRow, error: staffErr } = await supabase
+            .from('staff')
+            .select('home_region')
+            .eq('staff_id', staffId)
+            .maybeSingle();
+
+          if (staffErr) setError('Failed to calculate working days');
+
+          const typedStaffRow = staffRow as StaffRegionRow | null;
+          const staffRegion = typedStaffRow?.home_region || 'england-and-wales';
+
+          staffWorkingCalc = baseWorking;
+
+          const { data: staffHolidays, error: staffHolErr } = await supabase
+            .from('bank_holidays')
+            .select('date, region')
+            .eq('region', staffRegion)
+            .gte('date', startIso)
+            .lte('date', endIso);
+
+          if (staffHolErr) setError('Failed to calculate working days');
+
+          const staffHolidayDates = new Set<string>();
+          (staffHolidays as BankHolidayRow[] | null)?.forEach((h) => {
+            if (h?.date) staffHolidayDates.add(h.date);
+          });
+
+          staffHolidayDates.forEach((dateStr) => {
+            const d = new Date(`${dateStr}T00:00:00`);
+            if (!isWeekend(d)) staffWorkingCalc--;
+          });
+
+          const { data: leaveRows, error: leaveErr } = await supabase
+            .from('staff_leave')
+            .select('start_date, end_date')
+            .eq('staff_id', staffId)
+            .or(`and(start_date.lte.${endIso},end_date.gte.${startIso})`);
+
+          if (leaveErr) setError('Failed to calculate working days');
+
+          (leaveRows as StaffLeaveRow[] | null)?.forEach((l) => {
+            const from = new Date(
+              Math.max(
+                new Date(`${l.start_date}T00:00:00`).getTime(),
+                new Date(`${startIso}T00:00:00`).getTime()
+              )
+            );
+            const to = new Date(
+              Math.min(
+                new Date(`${l.end_date}T00:00:00`).getTime(),
+                new Date(`${endIso}T00:00:00`).getTime()
+              )
+            );
+            for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+              if (!isWeekend(d)) staffWorkingCalc--;
+            }
+          });
+        }
+
+        setTeamWorkingDays(Math.max(0, teamWorking));
+        setWorkingDaysUpToToday(Math.max(0, teamWorkingToToday));
+        setStaffWorkingDays(Math.max(0, staffWorkingCalc));
+      } catch {
+        setError('Failed to calculate working days');
+        setShowFallbackWarning(true);
+        setTeamWorkingDays(0);
+        setStaffWorkingDays(0);
+        setWorkingDaysUpToToday(0);
+      } finally {
+        setLoading(false);
+      }
     };
+
+    void run();
+  }, [fyStart, fyEnd, month, staffId]);
+
+  return { teamWorkingDays, staffWorkingDays, workingDaysUpToToday, loading, error, showFallbackWarning };
+};

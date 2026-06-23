@@ -1,13 +1,8 @@
-// src/utils/bankHolidays.ts
-
 type GovUkBankHolidayEvent = { title: string; date: string; notes?: string; bunting?: boolean };
-type GovUkBankHolidaysResponse = Record<
-  string,
-  { division: string; events: GovUkBankHolidayEvent[] }
->;
+type GovUkBankHolidaysResponse = Record<string, { division: string; events: GovUkBankHolidayEvent[] }>;
 
 const STORAGE_KEY = "govuk-bank-holidays-cache-v1";
-const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 14; // 14 days
+const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 14;
 
 type Cached = {
   cachedAt: number;
@@ -18,10 +13,7 @@ function safeParse(json: string | null): Cached | null {
   if (!json) return null;
   try {
     return JSON.parse(json) as Cached;
-  } catch (err) {
-    // FIX 3: Surface silent catch with logged context.
-    // PRE-FIX-3: catch {} with no parameter and no logging — preserved the same return value.
-    console.error('[bankHolidays] safeParse failed:', err);
+  } catch {
     return null;
   }
 }
@@ -32,13 +24,6 @@ async function fetchGovUkBankHolidays(): Promise<GovUkBankHolidaysResponse> {
   return (await res.json()) as GovUkBankHolidaysResponse;
 }
 
-/**
- * Returns a Set of ISO date strings (YYYY-MM-DD) for bank holidays
- * in the given window, using Gov.uk feed.
- *
- * Division defaults to "england-and-wales".
- * Other valid keys include "scotland" and "northern-ireland".
- */
 export async function getUkBankHolidaySet(
   start: Date,
   end: Date,
@@ -53,10 +38,7 @@ export async function getUkBankHolidaySet(
     data = cached.data;
   } else {
     data = await fetchGovUkBankHolidays();
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ cachedAt: now, data } satisfies Cached)
-    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ cachedAt: now, data } satisfies Cached));
   }
 
   const divisionBlock = data?.[division];
