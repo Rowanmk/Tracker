@@ -25,18 +25,6 @@ interface TargetData {
   };
 }
 
-interface WideCSVRow {
-  service_name: string;
-  accountant_name: string;
-  staff_id: number;
-  service_id: number;
-  [monthCol: string]: string | number;
-}
-
-interface LocalInputState {
-  [key: string]: string;
-}
-
 interface ImportDiffRow {
   staff_id: number;
   staff_name: string;
@@ -65,6 +53,10 @@ interface ImportState {
   parsedRows: ParsedImportCell[];
   diffRows: ImportDiffRow[];
   error: string | null;
+}
+
+interface LocalInputState {
+  [key: string]: string;
 }
 
 type SelfAssessmentActualRow = {
@@ -97,6 +89,15 @@ const isLockedSelfAssessmentCell = (
   serviceName: string,
   fy: FinancialYear
 ): boolean => isSelfAssessmentServiceName(serviceName) && isPastTargetMonth(month, fy);
+
+const hasAnyStaffTarget = (
+  staffMember: TargetData,
+  targetableServices: { service_id: number; service_name: string }[],
+  monthData: { name: string; number: number }[]
+): boolean =>
+  monthData.some((monthInfo) =>
+    targetableServices.some((service) => (staffMember.targets[monthInfo.number]?.[service.service_name] ?? 0) > 0)
+  );
 
 const loadSelfAssessmentPastActuals = async (
   fy: FinancialYear,
@@ -332,8 +333,19 @@ export const TargetsControl: React.FC = () => {
         })
       );
 
-      setTargetData(data);
-      setLastSavedSnapshot(buildSnapshot(data));
+      const sortedData = [...data].sort((a, b) => {
+        const aHasTarget = hasAnyStaffTarget(a, targetableServices, monthData);
+        const bHasTarget = hasAnyStaffTarget(b, targetableServices, monthData);
+
+        if (aHasTarget !== bHasTarget) {
+          return aHasTarget ? -1 : 1;
+        }
+
+        return a.name.localeCompare(b.name);
+      });
+
+      setTargetData(sortedData);
+      setLastSavedSnapshot(buildSnapshot(sortedData));
       setLocalInputState({});
       setHasUnsavedChanges(false);
       inputRefs.current.clear();
@@ -435,6 +447,17 @@ export const TargetsControl: React.FC = () => {
     });
   };
 
+  const monthData = getFinancialYearMonths();
+  const financialYears = getFinancialYears();
+
+  const targetDataWithTargets = targetData.filter((staffMember) =>
+    hasAnyStaffTarget(staffMember, targetableServices, monthData)
+  );
+  const targetDataWithoutTargets = targetData.filter((staffMember) =>
+    !hasAnyStaffTarget(staffMember, targetableServices, monthData)
+  );
+  const displayTargetData = [...targetDataWithTargets, ...targetDataWithoutTargets];
+
   const handleKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement>,
     staffId: number,
@@ -449,14 +472,13 @@ export const TargetsControl: React.FC = () => {
 
     handleInputBlur(staffId, month, serviceName, value);
 
-    const monthData = getFinancialYearMonths();
     const monthCount = monthData.length;
     const serviceCount = targetableServices.length;
-    const staffCount = targetData.length;
+    const staffCount = displayTargetData.length;
 
     const currentMonthIndex = monthData.findIndex(m => m.number === month);
     const currentServiceIndex = targetableServices.findIndex(s => s.service_name === serviceName);
-    const currentStaffIndex = targetData.findIndex(t => t.staff_id === staffId);
+    const currentStaffIndex = displayTargetData.findIndex(t => t.staff_id === staffId);
 
     if (
       currentMonthIndex < 0 ||
@@ -486,7 +508,7 @@ export const TargetsControl: React.FC = () => {
       const nextServiceIndex = Math.floor(withinStaffIndex / monthCount);
       const nextMonthIndex = withinStaffIndex % monthCount;
 
-      const nextStaff = targetData[nextStaffIndex];
+      const nextStaff = displayTargetData[nextStaffIndex];
       const nextService = targetableServices[nextServiceIndex];
       const nextMonth = monthData[nextMonthIndex];
 
@@ -506,6 +528,48 @@ export const TargetsControl: React.FC = () => {
     }
   };
 
+  const calculateMonthlyTotal = (staffId: number, month: number): number => {
+    const staffMember = targetData.find(t => t.staff_id === staffId);
+    if (!staffMember) return 0;
+
+    return targetableServices.reduce((sum, service) => {
+      return sum + (staffMember.targets[month]?.[service.service_name] ?? 0);
+    }, 0);
+  };
+
+  const calculateAnnualTotal = (staffId: number, serviceName: string): number => {
+    const staffMember = targetData.find(t => t.staff_id === staffId);
+    if (!staffMember) return 0;
+
+    return monthData.reduce((sum, m) => {
+      return sum + (staffMember.targets[m.number]?.[serviceName] ?? 0);
+    }, 0);
+  };
+
+  const calculateServiceMonthlyTotal = (month: number, serviceName: string): number => {
+    return targetData.reduce((sum, staffMember) => {
+      return sum + (staffMember.targets[month]?.[serviceName] ?? 0);
+    }, 0);
+  };
+
+  const calculateServiceAnnualTotal = (serviceName: string): number => {
+    return monthData.reduce((sum, m) => {
+      return sum + calculateServiceMonthlyTotal(m.number, serviceName);
+    }, 0);
+  };
+
+  const getInputValue = (staffId: number, month: number, serviceName: string): string => {
+    const key = getInputKey(staffId, month, serviceName);
+
+    if (Object.prototype.hasOwnProperty.call(localInputState, key)) {
+      return localInputState[key];
+    }
+
+    const staffMember = targetData.find(t => t.staff_id === staffId);
+    const value = staffMember?.targets[month]?.[serviceName] ?? 0;
+    return value.toString();
+  };
+
   const handleSaveTargets = async (): Promise<boolean> => {
     setSaveMessage(null);
     setError(null);
@@ -516,8 +580,6 @@ export const TargetsControl: React.FC = () => {
           await persistStaffTargets(staffMember, selectedFinancialYear, targetableServices);
         })
       );
-
-      const monthData = getFinancialYearMonths();
 
       const changedStaffSummaries = targetData
         .map((staffMember) => {
@@ -580,8 +642,6 @@ export const TargetsControl: React.FC = () => {
   };
 
   const handleExportCSV = () => {
-    const monthData = getFinancialYearMonths();
-
     const monthCols = monthData.map((m) => {
       const year = getYearForMonth(m.number, selectedFinancialYear);
       return { key: buildMonthColKey(m.name, year), month: m, year };
@@ -642,6 +702,28 @@ export const TargetsControl: React.FC = () => {
     }
   };
 
+  const handleCancelImport = () => {
+    setImportState({
+      step: 'idle',
+      selectedFY: null,
+      parsedRows: [],
+      diffRows: [],
+      error: null,
+    });
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleFinancialYearChange = (fy: FinancialYear) => {
+    if (hasUnsavedChanges) {
+      setPendingAction(() => () => {
+        setSelectedFinancialYear(fy);
+      });
+      setShowConfirmDialog(true);
+    } else {
+      setSelectedFinancialYear(fy);
+    }
+  };
+
   const handleFileSelected = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -676,7 +758,6 @@ export const TargetsControl: React.FC = () => {
         }
 
         const headers = result.meta.fields || [];
-
         const requiredBase = ['service_name', 'accountant_name', 'staff_id', 'service_id'];
         const missingBase = requiredBase.filter(col => !headers.includes(col));
         if (missingBase.length > 0) {
@@ -688,8 +769,6 @@ export const TargetsControl: React.FC = () => {
         }
 
         const fy = importState.selectedFY!;
-        const monthData = getFinancialYearMonths();
-
         const expectedMonthCols = monthData.map((m) => {
           const year = getYearForMonth(m.number, fy);
           return { key: buildMonthColKey(m.name, year), month: m.number, year };
@@ -813,7 +892,7 @@ export const TargetsControl: React.FC = () => {
 
       reader.readAsText(file);
     },
-    [importState.selectedFY, targetData]
+    [importState.selectedFY, targetData, monthData]
   );
 
   const handleConfirmImport = async () => {
@@ -825,7 +904,6 @@ export const TargetsControl: React.FC = () => {
       const fy = importState.selectedFY;
 
       const newTargetData: TargetData[] = targetData.map(staffMember => {
-        const monthData = getFinancialYearMonths();
         const newTargets: TargetData['targets'] = {};
 
         monthData.forEach(m => {
@@ -849,8 +927,19 @@ export const TargetsControl: React.FC = () => {
         })
       );
 
-      setTargetData(newTargetData);
-      setLastSavedSnapshot(buildSnapshot(newTargetData));
+      const sortedImportedData = [...newTargetData].sort((a, b) => {
+        const aHasTarget = hasAnyStaffTarget(a, targetableServices, monthData);
+        const bHasTarget = hasAnyStaffTarget(b, targetableServices, monthData);
+
+        if (aHasTarget !== bHasTarget) {
+          return aHasTarget ? -1 : 1;
+        }
+
+        return a.name.localeCompare(b.name);
+      });
+
+      setTargetData(sortedImportedData);
+      setLastSavedSnapshot(buildSnapshot(sortedImportedData));
       setHasUnsavedChanges(false);
 
       setImportState(prev => ({ ...prev, step: 'done' }));
@@ -859,28 +948,6 @@ export const TargetsControl: React.FC = () => {
       setTimeout(() => setSaveMessage(null), 5000);
     } catch {
       setImportState(prev => ({ ...prev, step: 'preview', error: 'Import failed. Please try again.' }));
-    }
-  };
-
-  const handleCancelImport = () => {
-    setImportState({
-      step: 'idle',
-      selectedFY: null,
-      parsedRows: [],
-      diffRows: [],
-      error: null,
-    });
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleFinancialYearChange = (fy: FinancialYear) => {
-    if (hasUnsavedChanges) {
-      setPendingAction(() => () => {
-        setSelectedFinancialYear(fy);
-      });
-      setShowConfirmDialog(true);
-    } else {
-      setSelectedFinancialYear(fy);
     }
   };
 
@@ -919,9 +986,6 @@ export const TargetsControl: React.FC = () => {
     return () => document.removeEventListener('click', handleClick, { capture: true });
   }, [hasUnsavedChanges, navigate]);
 
-  const monthData = getFinancialYearMonths();
-  const financialYears = getFinancialYears();
-
   if (loading || authLoading || servicesLoading) {
     return (
       <div className="py-6 text-center text-gray-500">
@@ -938,50 +1002,7 @@ export const TargetsControl: React.FC = () => {
     );
   }
 
-  const calculateMonthlyTotal = (staffId: number, month: number): number => {
-    const staffMember = targetData.find(t => t.staff_id === staffId);
-    if (!staffMember) return 0;
-
-    return targetableServices.reduce((sum, service) => {
-      return sum + (staffMember.targets[month]?.[service.service_name] ?? 0);
-    }, 0);
-  };
-
-  const calculateAnnualTotal = (staffId: number, serviceName: string): number => {
-    const staffMember = targetData.find(t => t.staff_id === staffId);
-    if (!staffMember) return 0;
-
-    return monthData.reduce((sum, m) => {
-      return sum + (staffMember.targets[m.number]?.[serviceName] ?? 0);
-    }, 0);
-  };
-
-  const calculateServiceMonthlyTotal = (month: number, serviceName: string): number => {
-    return targetData.reduce((sum, staffMember) => {
-      return sum + (staffMember.targets[month]?.[serviceName] ?? 0);
-    }, 0);
-  };
-
-  const calculateServiceAnnualTotal = (serviceName: string): number => {
-    return monthData.reduce((sum, m) => {
-      return sum + calculateServiceMonthlyTotal(m.number, serviceName);
-    }, 0);
-  };
-
-  const getInputValue = (staffId: number, month: number, serviceName: string): string => {
-    const key = getInputKey(staffId, month, serviceName);
-
-    if (Object.prototype.hasOwnProperty.call(localInputState, key)) {
-      return localInputState[key];
-    }
-
-    const staffMember = targetData.find(t => t.staff_id === staffId);
-    const value = staffMember?.targets[month]?.[serviceName] ?? 0;
-    return value.toString();
-  };
-
   const changedCount = importState.diffRows.filter(r => r.changed).length;
-
   const diffMonthData = getFinancialYearMonths();
 
   return (
@@ -997,7 +1018,7 @@ export const TargetsControl: React.FC = () => {
       <div className="page-header mb-4">
         <h2 className="page-title">Targets Control</h2>
         <p className="page-subtitle">
-          Set monthly targets for {selectedFinancialYear.label}. Past Self Assessment months are locked to actual delivered values.
+          Set monthly targets for {selectedFinancialYear.label}. Staff without targets are grouped separately at the bottom.
         </p>
       </div>
 
@@ -1304,180 +1325,209 @@ export const TargetsControl: React.FC = () => {
       </div>
 
       <div className="space-y-4">
-        {targetData.map((staffMember) => (
-          <div
-            key={staffMember.staff_id}
-            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden"
-          >
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 px-4 py-2">
-              <h4 className="text-base font-bold text-white">
-                {staffMember.name}
-              </h4>
-            </div>
+        {displayTargetData.map((staffMember, displayIndex) => {
+          const showUntargetedDivider =
+            targetDataWithoutTargets.length > 0 && displayIndex === targetDataWithTargets.length;
 
-            <div
-              className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800"
-              style={{ scrollBehavior: 'smooth' }}
-              onScroll={(e) => saveScrollPosition(staffMember.staff_id, e.currentTarget.scrollLeft)}
-              ref={(el) => {
-                if (el) {
-                  const savedScroll = scrollPositionsRef.current[staffMember.staff_id] || 0;
-                  if (el.scrollLeft !== savedScroll) {
-                    el.scrollLeft = savedScroll;
-                  }
-                }
-              }}
-            >
-              <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-                <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600">
-                  <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
-                    Service
-                  </span>
+          return (
+            <React.Fragment key={staffMember.staff_id}>
+              {showUntargetedDivider && (
+                <div className="pt-4 mt-6 border-t-2 border-dashed border-gray-300 dark:border-gray-600">
+                  <div className="bg-gray-100 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3">
+                    <h3 className="text-sm font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
+                      Staff without targets
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      These active accountants have no targets set for {selectedFinancialYear.label}. Add any monthly target to move them into the active staff section.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div
+                className={`bg-white dark:bg-gray-800 border rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden ${
+                  showUntargetedDivider || !hasAnyStaffTarget(staffMember, targetableServices, monthData)
+                    ? 'border-gray-300 dark:border-gray-600 opacity-95'
+                    : 'border-gray-200 dark:border-gray-700'
+                }`}
+              >
+                <div
+                  className={`px-4 py-2 ${
+                    hasAnyStaffTarget(staffMember, targetableServices, monthData)
+                      ? 'bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800'
+                      : 'bg-gradient-to-r from-gray-500 to-gray-600 dark:from-gray-600 dark:to-gray-700'
+                  }`}
+                >
+                  <h4 className="text-base font-bold text-white">
+                    {staffMember.name}
+                  </h4>
                 </div>
 
-                <div className="flex flex-1 w-full">
-                  {monthData.map((m) => {
-                    const calYear = getYearForMonth(m.number, selectedFinancialYear);
-                    return (
-                      <div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600">
-                        <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
-                          {m.name}
-                        </span>
-                        <span className="text-[9px] text-gray-400 dark:text-gray-500 block">
-                          {calYear}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                <div
+                  className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800"
+                  style={{ scrollBehavior: 'smooth' }}
+                  onScroll={(e) => saveScrollPosition(staffMember.staff_id, e.currentTarget.scrollLeft)}
+                  ref={(el) => {
+                    if (el) {
+                      const savedScroll = scrollPositionsRef.current[staffMember.staff_id] || 0;
+                      if (el.scrollLeft !== savedScroll) {
+                        el.scrollLeft = savedScroll;
+                      }
+                    }
+                  }}
+                >
+                  <div className="flex w-full bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                    <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600">
+                      <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
+                        Service
+                      </span>
+                    </div>
 
-                <div className="w-20 flex-shrink-0 px-2 py-1.5 text-center border-l border-gray-200 dark:border-gray-600">
-                  <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
-                    Total
-                  </span>
-                </div>
-              </div>
+                    <div className="flex flex-1 w-full">
+                      {monthData.map((m) => {
+                        const calYear = getYearForMonth(m.number, selectedFinancialYear);
+                        return (
+                          <div key={m.number} className="flex-1 min-w-0 px-1 py-1.5 text-center border-r border-gray-200 dark:border-gray-600">
+                            <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider block">
+                              {m.name}
+                            </span>
+                            <span className="text-[9px] text-gray-400 dark:text-gray-500 block">
+                              {calYear}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
 
-              <div className="border-b border-gray-200 dark:border-gray-700">
-                {targetableServices.map((service, serviceIdx) => {
-                  const annualTotal = calculateAnnualTotal(staffMember.staff_id, service.service_name);
+                    <div className="w-20 flex-shrink-0 px-2 py-1.5 text-center border-l border-gray-200 dark:border-gray-600">
+                      <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block">
+                        Total
+                      </span>
+                    </div>
+                  </div>
 
-                  return (
-                    <div
-                      key={service.service_id}
-                      className={`flex w-full ${
-                        serviceIdx % 2 === 0
-                          ? 'bg-white dark:bg-gray-800'
-                          : 'bg-gray-50 dark:bg-gray-700'
-                      } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
-                    >
-                      <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center">
-                        <span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
-                          {service.service_name}
+                  <div className="border-b border-gray-200 dark:border-gray-700">
+                    {targetableServices.map((service, serviceIdx) => {
+                      const annualTotal = calculateAnnualTotal(staffMember.staff_id, service.service_name);
+
+                      return (
+                        <div
+                          key={service.service_id}
+                          className={`flex w-full ${
+                            serviceIdx % 2 === 0
+                              ? 'bg-white dark:bg-gray-800'
+                              : 'bg-gray-50 dark:bg-gray-700'
+                          } hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors duration-150`}
+                        >
+                          <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-200 dark:border-gray-600 flex items-center">
+                            <span className="text-xs font-semibold text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis">
+                              {service.service_name}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-1 w-full">
+                            {monthData.map((m) => {
+                              const inputKey = getInputKey(staffMember.staff_id, m.number, service.service_name);
+                              const locked = isLockedCell(m.number, service.service_name);
+
+                              return (
+                                <div
+                                  key={m.number}
+                                  className={`flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600 ${locked ? 'bg-slate-100 dark:bg-gray-700/80' : ''}`}
+                                  title={locked ? 'Past Self Assessment month locked to actual delivered value' : undefined}
+                                >
+                                  <input
+                                    ref={(el) => {
+                                      if (el) {
+                                        inputRefs.current.set(inputKey, el);
+                                      } else {
+                                        inputRefs.current.delete(inputKey);
+                                      }
+                                    }}
+                                    type="number"
+                                    min="0"
+                                    value={getInputValue(staffMember.staff_id, m.number, service.service_name)}
+                                    disabled={locked}
+                                    onFocus={(e) => {
+                                      e.currentTarget.select();
+                                    }}
+                                    onChange={(e) =>
+                                      handleInputChange(
+                                        staffMember.staff_id,
+                                        m.number,
+                                        service.service_name,
+                                        e.target.value
+                                      )
+                                    }
+                                    onBlur={(e) =>
+                                      handleInputBlur(
+                                        staffMember.staff_id,
+                                        m.number,
+                                        service.service_name,
+                                        e.target.value
+                                      )
+                                    }
+                                    onKeyDown={(e) =>
+                                      handleKeyDown(
+                                        e,
+                                        staffMember.staff_id,
+                                        m.number,
+                                        service.service_name,
+                                        e.currentTarget.value
+                                      )
+                                    }
+                                    className={`w-full h-full px-1 py-1.5 bg-transparent border-0 text-center text-xs font-medium focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-colors no-spinner ${
+                                      locked
+                                        ? 'text-gray-500 dark:text-gray-300 cursor-not-allowed'
+                                        : 'text-gray-900 dark:text-white'
+                                    }`}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          <div className="w-20 flex-shrink-0 p-0 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center bg-gray-50 dark:bg-gray-700/50">
+                            <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">
+                              {annualTotal}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <div className="flex w-full bg-gray-200 dark:bg-gray-600 border-t border-gray-300 dark:border-gray-500">
+                      <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-300 dark:border-gray-500 flex items-center">
+                        <span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
+                          Monthly Total
                         </span>
                       </div>
 
                       <div className="flex flex-1 w-full">
                         {monthData.map((m) => {
-                          const inputKey = getInputKey(staffMember.staff_id, m.number, service.service_name);
-                          const locked = isLockedCell(m.number, service.service_name);
-
+                          const monthTotal = calculateMonthlyTotal(staffMember.staff_id, m.number);
                           return (
-                            <div
-                              key={m.number}
-                              className={`flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600 ${locked ? 'bg-slate-100 dark:bg-gray-700/80' : ''}`}
-                              title={locked ? 'Past Self Assessment month locked to actual delivered value' : undefined}
-                            >
-                              <input
-                                ref={(el) => {
-                                  if (el) {
-                                    inputRefs.current.set(inputKey, el);
-                                  } else {
-                                    inputRefs.current.delete(inputKey);
-                                  }
-                                }}
-                                type="number"
-                                min="0"
-                                value={getInputValue(staffMember.staff_id, m.number, service.service_name)}
-                                disabled={locked}
-                                onFocus={(e) => {
-                                  e.currentTarget.select();
-                                }}
-                                onChange={(e) =>
-                                  handleInputChange(
-                                    staffMember.staff_id,
-                                    m.number,
-                                    service.service_name,
-                                    e.target.value
-                                  )
-                                }
-                                onBlur={(e) =>
-                                  handleInputBlur(
-                                    staffMember.staff_id,
-                                    m.number,
-                                    service.service_name,
-                                    e.target.value
-                                  )
-                                }
-                                onKeyDown={(e) =>
-                                  handleKeyDown(
-                                    e,
-                                    staffMember.staff_id,
-                                    m.number,
-                                    service.service_name,
-                                    e.currentTarget.value
-                                  )
-                                }
-                                className={`w-full h-full px-1 py-1.5 bg-transparent border-0 text-center text-xs font-medium focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-colors no-spinner ${
-                                  locked
-                                    ? 'text-gray-500 dark:text-gray-300 cursor-not-allowed'
-                                    : 'text-gray-900 dark:text-white'
-                                }`}
-                              />
+                            <div key={`total-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-gray-300 dark:border-gray-500 flex items-center justify-center">
+                              <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">
+                                {monthTotal}
+                              </span>
                             </div>
                           );
                         })}
                       </div>
 
-                      <div className="w-20 flex-shrink-0 p-0 border-l border-gray-200 dark:border-gray-600 flex items-center justify-center bg-gray-50 dark:bg-gray-700/50">
-                        <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">
-                          {annualTotal}
+                      <div className="w-20 flex-shrink-0 p-0 border-l border-gray-300 dark:border-gray-500 flex items-center justify-center bg-blue-600 dark:bg-blue-700">
+                        <span className="text-xs font-bold text-white py-1.5">
+                          {monthData.reduce((sum, m) => sum + calculateMonthlyTotal(staffMember.staff_id, m.number), 0)}
                         </span>
                       </div>
                     </div>
-                  );
-                })}
-
-                <div className="flex w-full bg-gray-200 dark:bg-gray-600 border-t border-gray-300 dark:border-gray-500">
-                  <div className="w-36 flex-shrink-0 px-2 py-1.5 border-r border-gray-300 dark:border-gray-500 flex items-center">
-                    <span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
-                      Monthly Total
-                    </span>
-                  </div>
-
-                  <div className="flex flex-1 w-full">
-                    {monthData.map((m) => {
-                      const monthTotal = calculateMonthlyTotal(staffMember.staff_id, m.number);
-                      return (
-                        <div key={`total-${m.number}`} className="flex-1 min-w-0 p-0 border-r border-gray-300 dark:border-gray-500 flex items-center justify-center">
-                          <span className="text-xs font-bold text-gray-900 dark:text-white py-1.5">
-                            {monthTotal}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="w-20 flex-shrink-0 p-0 border-l border-gray-300 dark:border-gray-500 flex items-center justify-center bg-blue-600 dark:bg-blue-700">
-                    <span className="text-xs font-bold text-white py-1.5">
-                      {monthData.reduce((sum, m) => sum + calculateMonthlyTotal(staffMember.staff_id, m.number), 0)}
-                    </span>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-        ))}
+            </React.Fragment>
+          );
+        })}
 
         {targetData.length === 0 && (
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-6">
