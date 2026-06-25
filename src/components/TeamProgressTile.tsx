@@ -62,6 +62,26 @@ const buildRunRateBarColor = (themePalette: string[], achievedPercent: number, e
   return themePalette[4] || themePalette[2];
 };
 
+const getCompletionPercent = (entry: AccountantBreakdown): number =>
+  entry.target > 0 ? (entry.delivered / entry.target) * 100 : 0;
+
+const sortAccountantBreakdownByPercent = (breakdown: AccountantBreakdown[]): AccountantBreakdown[] =>
+  [...breakdown].sort((a, b) => {
+    const percentDifference = getCompletionPercent(b) - getCompletionPercent(a);
+
+    if (percentDifference !== 0) {
+      return percentDifference;
+    }
+
+    const deliveredDifference = b.delivered - a.delivered;
+
+    if (deliveredDifference !== 0) {
+      return deliveredDifference;
+    }
+
+    return a.name.localeCompare(b.name);
+  });
+
 export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
   services,
   staffPerformance,
@@ -153,16 +173,18 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
       const difference = calculateRunRateDelta(delivered, target, workingDays, workingDaysUpToToday).variance;
       const expectedPercent = target > 0 ? Math.min((expectedSoFar / target) * 100, 100) : 0;
 
-      const accountantBreakdown: AccountantBreakdown[] = staffPerformance.map((staff) => {
-        const staffDelivered = staff.services[service.service_name] || 0;
-        const staffTarget = perStaffServiceTargets[staff.staff_id]?.[service.service_id] || 0;
-        return {
-          staff_id: staff.staff_id,
-          name: staff.name,
-          delivered: staffDelivered,
-          target: staffTarget,
-        };
-      }).filter((b) => b.delivered > 0 || b.target > 0);
+      const accountantBreakdown = sortAccountantBreakdownByPercent(
+        staffPerformance.map((staff) => {
+          const staffDelivered = staff.services[service.service_name] || 0;
+          const staffTarget = perStaffServiceTargets[staff.staff_id]?.[service.service_id] || 0;
+          return {
+            staff_id: staff.staff_id,
+            name: staff.name,
+            delivered: staffDelivered,
+            target: staffTarget,
+          };
+        }).filter((b) => b.delivered > 0 || b.target > 0)
+      );
 
       return {
         id: `service-${service.service_id}`,
@@ -185,15 +207,17 @@ export const TeamProgressTile: React.FC<TeamProgressTileProps> = ({
     const totalDifference = calculateRunRateDelta(totalDelivered, totalTarget, workingDays, workingDaysUpToToday).variance;
     const totalExpectedPercent = totalTarget > 0 ? Math.min((totalExpectedSoFar / totalTarget) * 100, 100) : 0;
 
-    const totalAccountantBreakdown: AccountantBreakdown[] = staffPerformance.map((staff) => {
-      const staffTotalTarget = Object.values(perStaffServiceTargets[staff.staff_id] || {}).reduce((s, v) => s + v, 0);
-      return {
-        staff_id: staff.staff_id,
-        name: staff.name,
-        delivered: staff.total,
-        target: staffTotalTarget,
-      };
-    }).filter((b) => b.delivered > 0 || b.target > 0);
+    const totalAccountantBreakdown = sortAccountantBreakdownByPercent(
+      staffPerformance.map((staff) => {
+        const staffTotalTarget = Object.values(perStaffServiceTargets[staff.staff_id] || {}).reduce((s, v) => s + v, 0);
+        return {
+          staff_id: staff.staff_id,
+          name: staff.name,
+          delivered: staff.total,
+          target: staffTotalTarget,
+        };
+      }).filter((b) => b.delivered > 0 || b.target > 0)
+    );
 
     return [
       ...baseRows,
