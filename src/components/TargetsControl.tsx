@@ -67,7 +67,91 @@ interface ImportState {
   error: string | null;
 }
 
+type SelfAssessmentActualRow = {
+  staff_id: number | null;
+  month: number;
+  year: number;
+  delivered_count: number;
+};
+
+const SELF_ASSESSMENT_SERVICE_NAMES = new Set(['Self Assessments', 'Self Assessment']);
+
 const buildMonthColKey = (monthName: string, year: number) => `${monthName}_${year}`;
+
+const isSelfAssessmentServiceName = (serviceName: string): boolean =>
+  SELF_ASSESSMENT_SERVICE_NAMES.has(serviceName);
+
+const getMonthStartDate = (month: number, fy: FinancialYear): Date =>
+  new Date(getYearForMonth(month, fy), month - 1, 1);
+
+const getCurrentMonthStartDate = (): Date => {
+  const today = new Date();
+  return new Date(today.getFullYear(), today.getMonth(), 1);
+};
+
+const isPastTargetMonth = (month: number, fy: FinancialYear): boolean =>
+  getMonthStartDate(month, fy).getTime() < getCurrentMonthStartDate().getTime();
+
+const isLockedSelfAssessmentCell = (
+  month: number,
+  serviceName: string,
+  fy: FinancialYear
+): boolean => isSelfAssessmentServiceName(serviceName) && isPastTargetMonth(month, fy);
+
+const loadSelfAssessmentPastActuals = async (
+  fy: FinancialYear,
+  staffIds: number[],
+  targetableServices: { service_id: number; service_name: string }[]
+): Promise<Record<number, Record<number, number>>> => {
+  const selfAssessmentService = targetableServices.find((service) =>
+    isSelfAssessmentServiceName(service.service_name)
+  );
+
+  if (!selfAssessmentService || staffIds.length === 0) {
+    return {};
+  }
+
+  const lockedMonths = getFinancialYearMonths().filter((monthInfo) =>
+    isLockedSelfAssessmentCell(monthInfo.number, selfAssessmentService.service_name, fy)
+  );
+
+  if (lockedMonths.length === 0) {
+    return {};
+  }
+
+  const years = Array.from(
+    new Set(lockedMonths.map((monthInfo) => getYearForMonth(monthInfo.number, fy)))
+  );
+
+  const { data, error } = await supabase
+    .from('dailyactivity')
+    .select('staff_id, month, year, delivered_count')
+    .eq('service_id', selfAssessmentService.service_id)
+    .in('staff_id', staffIds)
+    .in('year', years);
+
+  if (error) {
+    throw error;
+  }
+
+  const lockedMonthNumbers = new Set(lockedMonths.map((monthInfo) => monthInfo.number));
+  const actuals: Record<number, Record<number, number>> = {};
+
+  ((data || []) as SelfAssessmentActualRow[]).forEach((row) => {
+    if (row.staff_id == null) return;
+    if (!lockedMonthNumbers.has(row.month)) return;
+    if (!isTargetInFinancialYear(row.month, row.year, fy)) return;
+
+    if (!actuals[row.staff_id]) {
+      actuals[row.staff_id] = {};
+    }
+
+    actuals[row.staff_id][row.month] =
+      (actuals[row.staff_id][row.month] || 0) + (row.delivered_count || 0);
+  });
+
+  return actuals;
+};
 
 const persistStaffTargets = async (
   staffMember: TargetData,
@@ -201,6 +285,12 @@ export const TargetsControl: React.FC = () => {
 
     try {
       const monthData = getFinancialYearMonths();
+      const accountantIds = activeAccountants.map((staffMember) => staffMember.staff_id);
+      const selfAssessmentActuals = await loadSelfAssessmentPastActuals(
+        fy,
+        accountantIds,
+        targetableServices
+      );
 
       const data = await Promise.all(
         activeAccountants.map(async (staffMember) => {
@@ -227,6 +317,17 @@ export const TargetsControl: React.FC = () => {
             }
           });
 
+          targetableServices.forEach((service) => {
+            if (!isSelfAssessmentServiceName(service.service_name)) return;
+
+            monthData.forEach((m) => {
+              if (isLockedSelfAssessmentCell(m.number, service.service_name, fy)) {
+                targets[m.number][service.service_name] =
+                  selfAssessmentActuals[staffMember.staff_id]?.[m.number] || 0;
+              }
+            });
+          });
+
           return { staff_id: staffMember.staff_id, name: staffMember.name, team_id: staffMember.team_id, targets };
         })
       );
@@ -237,8 +338,7 @@ export const TargetsControl: React.FC = () => {
       setHasUnsavedChanges(false);
       inputRefs.current.clear();
       scrollPositionsRef.current = {};
-    } catch (err) {
-      console.error('[TargetsControl] fetch targets data:', err);
+    } catch {
       setError('Failed to load targets data');
     } finally {
       setLoading(false);
@@ -257,12 +357,20 @@ export const TargetsControl: React.FC = () => {
     return `${staffId}-${month}-${serviceName}`;
   };
 
+  const isLockedCell = useCallback(
+    (month: number, serviceName: string, fy: FinancialYear = selectedFinancialYear) =>
+      isLockedSelfAssessmentCell(month, serviceName, fy),
+    [selectedFinancialYear]
+  );
+
   const handleInputChange = (
     staffId: number,
     month: number,
     serviceName: string,
     value: string
   ) => {
+    if (isLockedCell(month, serviceName)) return;
+
     const key = getInputKey(staffId, month, serviceName);
     setLocalInputState(prev => ({
       ...prev,
@@ -278,6 +386,15 @@ export const TargetsControl: React.FC = () => {
     value: string
   ) => {
     const key = getInputKey(staffId, month, serviceName);
+
+    if (isLockedCell(month, serviceName)) {
+      setLocalInputState(prev => {
+        const newState = { ...prev };
+        delete newState[key];
+        return newState;
+      });
+      return;
+    }
 
     let numValue = 0;
     if (value.trim() !== '') {
@@ -326,53 +443,56 @@ export const TargetsControl: React.FC = () => {
     value: string
   ) => {
     if (e.key !== 'Tab') return;
+    if (isLockedCell(month, serviceName)) return;
 
     e.preventDefault();
 
     handleInputBlur(staffId, month, serviceName, value);
 
     const monthData = getFinancialYearMonths();
+    const monthCount = monthData.length;
+    const serviceCount = targetableServices.length;
+    const staffCount = targetData.length;
+
     const currentMonthIndex = monthData.findIndex(m => m.number === month);
     const currentServiceIndex = targetableServices.findIndex(s => s.service_name === serviceName);
     const currentStaffIndex = targetData.findIndex(t => t.staff_id === staffId);
 
-    let nextStaffIndex = currentStaffIndex;
-    let nextServiceIndex = currentServiceIndex;
-    let nextMonthIndex = currentMonthIndex;
-
-    if (e.shiftKey) {
-      nextMonthIndex--;
-      if (nextMonthIndex < 0) {
-        nextServiceIndex--;
-        if (nextServiceIndex < 0) {
-          nextStaffIndex--;
-          if (nextStaffIndex < 0) {
-            nextStaffIndex = targetData.length - 1;
-          }
-          nextServiceIndex = targetableServices.length - 1;
-        }
-        nextMonthIndex = monthData.length - 1;
-      }
-    } else {
-      nextMonthIndex++;
-      if (nextMonthIndex >= monthData.length) {
-        nextServiceIndex++;
-        if (nextServiceIndex >= targetableServices.length) {
-          nextStaffIndex++;
-          if (nextStaffIndex >= targetData.length) {
-            nextStaffIndex = 0;
-          }
-          nextServiceIndex = 0;
-        }
-        nextMonthIndex = 0;
-      }
+    if (
+      currentMonthIndex < 0 ||
+      currentServiceIndex < 0 ||
+      currentStaffIndex < 0 ||
+      monthCount === 0 ||
+      serviceCount === 0 ||
+      staffCount === 0
+    ) {
+      return;
     }
 
-    const nextStaff = targetData[nextStaffIndex];
-    const nextService = targetableServices[nextServiceIndex];
-    const nextMonth = monthData[nextMonthIndex];
+    const totalCells = staffCount * serviceCount * monthCount;
+    const direction = e.shiftKey ? -1 : 1;
+    const currentLinearIndex =
+      currentStaffIndex * serviceCount * monthCount +
+      currentServiceIndex * monthCount +
+      currentMonthIndex;
 
-    if (nextStaff && nextService && nextMonth) {
+    let nextLinearIndex = currentLinearIndex;
+
+    for (let attempts = 0; attempts < totalCells - 1; attempts += 1) {
+      nextLinearIndex = (nextLinearIndex + direction + totalCells) % totalCells;
+
+      const nextStaffIndex = Math.floor(nextLinearIndex / (serviceCount * monthCount));
+      const withinStaffIndex = nextLinearIndex % (serviceCount * monthCount);
+      const nextServiceIndex = Math.floor(withinStaffIndex / monthCount);
+      const nextMonthIndex = withinStaffIndex % monthCount;
+
+      const nextStaff = targetData[nextStaffIndex];
+      const nextService = targetableServices[nextServiceIndex];
+      const nextMonth = monthData[nextMonthIndex];
+
+      if (!nextStaff || !nextService || !nextMonth) continue;
+      if (isLockedCell(nextMonth.number, nextService.service_name)) continue;
+
       const nextKey = getInputKey(nextStaff.staff_id, nextMonth.number, nextService.service_name);
 
       requestAnimationFrame(() => {
@@ -382,6 +502,7 @@ export const TargetsControl: React.FC = () => {
           nextInput.select();
         }
       });
+      return;
     }
   };
 
@@ -452,8 +573,7 @@ export const TargetsControl: React.FC = () => {
       window.dispatchEvent(new Event('targets-updated'));
       setTimeout(() => setSaveMessage(null), 3000);
       return true;
-    } catch (err) {
-      console.error('[TargetsControl] save targets:', err);
+    } catch {
       setError('Failed to save targets');
       return false;
     }
@@ -605,9 +725,25 @@ export const TargetsControl: React.FC = () => {
 
           foundMonthCols.forEach(({ key, month, year }) => {
             const rawVal = row[key];
-            const targetValue = rawVal !== undefined && rawVal !== '' ? parseInt(rawVal, 10) : 0;
+            const importedValue = rawVal !== undefined && rawVal !== '' ? parseInt(rawVal, 10) : 0;
+            const isLockedImportCell = isLockedSelfAssessmentCell(month, serviceName, fy);
+            const currentLockedValue =
+              targetData.find(t => t.staff_id === staffId)?.targets[month]?.[serviceName] ?? 0;
 
-            if (isNaN(targetValue)) {
+            if (isNaN(importedValue)) {
+              if (isLockedImportCell) {
+                parsedRows.push({
+                  staff_id: staffId,
+                  staff_name: staffName,
+                  service_id: serviceId,
+                  service_name: serviceName,
+                  month,
+                  year,
+                  target_value: currentLockedValue,
+                });
+                return;
+              }
+
               parseErrors.push(`Row ${idx + 2}, column "${key}": invalid numeric value "${rawVal}".`);
               return;
             }
@@ -624,7 +760,7 @@ export const TargetsControl: React.FC = () => {
               service_name: serviceName,
               month,
               year,
-              target_value: Math.max(0, targetValue),
+              target_value: isLockedImportCell ? currentLockedValue : Math.max(0, importedValue),
             });
           });
         });
@@ -677,7 +813,7 @@ export const TargetsControl: React.FC = () => {
 
       reader.readAsText(file);
     },
-    [importState.selectedFY, targetData, targetableServices]
+    [importState.selectedFY, targetData]
   );
 
   const handleConfirmImport = async () => {
@@ -721,8 +857,7 @@ export const TargetsControl: React.FC = () => {
       setSaveMessage(`✅ Import complete — ${importState.diffRows.filter(r => r.changed).length} value(s) updated for FY ${fy.label}`);
       window.dispatchEvent(new Event('targets-updated'));
       setTimeout(() => setSaveMessage(null), 5000);
-    } catch (err) {
-      console.error('[TargetsControl] confirm import:', err);
+    } catch {
       setImportState(prev => ({ ...prev, step: 'preview', error: 'Import failed. Please try again.' }));
     }
   };
@@ -862,7 +997,7 @@ export const TargetsControl: React.FC = () => {
       <div className="page-header mb-4">
         <h2 className="page-title">Targets Control</h2>
         <p className="page-subtitle">
-          Set monthly targets for {selectedFinancialYear.label}
+          Set monthly targets for {selectedFinancialYear.label}. Past Self Assessment months are locked to actual delivered values.
         </p>
       </div>
 
@@ -935,7 +1070,7 @@ export const TargetsControl: React.FC = () => {
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm mx-4 w-full animate-slide-up">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Import Targets</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Select the financial year you are importing targets for. Only month columns matching this financial year will be accepted.
+              Select the financial year you are importing targets for. Only month columns matching this financial year will be accepted. Locked past Self Assessment months will keep their actual delivered values.
             </p>
             <div className="mb-5">
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Financial Year</label>
@@ -1097,8 +1232,8 @@ export const TargetsControl: React.FC = () => {
             <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0 bg-white dark:bg-gray-800">
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 {changedCount === 0
-                  ? 'No changes detected. The imported file matches the current data.'
-                  : `Confirming will overwrite ${changedCount} value(s) in the database for FY ${importState.selectedFY?.label}. Changed cells show old → new.`}
+                  ? 'No changes detected. The imported file matches the current editable data. Locked past Self Assessment months are held at actual delivered values.'
+                  : `Confirming will overwrite ${changedCount} editable value(s) in the database for FY ${importState.selectedFY?.label}. Changed cells show old → new.`}
               </p>
               <div className="flex gap-3">
                 <button
@@ -1245,8 +1380,14 @@ export const TargetsControl: React.FC = () => {
                       <div className="flex flex-1 w-full">
                         {monthData.map((m) => {
                           const inputKey = getInputKey(staffMember.staff_id, m.number, service.service_name);
+                          const locked = isLockedCell(m.number, service.service_name);
+
                           return (
-                            <div key={m.number} className="flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600">
+                            <div
+                              key={m.number}
+                              className={`flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600 ${locked ? 'bg-slate-100 dark:bg-gray-700/80' : ''}`}
+                              title={locked ? 'Past Self Assessment month locked to actual delivered value' : undefined}
+                            >
                               <input
                                 ref={(el) => {
                                   if (el) {
@@ -1258,6 +1399,7 @@ export const TargetsControl: React.FC = () => {
                                 type="number"
                                 min="0"
                                 value={getInputValue(staffMember.staff_id, m.number, service.service_name)}
+                                disabled={locked}
                                 onFocus={(e) => {
                                   e.currentTarget.select();
                                 }}
@@ -1286,7 +1428,11 @@ export const TargetsControl: React.FC = () => {
                                     e.currentTarget.value
                                   )
                                 }
-                                className="w-full h-full px-1 py-1.5 bg-transparent border-0 text-center text-xs font-medium text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-colors no-spinner"
+                                className={`w-full h-full px-1 py-1.5 bg-transparent border-0 text-center text-xs font-medium focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-colors no-spinner ${
+                                  locked
+                                    ? 'text-gray-500 dark:text-gray-300 cursor-not-allowed'
+                                    : 'text-gray-900 dark:text-white'
+                                }`}
                               />
                             </div>
                           );
