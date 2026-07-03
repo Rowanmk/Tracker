@@ -224,7 +224,9 @@ export const Settings: React.FC = () => {
     security_answer: '',
   });
 
-  const [activeTab, setActiveTab] = useState<'users' | 'calendar' | 'permissions' | 'account' | 'notifications'>('account');
+  const [activeTab, setActiveTab] = useState<'users' | 'calendar' | 'permissions' | 'account' | 'notifications' | 'design'>('account');
+  const [designMarkdown, setDesignMarkdown] = useState('');
+  const [isDesignMarkdownLoading, setIsDesignMarkdownLoading] = useState(false);
 
   const [accountForm, setAccountForm] = useState({
     password: '',
@@ -371,6 +373,30 @@ export const Settings: React.FC = () => {
       fetchCalendarData();
     }
   }, [activeTab, calendarMonth, calendarYear]);
+
+  useEffect(() => {
+    if (activeTab !== 'design' || designMarkdown) return;
+
+    const fetchDesignMarkdown = async () => {
+      setIsDesignMarkdownLoading(true);
+
+      try {
+        const response = await fetch('/Design.md');
+        if (!response.ok) {
+          setDesignMarkdown('# Crew Tracker Design System\n\nThe Design.md file could not be loaded.');
+          return;
+        }
+
+        setDesignMarkdown(await response.text());
+      } catch {
+        setDesignMarkdown('# Crew Tracker Design System\n\nThe Design.md file could not be loaded.');
+      } finally {
+        setIsDesignMarkdownLoading(false);
+      }
+    };
+
+    void fetchDesignMarkdown();
+  }, [activeTab, designMarkdown]);
 
   const fetchCalendarData = async () => {
     try {
@@ -824,6 +850,17 @@ export const Settings: React.FC = () => {
               My Account
             </button>
 
+            <button
+              onClick={() => setActiveTab('design')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'design'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Design.md
+            </button>
+
             {isAdmin &&
               adminTabs.map(tab => (
                 <button
@@ -918,6 +955,52 @@ export const Settings: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'design' && (
+          <div className="mt-6 space-y-6">
+            <div className="bg-white shadow rounded-lg p-6 max-w-5xl">
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">Project Design.md</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    A technical design reference covering Crew Tracker graphic elements, colours, typography, charts, tables, layout, and implementation details.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    href="/Design.md"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold rounded-md transition-colors"
+                  >
+                    Open Raw File
+                  </a>
+                  <a
+                    href="/Design.md"
+                    download="Design.md"
+                    className="px-4 py-2 bg-[#001B47] hover:bg-[#00245F] text-white text-sm font-bold rounded-md transition-colors"
+                  >
+                    Download Design.md
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white shadow rounded-lg border border-gray-200 overflow-hidden max-w-5xl">
+              <div className="bg-[#001B47] px-4 py-2">
+                <h4 className="text-white font-bold text-sm">Design.md Preview</h4>
+              </div>
+
+              {isDesignMarkdownLoading ? (
+                <div className="p-6 text-sm text-gray-500">Loading design documentation…</div>
+              ) : (
+                <pre className="p-6 text-sm text-gray-800 bg-gray-50 overflow-auto whitespace-pre-wrap leading-6 max-h-[70vh]">
+                  {designMarkdown || 'Design documentation will appear here.'}
+                </pre>
+              )}
             </div>
           </div>
         )}
