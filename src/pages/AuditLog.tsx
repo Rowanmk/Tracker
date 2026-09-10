@@ -316,6 +316,14 @@ export const AuditLog: React.FC = () => {
       parts.push(`Service: ${affectedServices.join(', ')}`);
     }
 
+    if (typeof metadata.month === 'number') {
+      parts.push(`Month ${metadata.month}`);
+    }
+
+    if (typeof metadata.previous_value === 'number' && typeof metadata.new_value === 'number') {
+      parts.push(`${metadata.previous_value} → ${metadata.new_value}`);
+    }
+
     if (typeof metadata.restored_cell_count === 'number') {
       parts.push(`${metadata.restored_cell_count} restored cell(s)`);
     }
@@ -349,26 +357,24 @@ export const AuditLog: React.FC = () => {
       : [];
 
     if (affectedUsers.length > 0) {
-      return affectedUsers.map((user, index) => {
+      return affectedUsers.flatMap((user, index) => {
         const userName = typeof user.name === 'string' ? user.name : `User ${index + 1}`;
         const changes = isJsonArray(user.changes)
           ? user.changes.filter((item): item is Record<string, Json | undefined> => !!item && typeof item === 'object' && !Array.isArray(item))
           : [];
 
         if (changes.length > 0) {
-          const changeText = changes.map((change) => {
+          return changes.map((change) => {
             const month = typeof change.month === 'number' ? change.month : null;
             const serviceName = typeof change.service_name === 'string' ? change.service_name : 'Service';
             const previousValue = typeof change.previous_value === 'number' ? change.previous_value : 0;
             const newValue = typeof change.new_value === 'number' ? change.new_value : 0;
 
-            return `${serviceName}${month ? ` (month ${month})` : ''}: ${previousValue} → ${newValue}`;
-          }).join('; ');
-
-          return `${userName}: ${changeText}`;
+            return `${userName}: ${serviceName}${month ? ` (month ${month})` : ''}: ${previousValue} → ${newValue}`;
+          });
         }
 
-        return `${userName}: ${typeof user.changed_cells === 'number' ? `${user.changed_cells} field(s) changed` : 'Updated'}`;
+        return [`${userName}: ${typeof user.changed_cells === 'number' ? `${user.changed_cells} field(s) changed` : 'Updated'}`];
       }).join(' | ');
     }
 
@@ -465,50 +471,56 @@ export const AuditLog: React.FC = () => {
       : [];
 
     if (affectedUsers.length > 0) {
+      const flatChanges = affectedUsers.flatMap((user, userIndex) => {
+        const userName = typeof user.name === 'string' ? user.name : `User ${userIndex + 1}`;
+        const changes = isJsonArray(user.changes)
+          ? user.changes.filter((item): item is Record<string, Json | undefined> => !!item && typeof item === 'object' && !Array.isArray(item))
+          : [];
+
+        if (changes.length > 0) {
+          return changes.map((change, changeIndex) => ({
+            id: `${userName}-${userIndex}-${changeIndex}`,
+            userName,
+            serviceName: typeof change.service_name === 'string' ? change.service_name : 'Service',
+            month: typeof change.month === 'number' ? change.month : null,
+            previousValue: typeof change.previous_value === 'number' ? change.previous_value : 0,
+            newValue: typeof change.new_value === 'number' ? change.new_value : 0,
+          }));
+        }
+
+        return [{
+          id: `${userName}-${userIndex}-summary`,
+          userName,
+          serviceName: typeof user.changed_cells === 'number' ? `${user.changed_cells} field(s) changed` : 'Updated',
+          month: null,
+          previousValue: null,
+          newValue: null,
+        }];
+      });
+
       return (
         <div className="space-y-2">
-          {affectedUsers.slice(0, 3).map((user, index) => {
-            const userName = typeof user.name === 'string' ? user.name : `User ${index + 1}`;
-            const changes = isJsonArray(user.changes)
-              ? user.changes.filter((item): item is Record<string, Json | undefined> => !!item && typeof item === 'object' && !Array.isArray(item))
-              : [];
-
-            return (
-              <div key={`${userName}-${index}`} className="rounded-md bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-600 px-3 py-2">
-                <div className="text-xs font-semibold text-gray-700 dark:text-gray-200">{userName}</div>
-                {changes.length > 0 ? (
-                  <div className="mt-1 space-y-1">
-                    {changes.slice(0, 2).map((change, changeIndex) => {
-                      const month = typeof change.month === 'number' ? change.month : null;
-                      const serviceName = typeof change.service_name === 'string' ? change.service_name : 'Service';
-                      const previousValue = typeof change.previous_value === 'number' ? change.previous_value : 0;
-                      const newValue = typeof change.new_value === 'number' ? change.new_value : 0;
-
-                      return (
-                        <div key={`${serviceName}-${changeIndex}`} className="text-xs text-gray-600 dark:text-gray-300">
-                          {serviceName}{month ? ` (month ${month})` : ''}: {previousValue} → {newValue}
-                        </div>
-                      );
-                    })}
-                    {changes.length > 2 && (
-                      <div className="text-xs text-gray-400">
-                        +{changes.length - 2} more change(s)
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
-                    {typeof user.changed_cells === 'number' ? `${user.changed_cells} field(s) changed` : 'Updated'}
+          {flatChanges.map((change) => (
+            <div
+              key={change.id}
+              className="rounded-md bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-600 px-3 py-2"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                <div className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                  {change.userName}
+                </div>
+                {change.previousValue !== null && change.newValue !== null && (
+                  <div className="inline-flex items-center rounded-md bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 text-xs font-bold text-amber-700 dark:text-amber-300">
+                    {change.previousValue} → {change.newValue}
                   </div>
                 )}
               </div>
-            );
-          })}
-          {affectedUsers.length > 3 && (
-            <div className="text-xs text-gray-400">
-              +{affectedUsers.length - 3} more user(s)
+              <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                {change.serviceName}
+                {change.month ? ` • Month ${change.month}` : ''}
+              </div>
             </div>
-          )}
+          ))}
         </div>
       );
     }
@@ -520,7 +532,7 @@ export const AuditLog: React.FC = () => {
     if (restoredCells.length > 0) {
       return (
         <div className="space-y-2">
-          {restoredCells.slice(0, 4).map((cell, index) => {
+          {restoredCells.map((cell, index) => {
             const staffName = typeof cell.staff_name === 'string' ? cell.staff_name : `User ${index + 1}`;
             const serviceName = typeof cell.service_name === 'string' ? cell.service_name : 'Service';
             const month = typeof cell.month === 'number' ? cell.month : null;
@@ -532,17 +544,12 @@ export const AuditLog: React.FC = () => {
                   {staffName}
                 </div>
                 <div className="mt-1 text-xs text-blue-800 dark:text-blue-300">
-                  {serviceName}{month ? ` (month ${month})` : ''}{year ? `, ${year}` : ''}:{' '}
+                  {serviceName}{month ? ` • Month ${month}` : ''}{year ? ` • ${year}` : ''}:{' '}
                   {formatJsonValue(cell.overwritten_value)} → {formatJsonValue(cell.restored_value)}
                 </div>
               </div>
             );
           })}
-          {restoredCells.length > 4 && (
-            <div className="text-xs text-gray-400">
-              +{restoredCells.length - 4} more restored cell(s)
-            </div>
-          )}
         </div>
       );
     }
@@ -562,17 +569,12 @@ export const AuditLog: React.FC = () => {
 
       return (
         <div className="rounded-md bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-600 px-3 py-2">
-          {keys.slice(0, 4).map((key) => (
+          {keys.map((key) => (
             <div key={key} className="text-xs text-gray-600 dark:text-gray-300">
               <span className="font-semibold text-gray-700 dark:text-gray-200">{key.replace(/_/g, ' ')}:</span>{' '}
               {String(previous?.[key] ?? '—')} → {String(current?.[key] ?? '—')}
             </div>
           ))}
-          {keys.length > 4 && (
-            <div className="text-xs text-gray-400 mt-1">
-              +{keys.length - 4} more field change(s)
-            </div>
-          )}
         </div>
       );
     }

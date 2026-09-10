@@ -2,7 +2,7 @@ import { supabase } from '../supabase/client';
 import type { Database, Json } from '../supabase/types';
 
 type AuditLogInsert = Database['public']['Tables']['audit_logs']['Insert'];
-type StaffRow = Database['public']['Tables']['staff']['Row'];
+type StaffRow = Database['public']['Tables']['staff']['Row';
 
 interface CreateAuditLogParams {
   pagePath: string;
@@ -66,6 +66,12 @@ const buildAuditMetadata = (
     system_generated: true,
     updated_by_name: toSafeJsonObject(metadata).updated_by_name || 'System Generated',
   };
+};
+
+const getTargetActionType = (previousValue: number, newValue: number): string => {
+  if (previousValue === 0 && newValue > 0) return 'create';
+  if (previousValue > 0 && newValue === 0) return 'delete';
+  return 'update';
 };
 
 export async function createAuditLog({
@@ -192,35 +198,76 @@ export async function logMonthlyTargetsSaved({
     annual_total: number;
   }>;
 }): Promise<void> {
-  if (changedStaffSummaries.length === 0) {
+  const changedCells = changedStaffSummaries.flatMap((staff) =>
+    (staff.changes || []).map((change) => ({
+      staff,
+      change,
+    }))
+  );
+
+  if (changedCells.length === 0) {
     return;
   }
 
-  const affectedServices = Array.from(
-    new Set(changedStaffSummaries.flatMap((staff) => staff.changed_services))
-  ).sort();
+  await Promise.all(
+    changedCells.map(({ staff, change }) => {
+      const actionType = getTargetActionType(change.previous_value, change.new_value);
+      const staffAnnualTotal =
+        totalsByStaff.find((total) => total.staff_id === staff.staff_id)?.annual_total ?? 0;
 
-  await createAuditLog({
-    pagePath: '/targets',
-    pageLabel: 'Targets Control',
-    actionType: 'update',
-    entityType: 'monthly_targets',
-    entityId: financialYearLabel,
-    actorStaffId,
-    teamId: null,
-    description: `${actorName || 'A user'} saved targets for ${changedStaffSummaries.length} user(s) in FY ${financialYearLabel}`,
-    metadata: {
-      actor_staff_id: actorStaffId,
-      updated_by_name: actorName,
-      financial_year: financialYearLabel,
-      affected_user_count: changedStaffSummaries.length,
-      affected_user_ids: changedStaffSummaries.map((staff) => staff.staff_id),
-      affected_user_names: changedStaffSummaries.map((staff) => staff.name),
-      affected_services: affectedServices,
-      affected_users: changedStaffSummaries,
-      totals_by_user: totalsByStaff,
-    },
-  });
+      return createAuditLog({
+        pagePath: '/targets',
+        pageLabel: 'Targets Control',
+        actionType,
+        entityType: 'monthly_targets',
+        entityId: `${financialYearLabel}-${staff.staff_id}-${change.service_name}-${change.month}`,
+        actorStaffId,
+        teamId: staff.team_id || null,
+        description: `${actorName || 'A user'} changed ${staff.name}'s ${change.service_name} target for month ${change.month} in FY ${financialYearLabel} (${change.previous_value} → ${change.new_value})`,
+        metadata: {
+          actor_staff_id: actorStaffId,
+          updated_by_name: actorName,
+          financial_year: financialYearLabel,
+          affected_user_count: 1,
+          affected_user_ids: [staff.staff_id],
+          affected_user_names: [staff.name],
+          affected_services: [change.service_name],
+          affected_service_names: [change.service_name],
+          service_name: change.service_name,
+          month: change.month,
+          previous_value: change.previous_value,
+          new_value: change.new_value,
+          change_amount: change.new_value - change.previous_value,
+          exact_change: `${staff.name} — ${change.service_name} month ${change.month}: ${change.previous_value} → ${change.new_value}`,
+          affected_users: [
+            {
+              staff_id: staff.staff_id,
+              name: staff.name,
+              team_id: staff.team_id || null,
+              changed_cells: 1,
+              changed_months: [change.month],
+              changed_services: [change.service_name],
+              changes: [
+                {
+                  month: change.month,
+                  service_name: change.service_name,
+                  previous_value: change.previous_value,
+                  new_value: change.new_value,
+                },
+              ],
+            },
+          ],
+          totals_by_user: [
+            {
+              staff_id: staff.staff_id,
+              name: staff.name,
+              annual_total: staffAnnualTotal,
+            },
+          ],
+        },
+      });
+    })
+  );
 }
 
 export async function logStaffBatchChange({
