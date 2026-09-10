@@ -2,7 +2,7 @@ import { supabase } from '../supabase/client';
 import type { Database, Json } from '../supabase/types';
 
 type AuditLogInsert = Database['public']['Tables']['audit_logs']['Insert'];
-type StaffRow = Database['public']['Tables']['staff']['Row';
+type StaffRow = Database['public']['Tables']['staff']['Row'];
 
 interface CreateAuditLogParams {
   pagePath: string;
