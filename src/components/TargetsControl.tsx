@@ -73,22 +73,16 @@ const buildMonthColKey = (monthName: string, year: number) => `${monthName}_${ye
 const isSelfAssessmentServiceName = (serviceName: string): boolean =>
   SELF_ASSESSMENT_SERVICE_NAMES.has(serviceName);
 
-const getMonthStartDate = (month: number, fy: FinancialYear): Date =>
-  new Date(getYearForMonth(month, fy), month - 1, 1);
-
-const getCurrentMonthStartDate = (): Date => {
-  const today = new Date();
-  return new Date(today.getFullYear(), today.getMonth(), 1);
-};
-
-const isPastTargetMonth = (month: number, fy: FinancialYear): boolean =>
-  getMonthStartDate(month, fy).getTime() < getCurrentMonthStartDate().getTime();
-
 const isLockedSelfAssessmentCell = (
   month: number,
   serviceName: string,
   fy: FinancialYear
-): boolean => isSelfAssessmentServiceName(serviceName) && isPastTargetMonth(month, fy);
+): boolean => {
+  void month;
+  void serviceName;
+  void fy;
+  return false;
+};
 
 const hasAnyStaffTarget = (
   staffMember: TargetData,
@@ -1018,7 +1012,7 @@ export const TargetsControl: React.FC = () => {
       <div className="page-header mb-4">
         <h2 className="page-title">Targets Control</h2>
         <p className="page-subtitle">
-          Set monthly targets for {selectedFinancialYear.label}. Staff without targets are grouped separately at the bottom.
+          Set monthly targets for {selectedFinancialYear.label}. Self Assessment targets remain as the original target values entered for each month. Staff without targets are grouped separately at the bottom.
         </p>
       </div>
 
@@ -1091,7 +1085,7 @@ export const TargetsControl: React.FC = () => {
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm mx-4 w-full animate-slide-up">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Import Targets</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Select the financial year you are importing targets for. Only month columns matching this financial year will be accepted. Locked past Self Assessment months will keep their actual delivered values.
+              Select the financial year you are importing targets for. Only month columns matching this financial year will be accepted. Self Assessment imports update stored target values only and do not replace targets with actual delivered values.
             </p>
             <div className="mb-5">
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Financial Year</label>
@@ -1150,7 +1144,7 @@ export const TargetsControl: React.FC = () => {
                   <span className={changedCount > 0 ? 'text-amber-600 font-semibold' : 'text-green-600 font-semibold'}>
                     {changedCount} change(s)
                   </span>
-                  {' '}detected vs current data
+                  {' '}detected vs current target data
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -1253,8 +1247,8 @@ export const TargetsControl: React.FC = () => {
             <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0 bg-white dark:bg-gray-800">
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 {changedCount === 0
-                  ? 'No changes detected. The imported file matches the current editable data. Locked past Self Assessment months are held at actual delivered values.'
-                  : `Confirming will overwrite ${changedCount} editable value(s) in the database for FY ${importState.selectedFY?.label}. Changed cells show old → new.`}
+                  ? 'No changes detected. The imported file matches the current stored target data.'
+                  : `Confirming will overwrite ${changedCount} target value(s) in the database for FY ${importState.selectedFY?.label}. Changed cells show old → new.`}
               </p>
               <div className="flex gap-3">
                 <button
@@ -1434,7 +1428,7 @@ export const TargetsControl: React.FC = () => {
                                 <div
                                   key={m.number}
                                   className={`flex-1 min-w-0 p-0 border-r border-gray-200 dark:border-gray-600 ${locked ? 'bg-slate-100 dark:bg-gray-700/80' : ''}`}
-                                  title={locked ? 'Past Self Assessment month locked to actual delivered value' : undefined}
+                                  title={locked ? 'Cell locked' : undefined}
                                 >
                                   <input
                                     ref={(el) => {
