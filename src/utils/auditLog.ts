@@ -53,6 +53,21 @@ const toSafeJsonObject = (value: Json | undefined): Record<string, Json | undefi
   return value as Record<string, Json | undefined>;
 };
 
+const buildAuditMetadata = (
+  actorStaffId: number | null | undefined,
+  metadata: Json
+): Json => {
+  if (actorStaffId !== null && actorStaffId !== undefined) {
+    return metadata;
+  }
+
+  return {
+    ...toSafeJsonObject(metadata),
+    system_generated: true,
+    updated_by_name: toSafeJsonObject(metadata).updated_by_name || 'System Generated',
+  };
+};
+
 export async function createAuditLog({
   pagePath,
   pageLabel,
@@ -73,7 +88,7 @@ export async function createAuditLog({
     description,
     staff_id: actorStaffId,
     team_id: teamId,
-    metadata,
+    metadata: buildAuditMetadata(actorStaffId, metadata),
   };
 
   await supabase.from('audit_logs').insert(payload);
@@ -130,6 +145,7 @@ export async function logTrackerSheetUpdate({
       affected_user_names: normalizedSubjectNames,
       service_id: serviceId,
       service_name: serviceName,
+      affected_services: [serviceName],
       date,
       month,
       year,
@@ -180,6 +196,10 @@ export async function logMonthlyTargetsSaved({
     return;
   }
 
+  const affectedServices = Array.from(
+    new Set(changedStaffSummaries.flatMap((staff) => staff.changed_services))
+  ).sort();
+
   await createAuditLog({
     pagePath: '/targets',
     pageLabel: 'Targets Control',
@@ -196,6 +216,7 @@ export async function logMonthlyTargetsSaved({
       affected_user_count: changedStaffSummaries.length,
       affected_user_ids: changedStaffSummaries.map((staff) => staff.staff_id),
       affected_user_names: changedStaffSummaries.map((staff) => staff.name),
+      affected_services: affectedServices,
       affected_users: changedStaffSummaries,
       totals_by_user: totalsByStaff,
     },

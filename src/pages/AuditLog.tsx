@@ -14,7 +14,7 @@ type AuditLogWithRelations = AuditLogRow & {
   team?: Pick<Team, 'id' | 'name'> | null;
 };
 
-type SortField = 'created_at' | 'page_label' | 'action_type' | 'entity_type' | 'actor' | 'affected' | 'description';
+type SortField = 'created_at' | 'page_label' | 'action_type' | 'entity_type' | 'service' | 'actor' | 'affected' | 'description';
 type SortDirection = 'asc' | 'desc';
 
 const PAGE_OPTIONS = [
@@ -32,6 +32,7 @@ const PAGE_OPTIONS = [
 ];
 
 const AUDIT_EXPORT_PAGE_SIZE = 1000;
+const SYSTEM_ACTOR_FILTER = '__system_generated__';
 
 const isJsonObject = (value: Json | null): value is Record<string, Json | undefined> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
@@ -52,9 +53,30 @@ const formatJsonValue = (value: Json | undefined): string => {
   return String(value);
 };
 
+const uniqueSortedStrings = (values: string[]): string[] =>
+  Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) =>
+    a.localeCompare(b)
+  );
+
+const getStringArrayFromJson = (value: Json | undefined): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.trim() !== '');
+};
+
 const getEffectiveActorId = (log: AuditLogWithRelations): number | null => {
   const metadata = isJsonObject(log.metadata) ? log.metadata : null;
   return typeof metadata?.actor_staff_id === 'number' ? metadata.actor_staff_id : log.staff_id;
+};
+
+const isSystemGeneratedLog = (log: AuditLogWithRelations): boolean => {
+  const metadata = isJsonObject(log.metadata) ? log.metadata : null;
+  const effectiveActorId = getEffectiveActorId(log);
+
+  if (metadata?.system_generated === true) return true;
+  if (typeof metadata?.source === 'string' && metadata.source.trim() !== '') return true;
+  if (metadata?.updated_by_name === 'System Generated') return true;
+
+  return effectiveActorId === null && !log.staff?.name;
 };
 
 const getAffectedUserNamesFromLog = (log: AuditLogWithRelations): string[] => {
@@ -73,6 +95,50 @@ const getAffectedUserIdsFromLog = (log: AuditLogWithRelations): number[] => {
     : [];
 
   return affectedUserIds;
+};
+
+const getAffectedServiceNamesFromLog = (log: AuditLogWithRelations): string[] => {
+  const metadata = isJsonObject(log.metadata) ? log.metadata : null;
+  if (!metadata) return [];
+
+  const serviceNames: string[] = [];
+
+  if (typeof metadata.service_name === 'string') {
+    serviceNames.push(metadata.service_name);
+  }
+
+  serviceNames.push(...getStringArrayFromJson(metadata.affected_services));
+  serviceNames.push(...getStringArrayFromJson(metadata.affected_service_names));
+
+  const affectedUsers = isJsonArray(metadata.affected_users)
+    ? metadata.affected_users.filter((item): item is Record<string, Json | undefined> => !!item && typeof item === 'object' && !Array.isArray(item))
+    : [];
+
+  affectedUsers.forEach((user) => {
+    serviceNames.push(...getStringArrayFromJson(user.changed_services));
+
+    const changes = isJsonArray(user.changes)
+      ? user.changes.filter((item): item is Record<string, Json | undefined> => !!item && typeof item === 'object' && !Array.isArray(item))
+      : [];
+
+    changes.forEach((change) => {
+      if (typeof change.service_name === 'string') {
+        serviceNames.push(change.service_name);
+      }
+    });
+  });
+
+  const restoredCells = isJsonArray(metadata.restored_cells)
+    ? metadata.restored_cells.filter((item): item is Record<string, Json | undefined> => !!item && typeof item === 'object' && !Array.isArray(item))
+    : [];
+
+  restoredCells.forEach((cell) => {
+    if (typeof cell.service_name === 'string') {
+      serviceNames.push(cell.service_name);
+    }
+  });
+
+  return uniqueSortedStrings(serviceNames);
 };
 
 const formatFileTimestamp = (date: Date): string => {
@@ -100,6 +166,7 @@ export const AuditLog: React.FC = () => {
   const [pageFilter, setPageFilter] = useState('all');
   const [actorFilter, setActorFilter] = useState('all');
   const [affectedFilter, setAffectedFilter] = useState('');
+  const [serviceFilter, setServiceFilter] = useState('all');
   const [actionFilter, setActionFilter] = useState('all');
   const [entityFilter, setEntityFilter] = useState('all');
   const [descriptionFilter, setDescriptionFilter] = useState('');
@@ -217,7 +284,9 @@ export const AuditLog: React.FC = () => {
     if (explicitActorId && actorMap.get(explicitActorId)?.name) {
       return actorMap.get(explicitActorId)?.name || 'Unknown';
     }
-    return log.staff?.name || 'Unknown';
+    if (log.staff?.name) return log.staff.name;
+    if (isSystemGeneratedLog(log)) return 'System Generated';
+    return 'Unknown';
   };
 
   const getActorLabel = (log: AuditLogWithRelations) => getActorLabelFromMap(log, actorNames);
@@ -242,12 +311,25 @@ export const AuditLog: React.FC = () => {
       parts.push(`FY ${metadata.financial_year}`);
     }
 
+    const affectedServices = getAffectedServiceNamesFromLog(log);
+    if (affectedServices.length > 0) {
+      parts.push(`Service: ${affectedServices.join(', ')}`);
+    }
+
+    if (typeof metadata.restored_cell_count === 'number') {
+      parts.push(`${metadata.restored_cell_count} restored cell(s)`);
+    }
+
     if (typeof metadata.affected_user_count === 'number') {
       parts.push(`${metadata.affected_user_count} user(s)`);
     }
 
     if (typeof metadata.exact_change === 'string') {
       parts.push(metadata.exact_change);
+    }
+
+    if (typeof metadata.source === 'string') {
+      parts.push(`Source: ${metadata.source.replace(/_/g, ' ')}`);
     }
 
     const teamName = getTeamName(log);
@@ -290,6 +372,23 @@ export const AuditLog: React.FC = () => {
       }).join(' | ');
     }
 
+    const restoredCells = isJsonArray(metadata.restored_cells)
+      ? metadata.restored_cells.filter((item): item is Record<string, Json | undefined> => !!item && typeof item === 'object' && !Array.isArray(item))
+      : [];
+
+    if (restoredCells.length > 0) {
+      return restoredCells.map((cell) => {
+        const staffName = typeof cell.staff_name === 'string' ? cell.staff_name : 'User';
+        const serviceName = typeof cell.service_name === 'string' ? cell.service_name : 'Service';
+        const month = typeof cell.month === 'number' ? cell.month : null;
+        const year = typeof cell.year === 'number' ? cell.year : null;
+        const overwritten = formatJsonValue(cell.overwritten_value);
+        const restored = formatJsonValue(cell.restored_value);
+
+        return `${staffName}: ${serviceName}${month ? ` (month ${month}` : ''}${year ? `, ${year}` : ''}${month ? ')' : ''}: ${overwritten} → ${restored}`;
+      }).join(' | ');
+    }
+
     const previous = isJsonObject(metadata.previous) ? metadata.previous : null;
     const current = isJsonObject(metadata.current) ? metadata.current : null;
 
@@ -319,6 +418,32 @@ export const AuditLog: React.FC = () => {
         {affectedUserNames.length > 3
           ? `${affectedUserNames.slice(0, 3).join(', ')} +${affectedUserNames.length - 3} more`
           : affectedUserNames.join(', ')}
+      </div>
+    );
+  };
+
+  const renderAffectedServices = (log: AuditLogWithRelations) => {
+    const services = getAffectedServiceNamesFromLog(log);
+
+    if (services.length === 0) {
+      return <span className="text-sm text-gray-400">—</span>;
+    }
+
+    return (
+      <div className="flex flex-wrap gap-1">
+        {services.slice(0, 3).map((service) => (
+          <span
+            key={service}
+            className="inline-flex items-center px-2 py-0.5 rounded-md bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300 text-xs font-semibold"
+          >
+            {service}
+          </span>
+        ))}
+        {services.length > 3 && (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 text-xs font-semibold">
+            +{services.length - 3} more
+          </span>
+        )}
       </div>
     );
   };
@@ -388,6 +513,40 @@ export const AuditLog: React.FC = () => {
       );
     }
 
+    const restoredCells = isJsonArray(metadata.restored_cells)
+      ? metadata.restored_cells.filter((item): item is Record<string, Json | undefined> => !!item && typeof item === 'object' && !Array.isArray(item))
+      : [];
+
+    if (restoredCells.length > 0) {
+      return (
+        <div className="space-y-2">
+          {restoredCells.slice(0, 4).map((cell, index) => {
+            const staffName = typeof cell.staff_name === 'string' ? cell.staff_name : `User ${index + 1}`;
+            const serviceName = typeof cell.service_name === 'string' ? cell.service_name : 'Service';
+            const month = typeof cell.month === 'number' ? cell.month : null;
+            const year = typeof cell.year === 'number' ? cell.year : null;
+
+            return (
+              <div key={`${staffName}-${serviceName}-${index}`} className="rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 px-3 py-2">
+                <div className="text-xs font-semibold text-blue-900 dark:text-blue-200">
+                  {staffName}
+                </div>
+                <div className="mt-1 text-xs text-blue-800 dark:text-blue-300">
+                  {serviceName}{month ? ` (month ${month})` : ''}{year ? `, ${year}` : ''}:{' '}
+                  {formatJsonValue(cell.overwritten_value)} → {formatJsonValue(cell.restored_value)}
+                </div>
+              </div>
+            );
+          })}
+          {restoredCells.length > 4 && (
+            <div className="text-xs text-gray-400">
+              +{restoredCells.length - 4} more restored cell(s)
+            </div>
+          )}
+        </div>
+      );
+    }
+
     const previous = isJsonObject(metadata.previous) ? metadata.previous : null;
     const current = isJsonObject(metadata.current) ? metadata.current : null;
 
@@ -435,6 +594,7 @@ export const AuditLog: React.FC = () => {
         const actorId = getEffectiveActorId(log);
         const affectedUserIds = getAffectedUserIdsFromLog(log);
         const affectedUserNames = getAffectedUserNamesFromLog(log);
+        const affectedServiceNames = getAffectedServiceNamesFromLog(log);
 
         return {
           id: sanitizeCsvCell(log.id),
@@ -446,8 +606,10 @@ export const AuditLog: React.FC = () => {
           action_type: sanitizeCsvCell(log.action_type),
           entity_type: sanitizeCsvCell(log.entity_type),
           entity_id: sanitizeCsvCell(log.entity_id),
+          affected_services: sanitizeCsvCell(affectedServiceNames.join(', ')),
           actor_staff_id: sanitizeCsvCell(actorId),
           actor_name: sanitizeCsvCell(getActorLabelFromMap(log, exportActorNames)),
+          system_generated: sanitizeCsvCell(isSystemGeneratedLog(log) ? 'Yes' : 'No'),
           affected_user_ids: sanitizeCsvCell(affectedUserIds.join(', ')),
           affected_user_names: sanitizeCsvCell(affectedUserNames.join(', ')),
           team_id: sanitizeCsvCell(log.team_id),
@@ -469,8 +631,10 @@ export const AuditLog: React.FC = () => {
         'action_type',
         'entity_type',
         'entity_id',
+        'affected_services',
         'actor_staff_id',
         'actor_name',
+        'system_generated',
         'affected_user_ids',
         'affected_user_names',
         'team_id',
@@ -515,11 +679,20 @@ export const AuditLog: React.FC = () => {
     return Array.from(new Set(logs.map(log => log.entity_type).filter(Boolean))).sort();
   }, [logs]);
 
+  const serviceOptions = useMemo(() => {
+    return uniqueSortedStrings(logs.flatMap(getAffectedServiceNamesFromLog));
+  }, [logs]);
+
   const actorOptions = useMemo(() => {
-    return allStaff
+    const userOptions = allStaff
       .filter(staff => !staff.is_hidden)
       .map(staff => ({ value: String(staff.staff_id), label: staff.name }))
       .sort((a, b) => a.label.localeCompare(b.label));
+
+    return [
+      { value: SYSTEM_ACTOR_FILTER, label: 'System Generated' },
+      ...userOptions,
+    ];
   }, [allStaff]);
 
   const filteredLogs = useMemo(() => {
@@ -531,17 +704,23 @@ export const AuditLog: React.FC = () => {
 
       const actorName = getActorLabel(log).toLowerCase();
       const affectedUsers = getAffectedUserNames(log).join(', ').toLowerCase();
+      const affectedServices = getAffectedServiceNamesFromLog(log);
       const logDate = log.created_at ? log.created_at.slice(0, 10) : '';
 
       const pageMatch = pageFilter === 'all' || log.page_path === pageFilter;
-      const actorMatch = actorFilter === 'all' || String(effectiveActorId) === actorFilter || actorName.includes(actorFilter.toLowerCase());
+      const actorMatch =
+        actorFilter === 'all' ||
+        (actorFilter === SYSTEM_ACTOR_FILTER && isSystemGeneratedLog(log)) ||
+        String(effectiveActorId) === actorFilter ||
+        actorName.includes(actorFilter.toLowerCase());
       const affectedMatch = !normalizedAffectedFilter || affectedUsers.includes(normalizedAffectedFilter);
+      const serviceMatch = serviceFilter === 'all' || affectedServices.includes(serviceFilter);
       const actionMatch = actionFilter === 'all' || log.action_type === actionFilter;
       const entityMatch = entityFilter === 'all' || log.entity_type === entityFilter;
       const descriptionMatch = !normalizedDescriptionFilter || log.description.toLowerCase().includes(normalizedDescriptionFilter);
       const dateMatch = !dateFilter || logDate === dateFilter;
 
-      return pageMatch && actorMatch && affectedMatch && actionMatch && entityMatch && descriptionMatch && dateMatch;
+      return pageMatch && actorMatch && affectedMatch && serviceMatch && actionMatch && entityMatch && descriptionMatch && dateMatch;
     });
 
     const sortedLogs = [...nextLogs].sort((a, b) => {
@@ -557,6 +736,8 @@ export const AuditLog: React.FC = () => {
             return log.action_type || '';
           case 'entity_type':
             return log.entity_type || '';
+          case 'service':
+            return getAffectedServiceNamesFromLog(log).join(', ') || '';
           case 'actor':
             return getActorLabel(log) || '';
           case 'affected':
@@ -584,6 +765,7 @@ export const AuditLog: React.FC = () => {
     pageFilter,
     actorFilter,
     affectedFilter,
+    serviceFilter,
     actionFilter,
     entityFilter,
     descriptionFilter,
@@ -633,7 +815,7 @@ export const AuditLog: React.FC = () => {
       <div className="page-header">
         <h2 className="page-title">Audit Log</h2>
         <p className="page-subtitle">
-          View recorded changes in a table with filters for each field.
+          View recorded user and system-generated changes with filters for page, action, service, actor, affected user, and description.
         </p>
       </div>
 
@@ -649,6 +831,7 @@ export const AuditLog: React.FC = () => {
                 setPageFilter('all');
                 setActorFilter('all');
                 setAffectedFilter('');
+                setServiceFilter('all');
                 setActionFilter('all');
                 setEntityFilter('all');
                 setDescriptionFilter('');
@@ -708,7 +891,7 @@ export const AuditLog: React.FC = () => {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-[1280px] w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <table className="min-w-[1480px] w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead className="bg-gray-50 dark:bg-gray-700/50">
                   <tr>
                     <th className="px-4 py-3 align-top text-left">
@@ -772,6 +955,23 @@ export const AuditLog: React.FC = () => {
                         </select>
                       </div>
                     </th>
+                    <th className="px-4 py-3 align-top text-left min-w-[180px]">
+                      <div className="space-y-2">
+                        {renderSortLabel('Service', 'service')}
+                        <select
+                          value={serviceFilter}
+                          onChange={(e) => setServiceFilter(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                        >
+                          <option value="all">All services</option>
+                          {serviceOptions.map(service => (
+                            <option key={service} value={service}>
+                              {service}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </th>
                     <th className="px-4 py-3 align-top text-left">
                       <div className="space-y-2">
                         {renderSortLabel('By User', 'actor')}
@@ -780,7 +980,7 @@ export const AuditLog: React.FC = () => {
                           onChange={(e) => setActorFilter(e.target.value)}
                           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
                         >
-                          <option value="all">All users</option>
+                          <option value="all">All users and system</option>
                           {actorOptions.map(actor => (
                             <option key={actor.value} value={actor.value}>
                               {actor.label}
@@ -849,7 +1049,16 @@ export const AuditLog: React.FC = () => {
                         </td>
 
                         <td className="px-4 py-4 align-top">
+                          {renderAffectedServices(log)}
+                        </td>
+
+                        <td className="px-4 py-4 align-top">
                           <div className="text-sm text-gray-900 dark:text-white">{getActorLabel(log)}</div>
+                          {isSystemGeneratedLog(log) && (
+                            <div className="mt-1 inline-flex items-center px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 text-[10px] font-bold uppercase tracking-wide">
+                              System
+                            </div>
+                          )}
                         </td>
 
                         <td className="px-4 py-4 align-top">
