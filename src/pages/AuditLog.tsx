@@ -375,51 +375,6 @@ export const AuditLog: React.FC = () => {
 
   const displayLogs = useMemo(() => expandAuditLogRows(logs), [logs]);
 
-  const fetchAuditData = async () => {
-    setLoading(true);
-    setError(null);
-    setExportMessage(null);
-
-    try {
-      const [logsResult, teamsResult] = await Promise.all([
-        supabase
-          .from('audit_logs')
-          .select('*, staff:staff_id (staff_id, name, team_id), team:team_id (id, name)')
-          .order('created_at', { ascending: false })
-          .limit(500),
-        supabase.from('teams').select('*').order('name'),
-      ]);
-
-      if (logsResult.error) {
-        setError('Failed to load audit log');
-        setLogs([]);
-      } else {
-        const nextLogs = ((logsResult.data as AuditLogWithRelations[]) || []).sort((a, b) => {
-          const timeA = new Date(a.created_at || '').getTime();
-          const timeB = new Date(b.created_at || '').getTime();
-          return timeB - timeA;
-        });
-
-        setLogs(nextLogs);
-
-        const actors = await getActorNamesForLogs(nextLogs.map((log) => {
-          const metadata = isJsonObject(log.metadata) ? log.metadata : null;
-          return typeof metadata?.actor_staff_id === 'number' ? metadata.actor_staff_id : log.staff_id;
-        }));
-        setActorNames(actors);
-      }
-
-      if (!teamsResult.error) {
-        setTeams(teamsResult.data || []);
-      }
-    } catch {
-      setError('Failed to connect to database');
-      setLogs([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const fetchEntireAuditTrail = async (): Promise<AuditLogWithRelations[]> => {
     const allRows: AuditLogWithRelations[] = [];
     let from = 0;
@@ -446,6 +401,42 @@ export const AuditLog: React.FC = () => {
     }
 
     return allRows;
+  };
+
+  const fetchAuditData = async () => {
+    setLoading(true);
+    setError(null);
+    setExportMessage(null);
+
+    try {
+      const [allAuditLogs, teamsResult] = await Promise.all([
+        fetchEntireAuditTrail(),
+        supabase.from('teams').select('*').order('name'),
+      ]);
+
+      const nextLogs = allAuditLogs.sort((a, b) => {
+        const timeA = new Date(a.created_at || '').getTime();
+        const timeB = new Date(b.created_at || '').getTime();
+        return timeB - timeA;
+      });
+
+      setLogs(nextLogs);
+
+      const actors = await getActorNamesForLogs(nextLogs.map((log) => {
+        const metadata = isJsonObject(log.metadata) ? log.metadata : null;
+        return typeof metadata?.actor_staff_id === 'number' ? metadata.actor_staff_id : log.staff_id;
+      }));
+      setActorNames(actors);
+
+      if (!teamsResult.error) {
+        setTeams(teamsResult.data || []);
+      }
+    } catch {
+      setError('Failed to connect to database');
+      setLogs([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -1095,7 +1086,7 @@ export const AuditLog: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="text-sm text-gray-600 dark:text-gray-300">
             Showing <span className="font-bold text-gray-900 dark:text-white">{filteredLogs.length}</span> of{' '}
-            <span className="font-bold text-gray-900 dark:text-white">{displayLogs.length}</span> recent change rows
+            <span className="font-bold text-gray-900 dark:text-white">{displayLogs.length}</span> change rows
           </div>
           <div className="flex flex-wrap gap-2">
             <button
