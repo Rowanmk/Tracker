@@ -10,6 +10,7 @@ import { supabase } from '../supabase/client';
 import type { FinancialYear } from '../utils/financialYear';
 import {
   buildSelfAssessmentTargetAuditCorrectionKey,
+  loadSelfAssessmentDistributedMonthlyTargets,
   loadSelfAssessmentTargetAuditCorrections,
   resolveSelfAssessmentOriginalTarget,
 } from '../utils/selfAssessmentTargets';
@@ -150,7 +151,7 @@ export const SelfAssessmentProgress: React.FC = () => {
 
         const staffIds = teamProgress.map((t) => t.team_id);
 
-        const [activitiesResult, targetsResult, auditCorrections] = await Promise.all([
+        const [activitiesResult, targetsResult, auditCorrections, distributedTargets] = await Promise.all([
           supabase
             .from('dailyactivity')
             .select('staff_id, delivered_count, date')
@@ -165,6 +166,7 @@ export const SelfAssessmentProgress: React.FC = () => {
             .in('year', [deliveryStartYear, deliveryEndYear])
             .in('staff_id', staffIds),
           loadSelfAssessmentTargetAuditCorrections(localFinancialYear),
+          loadSelfAssessmentDistributedMonthlyTargets(localFinancialYear, staffIds),
         ]);
 
         const activities = activitiesResult.data || [];
@@ -228,6 +230,8 @@ export const SelfAssessmentProgress: React.FC = () => {
             breakdown[staffId][m.number].target = resolveSelfAssessmentOriginalTarget({
               currentTarget,
               correction: auditCorrections[correctionKey],
+              distributedTarget: distributedTargets[staffId]?.[m.number],
+              submitted: breakdown[staffId][m.number].submitted,
             });
           });
         });

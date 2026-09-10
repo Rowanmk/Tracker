@@ -3,6 +3,12 @@ import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
 import type { FinancialYear } from '../utils/financialYear';
 import { isAccountantStaff } from '../utils/staff';
+import {
+  buildSelfAssessmentTargetAuditCorrectionKey,
+  loadSelfAssessmentDistributedMonthlyTargets,
+  loadSelfAssessmentTargetAuditCorrections,
+  resolveSelfAssessmentOriginalTarget,
+} from '../utils/selfAssessmentTargets';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
 type Team = Database['public']['Tables']['teams']['Row'];
@@ -17,28 +23,6 @@ export interface TeamProgressData {
   submitted: number;
   leftToDo: number;
 }
-
-// RESTORE POINT v1 — pre-actuals-backfill behaviour:
-// fullYearTarget was computed as:
-//   SA_MONTHS.forEach(m => {
-//     const y = m >= 4 ? deliveryStartYear : deliveryEndYear;
-//     const isPastMonth = y < currentYear || (y === currentYear && m < currentMonth);
-//     const key = `${y}-${m}`;
-//     if (isPastMonth) {
-//       fullYearTarget += (actualsByStaffAndMonth[staffId]?.[key] || 0);
-//     } else {
-//       fullYearTarget += (targetsByStaffAndMonth[staffId]?.[key] || 0);
-//     }
-//   });
-//
-// This caused the Full Year target to include actuals for past months, making it
-// diverge from the Targets Control sheet which shows pure targets only.
-//
-// CHANGE (v2): fullYearTarget now uses actuals for completed past months and
-// stored targets for the current and future months. The "submitted" count is
-// unchanged (sum of all actual delivered_count rows). The target sheet in
-// TargetsControl is NOT modified — it remains fully editable. Only the SA
-// Progress page's "Full Year" column is affected.
 
 export const useSelfAssessmentProgress = (
   financialYear: FinancialYear,
@@ -94,40 +78,46 @@ export const useSelfAssessmentProgress = (
 
         const accountantStaffIds = accountantStaff.map((s) => s.staff_id);
 
-        const { data: activities, error: activitiesError } = await supabase
-          .from('dailyactivity')
-          .select('staff_id, delivered_count, date')
-          .eq('service_id', saService.service_id)
-          .gte('date', deliveryStartIso)
-          .lte('date', deliveryEndIso)
-          .in('staff_id', accountantStaffIds);
+        const [
+          activitiesResult,
+          targetsResult,
+          auditCorrections,
+          distributedTargets,
+        ] = await Promise.all([
+          supabase
+            .from('dailyactivity')
+            .select('staff_id, delivered_count, date')
+            .eq('service_id', saService.service_id)
+            .gte('date', deliveryStartIso)
+            .lte('date', deliveryEndIso)
+            .in('staff_id', accountantStaffIds),
+          supabase
+            .from('monthlytargets')
+            .select('staff_id, team_id, month, year, target_value')
+            .eq('service_id', saService.service_id)
+            .in('year', [deliveryStartYear, deliveryEndYear])
+            .in('staff_id', accountantStaffIds),
+          loadSelfAssessmentTargetAuditCorrections(financialYear),
+          loadSelfAssessmentDistributedMonthlyTargets(financialYear, accountantStaffIds),
+        ]);
 
-        if (activitiesError) {
+        if (activitiesResult.error) {
           setError('Failed to load activity data');
           setTeamProgress([]);
           setLoading(false);
           return;
         }
 
-        const safeActivities: DailyActivity[] = (activities ?? []) as DailyActivity[];
-
-        const { data: targets, error: targetsError } = await supabase
-          .from('monthlytargets')
-          .select('staff_id, team_id, month, year, target_value')
-          .eq('service_id', saService.service_id)
-          .in('year', [deliveryStartYear, deliveryEndYear])
-          .in('staff_id', accountantStaffIds);
-
-        if (targetsError) {
+        if (targetsResult.error) {
           setError('Failed to load target data');
           setTeamProgress([]);
           setLoading(false);
           return;
         }
 
-        const safeTargets: MonthlyTarget[] = (targets ?? []) as MonthlyTarget[];
+        const safeActivities: DailyActivity[] = (activitiesResult.data ?? []) as DailyActivity[];
+        const safeTargets: MonthlyTarget[] = (targetsResult.data ?? []) as MonthlyTarget[];
 
-        // Build actuals by staff + month key (for past-month backfill into fullYearTarget)
         const actualsByStaffAndMonth: Record<number, Record<string, number>> = {};
         safeActivities.forEach((a) => {
           if (a.staff_id == null || !a.date) return;
@@ -139,11 +129,9 @@ export const useSelfAssessmentProgress = (
 
           const key = `${y}-${m}`;
           if (!actualsByStaffAndMonth[a.staff_id]) actualsByStaffAndMonth[a.staff_id] = {};
-          actualsByStaffAndMonth[a.staff_id][key] =
-            (actualsByStaffAndMonth[a.staff_id][key] || 0) + (a.delivered_count || 0);
+          actualsByStaffAndMonth[a.staff_id][key] = (actualsByStaffAndMonth[a.staff_id][key] || 0) + (a.delivered_count || 0);
         });
 
-        // Build stored targets by staff + month key (for current/future months)
         const targetsByStaffAndMonth: Record<number, Record<string, number>> = {};
         safeTargets.forEach((t) => {
           if (t.staff_id == null) return;
@@ -152,8 +140,7 @@ export const useSelfAssessmentProgress = (
 
           const key = `${t.year}-${t.month}`;
           if (!targetsByStaffAndMonth[t.staff_id]) targetsByStaffAndMonth[t.staff_id] = {};
-          targetsByStaffAndMonth[t.staff_id][key] =
-            (targetsByStaffAndMonth[t.staff_id][key] || 0) + (t.target_value || 0);
+          targetsByStaffAndMonth[t.staff_id][key] = (targetsByStaffAndMonth[t.staff_id][key] || 0) + (t.target_value || 0);
         });
 
         const staffWithData = new Set<number>();
@@ -166,9 +153,9 @@ export const useSelfAssessmentProgress = (
           if (t.staff_id != null) staffWithData.add(t.staff_id);
         });
 
-        const today = new Date();
-        const currentYear = today.getFullYear();
-        const currentMonth = today.getMonth() + 1;
+        Object.keys(distributedTargets).forEach((staffId) => {
+          staffWithData.add(Number(staffId));
+        });
 
         const results: TeamProgressData[] = [];
 
@@ -176,7 +163,6 @@ export const useSelfAssessmentProgress = (
           const staffMember = accountantStaff.find((s) => s.staff_id === staffId);
           if (!staffMember) return;
 
-          // submitted = total actuals delivered within the SA window
           const submitted = safeActivities
             .filter((a: DailyActivity) => {
               if (a.staff_id !== staffId || !a.date) return false;
@@ -188,33 +174,22 @@ export const useSelfAssessmentProgress = (
             })
             .reduce((sum: number, a: DailyActivity) => sum + (a.delivered_count ?? 0), 0);
 
-          // fullYearTarget:
-          //   - Completed past months  → use actuals (read-only, reflects what was actually done)
-          //   - Current month          → use stored target (editable in Targets Control)
-          //   - Future months          → use stored target (editable in Targets Control)
-          //
-          // A "completed past month" is any month whose last calendar day has passed.
-          // The current month is never treated as past even if today is the last day.
           let fullYearTarget = 0;
           const SA_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1];
 
-          SA_MONTHS.forEach((m) => {
+          SA_MONTHS.forEach(m => {
             const y = m >= 4 ? deliveryStartYear : deliveryEndYear;
             const key = `${y}-${m}`;
+            const currentTarget = targetsByStaffAndMonth[staffId]?.[key] || 0;
+            const monthlySubmitted = actualsByStaffAndMonth[staffId]?.[key] || 0;
+            const correctionKey = buildSelfAssessmentTargetAuditCorrectionKey(staffId, y, m);
 
-            // Determine whether this month is fully in the past
-            const isCurrentMonth = y === currentYear && m === currentMonth;
-            const isCompletedPastMonth =
-              !isCurrentMonth &&
-              (y < currentYear || (y === currentYear && m < currentMonth));
-
-            if (isCompletedPastMonth) {
-              // Use actuals for past months (read-only on the SA Progress page)
-              fullYearTarget += actualsByStaffAndMonth[staffId]?.[key] || 0;
-            } else {
-              // Use stored target for current and future months
-              fullYearTarget += targetsByStaffAndMonth[staffId]?.[key] || 0;
-            }
+            fullYearTarget += resolveSelfAssessmentOriginalTarget({
+              currentTarget,
+              correction: auditCorrections[correctionKey],
+              distributedTarget: distributedTargets[staffId]?.[m],
+              submitted: monthlySubmitted,
+            });
           });
 
           const leftToDo = Math.max(0, fullYearTarget - submitted);
@@ -231,7 +206,7 @@ export const useSelfAssessmentProgress = (
         results.sort((a, b) => a.name.localeCompare(b.name));
         setTeamProgress(results);
       } catch (err) {
-        void err;
+        console.error('[useSelfAssessmentProgress] fetch data:', err);
         setError('Failed to load Self Assessment progress');
         setTeamProgress([]);
       } finally {
@@ -239,6 +214,7 @@ export const useSelfAssessmentProgress = (
       }
     };
 
+    void teams;
     void fetchData();
   }, [financialYear, allStaff, teams, services]);
 
