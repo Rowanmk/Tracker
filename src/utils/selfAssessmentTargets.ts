@@ -21,7 +21,13 @@ type SADistributionRule = Pick<
   'months' | 'percentage'
 >;
 
+type AuditTargetLogRow = Pick<
+  Database['public']['Tables']['audit_logs']['Row'],
+  'id' | 'created_at' | 'metadata'
+>;
+
 const SELF_ASSESSMENT_SERVICE_NAMES = new Set(['Self Assessments', 'Self Assessment']);
+const AUDIT_PAGE_SIZE = 1000;
 
 const isJsonObject = (value: Json | null | undefined): value is Record<string, Json | undefined> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
@@ -85,6 +91,74 @@ const pickAnnualTargetForStaff = (
   );
 };
 
+const shouldReplaceCorrection = (
+  existing: SelfAssessmentTargetAuditCorrection | undefined,
+  candidate: SelfAssessmentTargetAuditCorrection
+): boolean => {
+  if (!existing) {
+    return true;
+  }
+
+  if (candidate.previousValue !== existing.previousValue) {
+    return candidate.previousValue > existing.previousValue;
+  }
+
+  return new Date(candidate.auditCreatedAt).getTime() > new Date(existing.auditCreatedAt).getTime();
+};
+
+const applyCorrectionCandidate = (
+  corrections: Record<string, SelfAssessmentTargetAuditCorrection>,
+  candidate: SelfAssessmentTargetAuditCorrection
+) => {
+  if (
+    candidate.month < 1 ||
+    candidate.month > 12 ||
+    candidate.previousValue <= candidate.newValue
+  ) {
+    return;
+  }
+
+  const key = buildSelfAssessmentTargetAuditCorrectionKey(
+    candidate.staffId,
+    candidate.year,
+    candidate.month
+  );
+
+  if (shouldReplaceCorrection(corrections[key], candidate)) {
+    corrections[key] = candidate;
+  }
+};
+
+const loadAllSelfAssessmentTargetAuditRows = async (): Promise<AuditTargetLogRow[]> => {
+  const rows: AuditTargetLogRow[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('audit_logs')
+      .select('id, created_at, metadata')
+      .eq('page_path', '/targets')
+      .eq('entity_type', 'monthly_targets')
+      .order('created_at', { ascending: false })
+      .range(from, from + AUDIT_PAGE_SIZE - 1);
+
+    if (error) {
+      throw error;
+    }
+
+    const pageRows = (data || []) as AuditTargetLogRow[];
+    rows.push(...pageRows);
+
+    if (pageRows.length < AUDIT_PAGE_SIZE) {
+      break;
+    }
+
+    from += AUDIT_PAGE_SIZE;
+  }
+
+  return rows;
+};
+
 export const getSelfAssessmentDeliveryYear = (
   month: number,
   financialYear: FinancialYear
@@ -104,23 +178,56 @@ export const loadSelfAssessmentTargetAuditCorrections = async (
     getSelfAssessmentDeliveryTargetFinancialYearLabel(financialYear),
   ]);
 
-  const { data, error } = await supabase
-    .from('audit_logs')
-    .select('id, created_at, metadata')
-    .eq('page_path', '/targets')
-    .eq('entity_type', 'monthly_targets')
-    .order('created_at', { ascending: false })
-    .limit(1000);
-
-  if (error) {
-    throw error;
-  }
-
+  const auditRows = await loadAllSelfAssessmentTargetAuditRows();
   const corrections: Record<string, SelfAssessmentTargetAuditCorrection> = {};
 
-  (data || []).forEach((log) => {
+  auditRows.forEach((log) => {
     const metadata = isJsonObject(log.metadata) ? log.metadata : null;
     if (!metadata) return;
+
+    const restoredCells = isJsonArray(metadata.restored_cells)
+      ? metadata.restored_cells
+      : [];
+
+    restoredCells.forEach((restoredCellValue) => {
+      const restoredCell = isJsonObject(restoredCellValue) ? restoredCellValue : null;
+      if (!restoredCell) return;
+
+      const serviceName =
+        typeof restoredCell.service_name === 'string' ? restoredCell.service_name : '';
+
+      if (serviceName && !SELF_ASSESSMENT_SERVICE_NAMES.has(serviceName)) {
+        return;
+      }
+
+      const staffId = toNumber(restoredCell.staff_id);
+      const month = toNumber(restoredCell.month);
+      const year = toNumber(restoredCell.year);
+      const restoredValue = toNumber(restoredCell.restored_value);
+      const overwrittenValue =
+        toNumber(restoredCell.overwritten_value) ??
+        toNumber(restoredCell.new_value) ??
+        toNumber(restoredCell.actual_value);
+
+      if (
+        staffId === null ||
+        month === null ||
+        year === null ||
+        restoredValue === null ||
+        overwrittenValue === null
+      ) {
+        return;
+      }
+
+      applyCorrectionCandidate(corrections, {
+        staffId,
+        month,
+        year,
+        previousValue: restoredValue,
+        newValue: overwrittenValue,
+        auditCreatedAt: log.created_at,
+      });
+    });
 
     const financialYearLabel =
       typeof metadata.financial_year === 'string' ? metadata.financial_year : '';
@@ -169,20 +276,15 @@ export const loadSelfAssessmentTargetAuditCorrections = async (
         }
 
         const year = getSelfAssessmentDeliveryYear(month, financialYear);
-        const key = buildSelfAssessmentTargetAuditCorrectionKey(staffId, year, month);
 
-        if (corrections[key]) {
-          return;
-        }
-
-        corrections[key] = {
+        applyCorrectionCandidate(corrections, {
           staffId,
           month,
           year,
           previousValue,
           newValue,
           auditCreatedAt: log.created_at,
-        };
+        });
       });
     });
   });
@@ -293,9 +395,10 @@ export const resolveSelfAssessmentOriginalTarget = ({
   distributedTarget?: number;
   submitted?: number;
 }): number => {
-  if (correction && currentTarget === correction.newValue && correction.previousValue !== correction.newValue) {
-    return correction.previousValue;
-  }
+  const safeCurrentTarget =
+    typeof currentTarget === 'number' && Number.isFinite(currentTarget)
+      ? Math.max(0, Math.round(currentTarget))
+      : 0;
 
   const safeDistributedTarget =
     typeof distributedTarget === 'number' && Number.isFinite(distributedTarget)
@@ -307,12 +410,22 @@ export const resolveSelfAssessmentOriginalTarget = ({
       ? Math.max(0, Math.round(submitted))
       : 0;
 
+  if (correction && correction.previousValue > safeCurrentTarget) {
+    const currentMatchesOverwrittenAuditValue = safeCurrentTarget === correction.newValue;
+    const currentLooksOverwrittenBySubmittedActual =
+      safeSubmitted > 0 && safeCurrentTarget <= safeSubmitted;
+
+    if (currentMatchesOverwrittenAuditValue || currentLooksOverwrittenBySubmittedActual) {
+      return correction.previousValue;
+    }
+  }
+
   if (
-    safeDistributedTarget > currentTarget &&
-    (currentTarget === 0 || currentTarget <= safeSubmitted)
+    safeDistributedTarget > safeCurrentTarget &&
+    (safeCurrentTarget === 0 || safeCurrentTarget <= safeSubmitted)
   ) {
     return safeDistributedTarget;
   }
 
-  return currentTarget;
+  return safeCurrentTarget;
 };
