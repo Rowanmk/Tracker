@@ -8,17 +8,6 @@ import { FinancialYearSelector } from '../components/FinancialYearSelector';
 import { getFinancialYears, getFinancialYearMonths } from '../utils/financialYear';
 import { supabase } from '../supabase/client';
 import type { FinancialYear } from '../utils/financialYear';
-import {
-  buildSelfAssessmentTargetAuditCorrectionKey,
-  loadSelfAssessmentDistributedMonthlyTargets,
-  loadSelfAssessmentTargetAuditCorrections,
-  resolveSelfAssessmentOriginalTarget,
-} from '../utils/selfAssessmentTargets';
-// FIX B: Use shared isAccountantStaff utility instead of local helper.
-// PRE-FIX-5: local const isAccountant = (staffMember: Staff) => ... defined inline.
-// (No remaining call sites in this file after consolidation; import retained for any future use within this module.)
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { isAccountantStaff } from '../utils/staff';
 
 function calcRunRatePercent(
   submitted: number,
@@ -151,7 +140,7 @@ export const SelfAssessmentProgress: React.FC = () => {
 
         const staffIds = teamProgress.map((t) => t.team_id);
 
-        const [activitiesResult, targetsResult, auditCorrections, distributedTargets] = await Promise.all([
+        const [activitiesResult, targetsResult] = await Promise.all([
           supabase
             .from('dailyactivity')
             .select('staff_id, delivered_count, date')
@@ -165,9 +154,13 @@ export const SelfAssessmentProgress: React.FC = () => {
             .eq('service_id', saService.service_id)
             .in('year', [deliveryStartYear, deliveryEndYear])
             .in('staff_id', staffIds),
-          loadSelfAssessmentTargetAuditCorrections(localFinancialYear),
-          loadSelfAssessmentDistributedMonthlyTargets(localFinancialYear, staffIds),
         ]);
+
+        if (activitiesResult.error || targetsResult.error) {
+          setMonthlyData({});
+          setDailyActuals({});
+          return;
+        }
 
         const activities = activitiesResult.data || [];
         const targets = targetsResult.data || [];
@@ -205,35 +198,17 @@ export const SelfAssessmentProgress: React.FC = () => {
           }
         });
 
-        const dbTargets: Record<number, Record<number, number>> = {};
         targets.forEach((t) => {
-          if (t.staff_id != null) {
-            const expectedYear = t.month >= 4 ? deliveryStartYear : deliveryEndYear;
-            if (t.year !== expectedYear) return;
+          if (t.staff_id == null || !breakdown[t.staff_id]) return;
 
-            if (!dbTargets[t.staff_id]) dbTargets[t.staff_id] = {};
-            dbTargets[t.staff_id][t.month] = (dbTargets[t.staff_id][t.month] || 0) + (t.target_value || 0);
+          const expectedYear = t.month >= 4 ? deliveryStartYear : deliveryEndYear;
+          if (t.year !== expectedYear) return;
+
+          if (!breakdown[t.staff_id][t.month]) {
+            breakdown[t.staff_id][t.month] = { submitted: 0, target: 0 };
           }
-        });
 
-        teamProgress.forEach((staffEntry) => {
-          const staffId = staffEntry.team_id;
-          getFinancialYearMonths().forEach((m) => {
-            const targetYear = m.number >= 4 ? deliveryStartYear : deliveryEndYear;
-            const currentTarget = dbTargets[staffId]?.[m.number] || 0;
-            const correctionKey = buildSelfAssessmentTargetAuditCorrectionKey(
-              staffId,
-              targetYear,
-              m.number
-            );
-
-            breakdown[staffId][m.number].target = resolveSelfAssessmentOriginalTarget({
-              currentTarget,
-              correction: auditCorrections[correctionKey],
-              distributedTarget: distributedTargets[staffId]?.[m.number],
-              submitted: breakdown[staffId][m.number].submitted,
-            });
-          });
+          breakdown[t.staff_id][t.month].target += t.target_value || 0;
         });
 
         setMonthlyData(breakdown);

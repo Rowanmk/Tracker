@@ -3,12 +3,6 @@ import { supabase } from '../supabase/client';
 import type { Database } from '../supabase/types';
 import type { FinancialYear } from '../utils/financialYear';
 import { isAccountantStaff } from '../utils/staff';
-import {
-  buildSelfAssessmentTargetAuditCorrectionKey,
-  loadSelfAssessmentDistributedMonthlyTargets,
-  loadSelfAssessmentTargetAuditCorrections,
-  resolveSelfAssessmentOriginalTarget,
-} from '../utils/selfAssessmentTargets';
 
 type Staff = Database['public']['Tables']['staff']['Row'];
 type Team = Database['public']['Tables']['teams']['Row'];
@@ -78,12 +72,7 @@ export const useSelfAssessmentProgress = (
 
         const accountantStaffIds = accountantStaff.map((s) => s.staff_id);
 
-        const [
-          activitiesResult,
-          targetsResult,
-          auditCorrections,
-          distributedTargets,
-        ] = await Promise.all([
+        const [activitiesResult, targetsResult] = await Promise.all([
           supabase
             .from('dailyactivity')
             .select('staff_id, delivered_count, date')
@@ -97,8 +86,6 @@ export const useSelfAssessmentProgress = (
             .eq('service_id', saService.service_id)
             .in('year', [deliveryStartYear, deliveryEndYear])
             .in('staff_id', accountantStaffIds),
-          loadSelfAssessmentTargetAuditCorrections(financialYear),
-          loadSelfAssessmentDistributedMonthlyTargets(financialYear, accountantStaffIds),
         ]);
 
         if (activitiesResult.error) {
@@ -117,20 +104,6 @@ export const useSelfAssessmentProgress = (
 
         const safeActivities: DailyActivity[] = (activitiesResult.data ?? []) as DailyActivity[];
         const safeTargets: MonthlyTarget[] = (targetsResult.data ?? []) as MonthlyTarget[];
-
-        const actualsByStaffAndMonth: Record<number, Record<string, number>> = {};
-        safeActivities.forEach((a) => {
-          if (a.staff_id == null || !a.date) return;
-          const dateObj = new Date(a.date);
-          const m = dateObj.getMonth() + 1;
-          const y = dateObj.getFullYear();
-          const expectedYear = m >= 4 ? deliveryStartYear : deliveryEndYear;
-          if (y !== expectedYear) return;
-
-          const key = `${y}-${m}`;
-          if (!actualsByStaffAndMonth[a.staff_id]) actualsByStaffAndMonth[a.staff_id] = {};
-          actualsByStaffAndMonth[a.staff_id][key] = (actualsByStaffAndMonth[a.staff_id][key] || 0) + (a.delivered_count || 0);
-        });
 
         const targetsByStaffAndMonth: Record<number, Record<string, number>> = {};
         safeTargets.forEach((t) => {
@@ -151,10 +124,6 @@ export const useSelfAssessmentProgress = (
 
         safeTargets.forEach((t: MonthlyTarget) => {
           if (t.staff_id != null) staffWithData.add(t.staff_id);
-        });
-
-        Object.keys(distributedTargets).forEach((staffId) => {
-          staffWithData.add(Number(staffId));
         });
 
         const results: TeamProgressData[] = [];
@@ -180,16 +149,7 @@ export const useSelfAssessmentProgress = (
           SA_MONTHS.forEach(m => {
             const y = m >= 4 ? deliveryStartYear : deliveryEndYear;
             const key = `${y}-${m}`;
-            const currentTarget = targetsByStaffAndMonth[staffId]?.[key] || 0;
-            const monthlySubmitted = actualsByStaffAndMonth[staffId]?.[key] || 0;
-            const correctionKey = buildSelfAssessmentTargetAuditCorrectionKey(staffId, y, m);
-
-            fullYearTarget += resolveSelfAssessmentOriginalTarget({
-              currentTarget,
-              correction: auditCorrections[correctionKey],
-              distributedTarget: distributedTargets[staffId]?.[m],
-              submitted: monthlySubmitted,
-            });
+            fullYearTarget += targetsByStaffAndMonth[staffId]?.[key] || 0;
           });
 
           const leftToDo = Math.max(0, fullYearTarget - submitted);
@@ -205,8 +165,7 @@ export const useSelfAssessmentProgress = (
 
         results.sort((a, b) => a.name.localeCompare(b.name));
         setTeamProgress(results);
-      } catch (err) {
-        console.error('[useSelfAssessmentProgress] fetch data:', err);
+      } catch {
         setError('Failed to load Self Assessment progress');
         setTeamProgress([]);
       } finally {
